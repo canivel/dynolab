@@ -1,7 +1,14 @@
 name: Release macOS app
 on:
   push:
-    tags: ['v[0-9]*']
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build and publish
+        required: true
+        default: v0.1.0
+        type: string
 permissions:
   contents: write
 jobs:
@@ -10,10 +17,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: astral-sh/setup-uv@v6
       - name: Verify release version and architecture
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           test "$(uname -m)" = arm64
           VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml | head -1)
@@ -25,7 +34,7 @@ jobs:
       - name: Publish release with DMG and checksum
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           gh release create "$RELEASE_TAG" app/build/*.dmg app/build/*.sha256 \
             --verify-tag --title "Dyno $RELEASE_TAG" --notes-file docs/release-notes.md
