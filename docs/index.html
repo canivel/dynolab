@@ -20,7 +20,7 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23080a09'/%3E%3Cpath d='M16 43V30m11 13V21m11 22V14m11 29V25' stroke='%23ccff7a' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E"
     />
     <link rel="stylesheet" href="styles.css" />
-    <script src="universe.js" defer></script>
+    <script type="module" src="universe.js"></script>
     <noscript
       ><style>
         .journey {
@@ -62,27 +62,11 @@
         aria-label="A universe of models, running locally on your Mac"
       >
         <div class="universe-stage">
-          <div class="room-world" aria-hidden="true">
-            <img
-              class="room-photo"
-              src="assets/mac-workspace.jpg"
-              alt=""
-              fetchpriority="high"
-              width="1536"
-              height="1024"
-            />
-            <div class="screen-portal">
-              <canvas id="universe"></canvas>
-              <img
-                class="screen-app"
-                src="screenshots/window-run-dark.png"
-                alt=""
-                width="1800"
-                height="1250"
-              />
-              <div class="portal-glow"></div>
-            </div>
-          </div>
+          <div class="scene-fallback" aria-hidden="true"></div>
+          <canvas
+            id="camera-scene"
+            aria-label="Camera rising from the GPU beneath the keyboard, then moving to the front of a stationary Mac"
+          ></canvas>
           <div class="scene-shade" aria-hidden="true"></div>
           <div class="stage-copy copy-one">
             <p class="eyebrow">

@@ -1,444 +1,349 @@
-/* A dependency-free illustration: particles, orbital connections and scroll depth.
-   This is decorative animation, never a representation of measured activations. */
-(() => {
-  "use strict";
-  const $ = (selector) => document.querySelector(selector);
-  const $$ = (selector) => [...document.querySelectorAll(selector)];
-  const motionPreference = matchMedia("(prefers-reduced-motion: reduce)");
-  const journey = $(".journey");
-  const stage = $(".universe-stage");
-  const world = $(".room-world");
-  const photo = $(".room-photo");
-  const appImage = $(".screen-app");
-  const glass = $(".portal-glow");
-  const depthLabel = $(".scene-label");
-  const board = new Image();
-  board.src = "assets/silicon-board.jpg";
-  let sceneProgress = 0;
-  // Normalized anchors measured against the supplied photographic plate.
-  // Everything is nested: neural field → die → board → display → room.
-  const die = { x: 586 / 1536, y: 296 / 1024, w: 360 / 1536, h: 380 / 1024 };
-  const dieCenter = { x: die.x + die.w / 2, y: die.y + die.h / 2 };
-  let sceneReady = false;
-  let roomWidth = 1,
-    roomHeight = 1;
-  const canvas = $("#universe");
-  const context = canvas.getContext("2d");
-  const copies = $$(".stage-copy");
-  const toggle = $("#motion-toggle");
-  let explicitMotion = null;
+import { createOfficeProps } from "./office-props.js";
+import { createNeuralField } from "./neural-field.js";
+import * as THREE from "./vendor/three/three.module.js";
+import { cameraPose, ease, clamp } from "./camera-path.mjs";
+const $ = (s) => document.querySelector(s),
+  $$ = (s) => [...document.querySelectorAll(s)];
+const stage = $(".universe-stage"),
+  journey = $(".journey"),
+  canvas = $("#camera-scene");
+const pref = matchMedia("(prefers-reduced-motion: reduce)");
+let explicit = null;
+try {
+  explicit = localStorage.getItem("dyno-motion");
+} catch {}
+let reduced = explicit ? explicit === "paused" : pref.matches;
+let renderer,
+  scene,
+  camera,
+  keyboardMaterial,
+  shellMaterial,
+  neuralField,
+  dieMaterial;
+let frame = 0,
+  progress = 0,
+  targetProgress = 0,
+  last = 0,
+  time = 0,
+  visible = true,
+  ready = false;
+const staticTransforms = [];
+function requestFrame() {
+  if (!frame && !document.hidden && visible)
+    frame = requestAnimationFrame(draw);
+}
+function resize() {
+  if (!renderer) return;
+  const w = stage.clientWidth,
+    h = stage.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  scroll();
+}
+function scroll() {
+  const r = journey.getBoundingClientRect();
+  targetProgress = reduced
+    ? 1
+    : clamp(-r.top / Math.max(1, r.height - stage.clientHeight));
+  requestFrame();
+}
+function applyMotion() {
+  document.body.classList.toggle("reduced", reduced);
+  $("#motion-toggle").textContent = reduced
+    ? "Enable motion ▷"
+    : "Pause motion Ⅱ";
+  $("#motion-toggle").setAttribute("aria-pressed", String(reduced));
+  if (reduced) progress = 1;
+  scroll();
+}
+$("#motion-toggle").addEventListener("click", () => {
+  reduced = !reduced;
+  explicit = reduced ? "paused" : "enabled";
   try {
-    explicitMotion = localStorage.getItem("dyno-motion");
-  } catch {
-    /* Storage is optional. */
-  }
-  let reduced = explicitMotion
-    ? explicitMotion === "paused"
-    : motionPreference.matches;
-  let width = 1,
-    height = 1,
-    progress = 0,
-    frame = 0,
-    lastTime = 0,
-    time = 0;
-  let pointerX = 0,
-    pointerY = 0,
-    targetX = 0,
-    targetY = 0;
-  let visible = true;
-  const clamp = (n, low = 0, high = 1) => Math.min(high, Math.max(low, n));
-  const smooth = (a, b, x) => {
-    const t = clamp((x - a) / (b - a));
-    return t * t * (3 - 2 * t);
-  };
-  let seed = 31415;
-  const random = () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed / 4294967296;
-  };
-  const neurons = Array.from({ length: 96 }, (_, i) => ({
-    layer: Math.floor(i / 12),
-    row: i % 12,
-    z: random() * 2 - 1,
-    phase: random(),
-  }));
-  const synapses = [];
-  neurons.forEach((neuron, i) => {
-    if (neuron.layer === 7) return;
-    for (let offset = -2; offset <= 2; offset++) {
-      const row = neuron.row + offset;
-      if (row >= 0 && row < 12)
-        synapses.push([i, (neuron.layer + 1) * 12 + row]);
-    }
-  });
-
-  function applyMotion() {
-    document.body.classList.toggle("reduced", reduced);
-    toggle.textContent = reduced ? "Enable motion ▷" : "Pause motion Ⅱ";
-    toggle.setAttribute("aria-pressed", String(reduced));
-    if (frame) cancelAnimationFrame(frame);
-    frame = 0;
-    updateScroll();
-    requestFrame();
-  }
-  toggle.addEventListener("click", () => {
-    reduced = !reduced;
-    explicitMotion = reduced ? "paused" : "enabled";
-    try {
-      localStorage.setItem("dyno-motion", explicitMotion);
-    } catch {
-      /* No persistence required. */
-    }
+    localStorage.setItem("dyno-motion", explicit);
+  } catch {}
+  applyMotion();
+});
+pref.addEventListener("change", () => {
+  if (!explicit) {
+    reduced = pref.matches;
     applyMotion();
-  });
-  motionPreference.addEventListener("change", () => {
-    if (!explicitMotion) {
-      reduced = motionPreference.matches;
-      applyMotion();
-    }
-  });
-  function resize() {
-    const mobile = stage.clientWidth <= 700;
-    roomWidth = mobile
-      ? stage.clientWidth * 1.5
-      : Math.max(stage.clientWidth, stage.clientHeight * 1.5);
-    roomHeight = roomWidth / 1.5;
-    world.style.width = `${roomWidth}px`;
-    width = Math.round(roomWidth * 0.465);
-    height = Math.round(roomHeight * 0.441);
-    // Render enough pixels for the initial close-up, bounded for mobile GPUs.
-    const ratio = Math.min(
-      5,
-      Math.max(devicePixelRatio || 1, (stage.clientHeight / height) * 1.5),
-    );
-    canvas.width = Math.round(width * ratio);
-    canvas.height = Math.round(height * ratio);
-    if (context) context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    updateScroll();
-    requestFrame();
   }
-  function updateScroll() {
-    const box = journey.getBoundingClientRect();
-    progress = reduced
-      ? 0
-      : clamp(-box.top / Math.max(1, box.height - stage.clientHeight));
-    const p = sceneReady ? progress : 0;
-    sceneProgress = p;
-    // The camera traverses the silicon first. The laptop stays beyond the
-    // viewport until the board has been revealed, then the outer camera retreats.
-    const pullback = smooth(0.53, 0.9, p);
-    const startScale =
-      Math.max(stage.clientWidth / width, stage.clientHeight / height) * 1.16;
-    const scale = reduced ? 1 : Math.exp(Math.log(startScale) * (1 - pullback));
-    const screenCenterX = (0.265 + 0.465 / 2 - 0.5) * roomWidth;
-    const screenCenterY = (0.211 + 0.441 / 2 - 0.5) * roomHeight;
-    const mobileOffset =
-      stage.clientWidth <= 700 ? stage.clientHeight * 0.16 : 0;
-    const offsetX = -screenCenterX * scale * (1 - pullback);
-    const offsetY = reduced
-      ? mobileOffset
-      : -screenCenterY * scale * (1 - pullback) + mobileOffset * pullback;
-    world.style.transform = `translate(calc(-50% + ${offsetX}px),calc(-50% + ${offsetY}px)) scale(${scale})`;
-    const opacities = [
-      reduced ? 1 : 1 - smooth(0.06, 0.2, p),
-      reduced ? 0 : smooth(0.84, 0.95, p),
-    ];
-    copies.forEach((copy, index) => {
-      copy.style.opacity = opacities[index];
-      copy.style.visibility = opacities[index] < 0.01 ? "hidden" : "visible";
-      copy.inert = opacities[index] < 0.1;
-      if (index > 0)
-        copy.setAttribute("aria-hidden", String(opacities[index] < 0.1));
-      copy.style.transform =
-        index === 0
-          ? `translateY(${-p * 100}px) scale(${1 - pullback * 0.35})`
-          : `translateY(${(1 - pullback) * 60}px)`;
-    });
-    appImage.style.opacity = reduced ? 1 : smooth(0.72, 0.84, p);
-    glass.style.opacity = reduced
-      ? 0
-      : smooth(0.67, 0.75, p) * (1 - smooth(0.77, 0.87, p));
-    const labels = [
-      "01 / NEURAL ACTIVATIONS",
-      "02 / THE SILICON DIE",
-      "03 / CHIP & CIRCUIT BOARD",
-      "04 / THROUGH THE DISPLAY",
-      "05 / YOUR MAC",
-    ];
-    const depth = p < 0.21 ? 0 : p < 0.38 ? 1 : p < 0.62 ? 2 : p < 0.86 ? 3 : 4;
-    depthLabel.textContent = reduced ? "APPLE SILICON × MLX" : labels[depth];
-    $(".journey-progress b").style.width = `${progress * 100}%`;
-    requestFrame();
-  }
-  window.addEventListener("scroll", updateScroll, { passive: true });
-  window.addEventListener("resize", resize, { passive: true });
-  stage.addEventListener(
-    "pointermove",
-    (event) => {
-      if (reduced || event.pointerType === "touch") return;
-      targetX = (event.clientX / stage.clientWidth - 0.5) * 2;
-      targetY = (event.clientY / stage.clientHeight - 0.5) * 2;
-      requestFrame();
-    },
-    { passive: true },
-  );
-  stage.addEventListener("pointerleave", () => {
-    targetX = 0;
-    targetY = 0;
-  });
-  function requestFrame() {
-    if (!frame && !document.hidden && visible)
-      frame = requestAnimationFrame(draw);
-  }
-  function draw(now) {
+});
+window.addEventListener("scroll", scroll, { passive: true });
+window.addEventListener("resize", resize, { passive: true });
+new IntersectionObserver(([entry]) => {
+  visible = entry.isIntersecting;
+  if (visible) requestFrame();
+  else {
+    cancelAnimationFrame(frame);
     frame = 0;
-    if (!reduced) time += Math.min((now - lastTime) / 1000 || 0, 0.05);
-    lastTime = now;
-    pointerX += ((reduced ? 0 : targetX) - pointerX) * 0.055;
-    pointerY += ((reduced ? 0 : targetY) - pointerY) * 0.055;
-    if (context) drawUniverse();
-    if (!reduced) requestFrame();
   }
-  function drawUniverse() {
-    const ctx = context;
-    const p = sceneProgress;
-    ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "#070e0c";
-    ctx.fillRect(0, 0, width, height);
-    if (reduced || p > 0.85) return;
-    const boardWidth = Math.max(width, height * 1.5) * 1.08;
-    const boardHeight = boardWidth / 1.5;
-    const startZoom =
-      Math.max(width / (boardWidth * die.w), height / (boardHeight * die.h)) *
-      1.15;
-    const zoom = Math.exp(Math.log(startZoom) * (1 - smooth(0.06, 0.62, p)));
-    ctx.save();
-    ctx.translate(width / 2, height / 2);
-    ctx.scale(zoom, zoom);
-    ctx.translate(-boardWidth * dieCenter.x, -boardHeight * dieCenter.y);
-    if (sceneReady) ctx.drawImage(board, 0, 0, boardWidth, boardHeight);
-    const x = boardWidth * die.x,
-      y = boardHeight * die.y;
-    const w = boardWidth * die.w,
-      h = boardHeight * die.h;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(x, y, w, h);
-    ctx.clip();
-    const silicon = smooth(0.15, 0.4, p);
-    ctx.fillStyle = `rgba(5,14,11,${1 - silicon * 0.28})`;
-    ctx.fillRect(x, y, w, h);
-    // The architectural grid resolves from darkness as the camera clears the die.
-    ctx.lineWidth = 0.22;
-    ctx.strokeStyle = `rgba(155,190,132,${0.04 + silicon * 0.16})`;
-    for (let i = 0; i <= 24; i++) {
-      ctx.beginPath();
-      ctx.moveTo(x + (w * i) / 24, y);
-      ctx.lineTo(x + (w * i) / 24, y + h);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(x, y + (h * i) / 24);
-      ctx.lineTo(x + w, y + (h * i) / 24);
-      ctx.stroke();
-    }
-    // A layered neural field, with animated signal packets and firing neurons.
-    // This is a conceptual illustration, not live measured model activity.
-    const projected = neurons.map((n) => {
-      const depth = 1 / (1.7 - n.z * 0.3);
-      return {
-        x:
-          x +
-          w * (0.5 + (n.layer / 7 - 0.5) * 1.38 * depth) +
-          pointerX * w * 0.018 * n.z,
-        y:
-          y +
-          h * (0.5 + (n.row / 11 - 0.5) * 1.55 * depth) +
-          Math.sin(time * 0.22 + n.phase * 6.28) * h * 0.016 +
-          pointerY * h * 0.018 * n.z,
-        z: n.z,
-        phase: n.phase,
-        layer: n.layer,
-      };
-    });
-    for (let i = 0; i < synapses.length; i++) {
-      const [ai, bi] = synapses[i],
-        a = projected[ai],
-        b = projected[bi];
-      ctx.strokeStyle = `rgba(165,218,158,${0.1 + (a.z + 1) * 0.065})`;
-      ctx.lineWidth = w * 0.0014;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-      if (i % 5 !== 0) continue;
-      const t = (time * 0.65 - a.layer * 0.15 + a.phase + 10) % 1;
-      const tail = Math.max(0, t - 0.16);
-      ctx.strokeStyle = i % 3 === 0 ? "#c5b1ff" : "#cfff9c";
-      ctx.lineWidth = w * 0.0028;
-      ctx.beginPath();
-      ctx.moveTo(a.x + (b.x - a.x) * tail, a.y + (b.y - a.y) * tail);
-      ctx.lineTo(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
-      ctx.stroke();
-    }
-    for (const n of projected) {
-      const firing = Math.pow(
-        Math.max(0, Math.sin(time * 3.4 - n.layer * 0.8 + n.phase * 6.28)),
-        10,
-      );
-      const radius = w * (0.0025 + firing * 0.0035);
-      if (firing > 0.25) {
-        const glow = ctx.createRadialGradient(
-          n.x,
-          n.y,
-          0,
-          n.x,
-          n.y,
-          radius * 5,
-        );
-        glow.addColorStop(0, `rgba(190,255,137,${firing * 0.5})`);
-        glow.addColorStop(1, "rgba(190,255,137,0)");
-        ctx.fillStyle = glow;
-        ctx.fillRect(
-          n.x - radius * 5,
-          n.y - radius * 5,
-          radius * 10,
-          radius * 10,
-        );
-      }
-      ctx.fillStyle = `rgba(210,255,184,${0.45 + firing * 0.55})`;
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
-    // Signals continue from the silicon out along component-level traces.
-    const traceAlpha = smooth(0.2, 0.42, p) * 0.65;
-    if (traceAlpha > 0) {
-      ctx.save();
-      ctx.globalAlpha = traceAlpha;
-      ctx.strokeStyle = "#c7f88d";
-      ctx.lineWidth = boardWidth * 0.00065;
-      for (let side = 0; side < 4; side++)
-        for (let i = 0; i < 5; i++) {
-          const f = (i + 1) / 6;
-          const cx = x + w * f,
-            cy = y + h * f;
-          const path =
-            side === 0
-              ? [
-                  [x, cy],
-                  [x - w * 0.35, cy],
-                  [x - w * 0.6, cy - h * 0.16],
-                  [x - w * 1.5, cy - h * 0.16],
-                ]
-              : side === 1
-                ? [
-                    [x + w, cy],
-                    [x + w * 1.35, cy],
-                    [x + w * 1.6, cy + h * 0.16],
-                    [x + w * 2.5, cy + h * 0.16],
-                  ]
-                : side === 2
-                  ? [
-                      [cx, y],
-                      [cx, y - h * 0.32],
-                      [cx - w * 0.16, y - h * 0.55],
-                      [cx - w * 0.16, y - h * 1.1],
-                    ]
-                  : [
-                      [cx, y + h],
-                      [cx, y + h * 1.32],
-                      [cx + w * 0.16, y + h * 1.55],
-                      [cx + w * 0.16, y + h * 2.1],
-                    ];
-          ctx.beginPath();
-          path.forEach((v, j) => (j ? ctx.lineTo(...v) : ctx.moveTo(...v)));
-          ctx.stroke();
-          const t = ((time * 0.38 + i * 0.17 + side * 0.11) % 1) * 3,
-            segment = Math.floor(t),
-            fraction = t - segment;
-          const a = path[segment],
-            b = path[segment + 1];
-          ctx.fillStyle = "#e4ffb6";
-          ctx.beginPath();
-          ctx.arc(
-            a[0] + (b[0] - a[0]) * fraction,
-            a[1] + (b[1] - a[1]) * fraction,
-            boardWidth * 0.002,
-            0,
-            Math.PI * 2,
-          );
-          ctx.fill();
-        }
-      ctx.restore();
-    }
-    ctx.restore();
-  }
-  // Never keep rendering a hidden tab or an offscreen universe.
-  new IntersectionObserver((entries) => {
-    visible = entries[0].isIntersecting;
-    if (visible) requestFrame();
-    else if (frame) {
-      cancelAnimationFrame(frame);
-      frame = 0;
-    }
-  }).observe(journey);
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden && frame) {
-      cancelAnimationFrame(frame);
-      frame = 0;
-    } else requestFrame();
+}).observe(journey);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    cancelAnimationFrame(frame);
+    frame = 0;
+  } else requestFrame();
+});
+function crop(texture, x, y, w, h) {
+  const t = texture.clone();
+  t.offset.set(x, 1 - y - h);
+  t.repeat.set(w, h);
+  t.needsUpdate = true;
+  return t;
+}
+function mesh(geometry, material, name, position, rotation) {
+  const m = new THREE.Mesh(geometry, material);
+  m.name = name;
+  if (position) m.position.set(...position);
+  if (rotation) m.rotation.set(...rotation);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  scene.add(m);
+  return m;
+}
+const basic = (map) => new THREE.MeshBasicMaterial({ map, toneMapped: false });
+async function init() {
+  renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: false,
+    powerPreference: "high-performance",
   });
-  const revealObserver = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add("visible");
-          revealObserver.unobserve(entry.target);
-        }
-      });
-    },
-    { threshold: 0.08 },
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color("#171b16");
+  camera = new THREE.PerspectiveCamera(45, 1, 0.02, 50);
+  const loader = new THREE.TextureLoader();
+  const [overhead, room, board, app] = await Promise.all(
+    [
+      "assets/office-overhead.jpg",
+      "assets/office-background.jpg",
+      "assets/silicon-board.jpg",
+      "screenshots/window-run-dark.png",
+    ].map((p) => loader.loadAsync(p)),
   );
-  $$(".reveal").forEach((element) => revealObserver.observe(element));
-  document.documentElement.classList.add("js");
-  function selectShot(name) {
-    $$("[data-shot-image]").forEach((image) =>
-      image.classList.toggle("active", image.dataset.shotImage === name),
-    );
-    $$("[data-select-shot]").forEach((button) =>
-      button.setAttribute(
-        "aria-pressed",
-        String(button.dataset.selectShot === name),
-      ),
-    );
-    $(".shot-stack").scrollTop = 0;
+  for (const t of [overhead, room, board, app]) {
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   }
-  const storyObserver = new IntersectionObserver(
-    (entries) => {
-      if (matchMedia("(max-width: 700px)").matches) return;
-      entries
-        .filter((entry) => entry.isIntersecting)
-        .forEach((entry) => selectShot(entry.target.dataset.shot));
-    },
-    { rootMargin: "-20% 0px -40% 0px", threshold: 0 },
+  scene.add(new THREE.HemisphereLight(0xeaf6d4, 0x46372c, 2.1));
+  const key = new THREE.DirectionalLight(0xffdfad, 1.5);
+  key.position.set(-4, 7, 3);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.camera.left = -6;
+  key.shadow.camera.right = 6;
+  key.shadow.camera.top = 6;
+  key.shadow.camera.bottom = -6;
+  key.shadow.bias = -0.0004;
+  key.shadow.radius = 4;
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(0xb9cfcd, 0.6);
+  fill.position.set(3, 4, -1);
+  scene.add(fill);
+  const wood = crop(overhead, 0.015, 0.77, 0.22, 0.21);
+  mesh(
+    new THREE.BoxGeometry(12, 0.24, 8),
+    new THREE.MeshStandardMaterial({
+      map: wood,
+      color: 0x967258,
+      roughness: 0.7,
+    }),
+    "desk",
+    [0, -0.14, 0],
   );
-  $$(".story-step").forEach((step) => storyObserver.observe(step));
-  $$("[data-select-shot]").forEach((button) =>
-    button.addEventListener("click", () =>
-      selectShot(button.dataset.selectShot),
-    ),
+  // A real upright wall behind the desk: its transform never changes.
+  const wall = mesh(
+    new THREE.PlaneGeometry(15, 6),
+    basic(crop(room, 0, 0, 1, 0.59)),
+    "room-wall",
+    [0, 3, -4],
   );
-  Promise.all([photo.decode(), board.decode(), appImage.decode()])
-    .then(() => {
-      sceneReady = true;
-      resize();
-    })
-    .catch(() => {
-      // Keep the complete universe opening if the photographic asset cannot load.
-      journey.style.height = "100svh";
-      world.style.opacity = "1";
-    });
+  wall.castShadow = false;
+  const metal = new THREE.MeshStandardMaterial({
+    color: 0x333539,
+    roughness: 0.37,
+    metalness: 0.7,
+  });
+  shellMaterial = metal.clone();
+  shellMaterial.transparent = true;
+  shellMaterial.depthWrite = false;
+  const body = mesh(
+    new THREE.BoxGeometry(3.4, 0.085, 2.27),
+    shellMaterial,
+    "mac-base",
+    [0, 0.0525, 0],
+  );
+  keyboardMaterial = basic(crop(overhead, 0.272, 0.247, 0.456, 0.454));
+  keyboardMaterial.transparent = true;
+  keyboardMaterial.depthWrite = false;
+  mesh(
+    new THREE.PlaneGeometry(3.4, 2.27),
+    keyboardMaterial,
+    "keyboard",
+    [0, 0.097, 0],
+    [-Math.PI / 2, 0, 0],
+  );
+  // Silicon stays inside the physical base. This is an illustrative cutaway.
+  const circuit = mesh(
+    new THREE.PlaneGeometry(2.8, 1.6),
+    basic(board),
+    "circuit-board",
+    [0, 0.063, -0.35],
+    [-Math.PI / 2, 0, 0],
+  );
+  circuit.castShadow = false;
+  dieMaterial = new THREE.MeshBasicMaterial({
+    color: 0x050e0a,
+    transparent: true,
+    depthWrite: false,
+  });
+  mesh(
+    new THREE.PlaneGeometry(0.65, 0.59),
+    dieMaterial,
+    "die-interior",
+    [0, 0.065, -0.39],
+    [-Math.PI / 2, 0, 0],
+  );
+  const lid = new THREE.Group();
+  lid.name = "mac-display-hinge";
+  lid.position.set(0, 0.1, -1.075);
+  lid.rotation.x = -0.11;
+  scene.add(lid);
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(3.38, 2.15, 0.055), metal);
+  panel.name = "display-frame";
+  panel.position.y = 1.075;
+  panel.castShadow = true;
+  lid.add(panel);
+  const display = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.25, 2.015),
+    basic(app),
+  );
+  display.name = "app-screen";
+  display.position.set(0, 1.075, 0.03);
+  lid.add(display);
+  const notch = new THREE.Mesh(
+    new THREE.BoxGeometry(0.27, 0.058, 0.009),
+    new THREE.MeshBasicMaterial({ color: 0x060809 }),
+  );
+  notch.position.set(0, 2.1, 0.038);
+  notch.name = "display-notch";
+  lid.add(notch);
+  scene.add(createOfficeProps(THREE));
+  neuralField = createNeuralField(THREE);
+  scene.add(neuralField.group);
+  canvas.dataset.neurons = neuralField.nodeCount;
+  canvas.dataset.synapses = neuralField.edgeCount;
+  // Critical invariant: freeze all world transforms once construction is done.
+  scene.traverse((o) => {
+    if (o !== scene) {
+      o.updateMatrix();
+      o.matrixAutoUpdate = false;
+      staticTransforms.push([o, o.matrix.elements.slice()]);
+    }
+  });
+  ready = true;
+  stage.classList.add("scene-ready");
   resize();
   applyMotion();
-})();
+}
+function draw(now) {
+  frame = 0;
+  const dt = Math.min((now - last) / 1000 || 1 / 60, 0.05);
+  last = now;
+  if (!ready) return;
+  if (!reduced) time += dt;
+  progress = reduced
+    ? 1
+    : progress + (targetProgress - progress) * (1 - Math.exp(-dt * 7));
+  if (Math.abs(targetProgress - progress) < 0.00001) progress = targetProgress;
+  const pose = cameraPose(progress, camera.aspect);
+  camera.position.set(...pose.position);
+  camera.up.set(...pose.up);
+  camera.lookAt(...pose.target);
+  keyboardMaterial.opacity = pose.keyboard;
+  shellMaterial.opacity = pose.keyboard; // cutaway only
+  dieMaterial.opacity = 0.96 * (1 - ease(0.18, 0.42, progress));
+  neuralField.update(time, 1 - pose.keyboard);
+  const opacity = [
+    reduced ? 1 : 1 - ease(0.06, 0.2, progress),
+    reduced ? 0 : ease(0.88, 0.98, progress),
+  ];
+  $$(".stage-copy").forEach((e, i) => {
+    e.style.opacity = opacity[i];
+    e.style.visibility = opacity[i] < 0.01 ? "hidden" : "visible";
+    e.inert = opacity[i] < 0.1;
+    if (i) e.setAttribute("aria-hidden", String(opacity[i] < 0.1));
+    e.style.transform = "none";
+  });
+  $(".scene-label").textContent = [
+    "01 / INSIDE THE GPU CORE",
+    "02 / SILICON & BOARD",
+    "03 / THROUGH THE KEYBOARD",
+    "04 / ABOVE THE DESK",
+    "05 / CAMERA AT THE FRONT",
+  ][pose.chapter];
+  $(".journey-progress b").style.width = `${progress * 100}%`;
+  // Expose only review diagnostics in the DOM. A changed world transform is a failure.
+  const unchanged = staticTransforms.every(([o, m]) =>
+    o.matrix.elements.every((v, i) => v === m[i]),
+  );
+  canvas.dataset.worldTransforms = unchanged ? "fixed" : "CHANGED";
+  canvas.dataset.cameraPosition = pose.position
+    .map((n) => n.toFixed(3))
+    .join(",");
+  canvas.dataset.progress = progress.toFixed(4);
+  renderer.render(scene, camera);
+  if (!reduced && (progress < 0.68 || progress !== targetProgress))
+    requestFrame();
+}
+init().catch((error) => {
+  console.error("3D scene unavailable; using static fallback", error);
+  canvas.style.display = "none";
+  document.body.classList.add("reduced");
+  $("#motion-toggle").hidden = true;
+});
+const revealObserver = new IntersectionObserver(
+  (entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add("visible");
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  },
+  { threshold: 0.08 },
+);
+$$(".reveal").forEach((element) => revealObserver.observe(element));
+document.documentElement.classList.add("js");
+function selectShot(name) {
+  $$("[data-shot-image]").forEach((image) =>
+    image.classList.toggle("active", image.dataset.shotImage === name),
+  );
+  $$("[data-select-shot]").forEach((button) =>
+    button.setAttribute(
+      "aria-pressed",
+      String(button.dataset.selectShot === name),
+    ),
+  );
+  $(".shot-stack").scrollTop = 0;
+}
+const storyObserver = new IntersectionObserver(
+  (entries) => {
+    if (matchMedia("(max-width: 700px)").matches) return;
+    entries
+      .filter((entry) => entry.isIntersecting)
+      .forEach((entry) => selectShot(entry.target.dataset.shot));
+  },
+  { rootMargin: "-20% 0px -40% 0px", threshold: 0 },
+);
+$$(".story-step").forEach((step) => storyObserver.observe(step));
+$$("[data-select-shot]").forEach((button) =>
+  button.addEventListener("click", () => selectShot(button.dataset.selectShot)),
+);
