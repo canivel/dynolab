@@ -8,6 +8,7 @@ decision log, `/backends` for what it can see, and `/metrics`.
 from __future__ import annotations
 
 import json
+import ipaddress
 import logging
 import threading
 import time
@@ -174,9 +175,21 @@ class RouterHandler(BaseHTTPRequestHandler):
 
     # -- GET ----------------------------------------------------------------
 
+    def _allow_local_admin(self) -> bool:
+        """Use the socket peer, never client-supplied forwarding headers."""
+        address = ipaddress.ip_address(self.client_address[0])
+        if address.is_loopback:
+            return True
+        self.close_connection = True
+        self._send_json({"error": "router administration is local-only"}, status=403)
+        return False
+
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
         state = self.state
+        if path in ("/backends", "/routes", "/v1/routes", "/config", "/metrics"):
+            if not self._allow_local_admin():
+                return
 
         if path == "/health":
             self._send_json({"status": "ok"})
@@ -220,13 +233,15 @@ class RouterHandler(BaseHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
 
     def do_POST(self) -> None:
         path = self.path.split("?", 1)[0]
 
         if path == "/config":
+            if not self._allow_local_admin():
+                return
             length = int(self.headers.get("Content-Length") or 0)
             try:
                 changes = json.loads(self.rfile.read(length) or b"{}")
@@ -343,6 +358,7 @@ class RouterHandler(BaseHTTPRequestHandler):
         )
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "close")
         self.end_headers()
@@ -392,6 +408,7 @@ class RouterHandler(BaseHTTPRequestHandler):
         # still gets the shape it expects.
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "close")
         self.end_headers()

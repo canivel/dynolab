@@ -29,6 +29,7 @@ final class MonitorModel {
 
     // -- router ---------------------------------------------------------------
     private(set) var router = RouterClient.Snapshot()
+    var shareRouterOnNetwork = false
     var useRouter = false {
         didSet { UserDefaults.standard.set(useRouter, forKey: Defaults.useRouter) }
     }
@@ -241,7 +242,9 @@ final class MonitorModel {
 
     // MARK: - Router
 
-    func startRouter() { routerController.start(port: routerPort) }
+    func startRouter() {
+        routerController.start(port: routerPort, shareOnNetwork: shareRouterOnNetwork)
+    }
     func stopRouter() { routerController.stop() }
     var routerLog: String { routerController.log }
 

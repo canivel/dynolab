@@ -103,6 +103,57 @@ token a quantisation changed. See below.
 
 **Discover** — search the Hugging Face hub and download in one click.
 
+## Sharing models on your local network
+
+1. Start a model in **Models**, then open **Router**.
+2. Turn on **Share on local network** and click **Start the router**. If the
+   router is already running, stop it first to change network access; your
+   model servers can keep running.
+3. Click **Copy URL** and use that address as the OpenAI-compatible base URL
+   on another computer on the same network, for example
+   `http://<MAC_LAN_IP>:8970/v1`. Use model `auto` to let Dyno choose, or a
+   model ID returned by `/v1/models`. If your client requires an API key,
+   enter `dyno`; the endpoint does not authenticate clients.
+4. **Copy test** provides a ready-to-run curl request for the other computer.
+
+Sharing is off by default each time the app opens. When enabled, the router
+listens on all IPv4 interfaces (`0.0.0.0`); use it on a trusted network since
+any device that can reach the port can submit inference requests. Router
+settings, request history, backend details and metrics remain local-only.
+Stop the router to stop sharing. Keep Dyno open and the Mac awake, allow incoming
+connections if macOS asks, and refresh the addresses after changing networks.
+Guest Wi-Fi or access-point isolation may prevent devices from connecting.
+
+The command-line equivalent is `dyno route --host 0.0.0.0 --port 8970`.
+
+The UI discovers this Mac's current network addresses automatically; there is
+no address to hard-code in the app. **Refresh** updates them after a network
+change. The sharing toggle takes effect when you click **Start the router**;
+look for **Sharing is on** before testing from another computer.
+
+To test from Bash on Linux or macOS, replace the placeholder with the URL
+copied from Dyno:
+
+```bash
+BASE="http://<MAC_LAN_IP>:8970/v1"
+curl --noproxy '*' --connect-timeout 5 "$BASE/models"
+curl --noproxy '*' "$BASE/chat/completions" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"auto","messages":[{"role":"user","content":"Hello!"}],"max_tokens":128}'
+```
+
+From WSL, use `curl.exe` in place of `curl` to run the Windows client.
+If Windows has both Ethernet and Wi-Fi and you need to select Wi-Fi, find
+its IPv4 address under **Wireless LAN adapter Wi-Fi** in `ipconfig.exe`,
+then add `--interface "<WINDOWS_WIFI_IP>"` to the `curl.exe` command.
+Use the Windows Wi-Fi address for this option, not the Mac's address.
+
+If a connection fails, run `lsof -nP -iTCP:8970 -sTCP:LISTEN` on the Mac
+(or substitute your configured router port). Shared mode should show
+`*:8970`, meaning all IPv4 interfaces. `127.0.0.1:8970` means local-only;
+no result means the router is stopped. If the listener is correct, check
+firewall rules and whether the network allows devices to reach each other.
+
 ## The router
 
 ```sh

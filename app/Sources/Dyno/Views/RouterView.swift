@@ -1,3 +1,4 @@
+import AppKit
 import DynoKit
 import SwiftUI
 
@@ -18,6 +19,7 @@ struct RouterView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     header
+                    networkSharing
                     if showingSettings { settings }
                     backends
                     harnesses
@@ -26,7 +28,7 @@ struct RouterView: View {
                 .padding(20)
             }
         } else {
-            notRunning
+            ScrollView { notRunning.padding(20) }
         }
     }
 
@@ -170,18 +172,15 @@ struct RouterView: View {
                  + "between them on difficulty, speed and the model's own confidence.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Text("dyno route")
-                .font(.system(size: 11, design: .monospaced))
-                .padding(.horizontal, 9).padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.primary.opacity(0.06)))
-                .textSelection(.enabled)
-                .padding(.top, 4)
-            Text("Then point any OpenAI client at 127.0.0.1:8970 with model \"auto\".")
-                .font(.system(size: 10)).foregroundStyle(.tertiary)
+            networkSharing.frame(maxWidth: 560)
+            if !model.shareRouterOnNetwork {
+                Text("Local client URL: http://127.0.0.1:\(model.routerPort)/v1 · model: auto")
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
 
             switch model.routerState {
-            case .launching:
+            case .launching, .stopping:
                 ProgressView().controlSize(.small).padding(.top, 6)
             case let .failed(message):
                 Text(message).font(.system(size: 10)).foregroundStyle(.orange)
@@ -192,6 +191,73 @@ struct RouterView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @State private var networkAddresses: [String] = []
+
+    private var routerIsActive: Bool {
+        switch model.routerState {
+        case .launching, .stopping, .running: return true
+        default: return snapshot.isReachable
+        }
+    }
+
+    private var networkSharing: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("Share on local network", isOn: Binding(
+                get: { model.shareRouterOnNetwork },
+                set: { model.shareRouterOnNetwork = $0 }
+            ))
+            .toggleStyle(.switch).controlSize(.small)
+            .disabled(routerIsActive)
+            Text(routerIsActive
+                 ? "Stop the router to change network access. Models can keep running."
+                 : "Start the router to apply. Start a model in Models to make it available.")
+                .font(.system(size: 10)).foregroundStyle(.secondary)
+            if model.shareRouterOnNetwork {
+                Text("Devices that can reach this Mac can use inference without an API key. Use a trusted network. Sharing listens on all IPv4 interfaces.")
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if case .running = model.routerState {
+                    Text("Sharing is on").font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.green)
+                }
+                if networkAddresses.isEmpty {
+                    Text("No network address found. Connect to Wi-Fi or Ethernet, then refresh.")
+                        .font(.system(size: 10)).foregroundStyle(.orange)
+                }
+                ForEach(networkAddresses, id: \.self) { address in
+                    let endpoint = "http://\(address):\(model.routerPort)/v1"
+                    HStack {
+                        Text(endpoint).font(.system(size: 11, design: .monospaced))
+                            .textSelection(.enabled)
+                        Spacer()
+                        Button("Copy URL") { copy(endpoint) }.controlSize(.small)
+                        Button("Copy test") {
+                            copy("curl \(endpoint)/chat/completions -H 'Content-Type: application/json' -d '{\"model\":\"auto\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}],\"max_tokens\":64}'")
+                        }.controlSize(.small)
+                    }
+                }
+                HStack {
+                    Text("Client model: auto, or an ID from /v1/models. If a key is required, enter dyno.")
+                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Refresh") { networkAddresses = NetworkAddresses.localIPv4() }
+                        .controlSize(.small)
+                }
+                Text("Keep Dyno open and this Mac awake. Allow incoming connections if macOS asks. Guest Wi-Fi may block connections between devices.")
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.04)))
+        .task { networkAddresses = NetworkAddresses.localIPv4() }
+    }
+
+    private func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
     private var startButton: some View {

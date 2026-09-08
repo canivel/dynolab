@@ -8,6 +8,7 @@ public final class RouterController: @unchecked Sendable {
     public enum State: Equatable, Sendable {
         case stopped
         case launching
+        case stopping
         case running(port: UInt16)
         case failed(String)
     }
@@ -36,10 +37,14 @@ public final class RouterController: @unchecked Sendable {
         callback?(new)
     }
 
-    public func start(port: UInt16 = 8970) {
-        stop()
+    public func start(port: UInt16 = 8970, shareOnNetwork: Bool = false) {
+        lock.lock()
+        let alreadyRunning = process?.isRunning == true
+        lock.unlock()
+        guard !alreadyRunning else { return }
         guard let invocation = Runtime.invocation(
-            for: ["route", "--port", String(port), "--log-level", "WARNING"]
+            for: ["route", "--host", shareOnNetwork ? "0.0.0.0" : "127.0.0.1",
+                  "--port", String(port), "--log-level", "WARNING"]
         ) else {
             setState(.failed("No Python runtime found. Reinstall Dyno."))
             return
@@ -70,43 +75,80 @@ public final class RouterController: @unchecked Sendable {
         task.terminationHandler = { [weak self] finished in
             pipe.fileHandleForReading.readabilityHandler = nil
             guard let self else { return }
-            if case .stopped = self.state { return }
-            self.setState(.failed(
-                "The router exited with status \(finished.terminationStatus)."
-            ))
+            self.lock.lock()
+            guard self.process === finished else { self.lock.unlock(); return }
+            let stopped = self._state == .stopping || self._state == .stopped
+            self.process = nil
+            if stopped {
+                self._state = .stopped
+            } else if case .failed = self._state {
+                // Preserve a readiness failure while its process exits.
+            } else {
+                self._state = .failed("The router exited with status \(finished.terminationStatus).")
+            }
+            let state = self._state
+            self.lock.unlock()
+            self.onStateChange?(state)
         }
 
+        lock.lock()
+        process = task
         do {
             try task.run()
+            lock.unlock()
         } catch {
+            process = nil
+            lock.unlock()
             setState(.failed("Could not start the router: \(error.localizedDescription)"))
             return
         }
-        lock.lock(); process = task; lock.unlock()
 
         // It binds a port immediately; poll rather than assume.
         Task.detached { [weak self] in
             guard let self else { return }
             for _ in 0..<40 {
                 if !task.isRunning { return }
-                if await Self.isHealthy(port: port) {
-                    self.setState(.running(port: port))
+                if ListeningPorts.forProcess(task.processIdentifier).contains(port),
+                   await Self.isHealthy(port: port) {
+                    self.markReady(task: task, port: port)
                     return
                 }
                 try? await Task.sleep(nanoseconds: 250_000_000)
             }
-            self.setState(.failed("The router did not become ready."))
+            let timedOut = self.lock.withLock {
+                guard self.process === task, self._state == .launching else { return false }
+                self._state = .failed("The router did not become ready.")
+                return true
+            }
+            if timedOut {
+                self.onStateChange?(.failed("The router did not become ready."))
+                if task.isRunning { task.terminate() }
+                DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
+                    if task.isRunning { kill(task.processIdentifier, SIGKILL) }
+                }
+            }
         }
+    }
+
+    private func markReady(task: Process, port: UInt16) {
+        lock.lock()
+        guard process === task, _state == .launching, task.isRunning else {
+            lock.unlock(); return
+        }
+        _state = .running(port: port)
+        lock.unlock()
+        onStateChange?(.running(port: port))
     }
 
     public func stop() {
         lock.lock()
         let task = process
-        process = nil
-        _state = .stopped
+        let running = task?.isRunning == true
+        _state = running ? .stopping : .stopped
+        let state = _state
         lock.unlock()
-        onStateChange?(.stopped)
-        guard let task, task.isRunning else { return }
+        onStateChange?(state)
+        guard let task, running else { return }
         task.terminate()
         DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
             if task.isRunning { kill(task.processIdentifier, SIGKILL) }
