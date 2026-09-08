@@ -7,17 +7,16 @@
   const motionPreference = matchMedia("(prefers-reduced-motion: reduce)");
   const journey = $(".journey");
   const stage = $(".universe-stage");
-  const world = $(".orbit-world");
-  const photo = $(".desk-photo");
-  const backdrop = $(".office-background");
-  const cutaway = $(".base-cutaway");
+  const world = $(".room-world");
+  const photo = $(".room-photo");
   const appImage = $(".screen-app");
+  const glass = $(".portal-glow");
   const depthLabel = $(".scene-label");
   const board = new Image();
   board.src = "assets/silicon-board.jpg";
   let sceneProgress = 0;
   // Normalized anchors measured against the supplied photographic plate.
-  // Everything is nested: neural field → die → board UNDER keyboard → overhead desk → front.
+  // Everything is nested: neural field → die → board → display → room.
   const die = { x: 586 / 1536, y: 296 / 1024, w: 360 / 1536, h: 380 / 1024 };
   const dieCenter = { x: die.x + die.w / 2, y: die.y + die.h / 2 };
   let sceneReady = false;
@@ -39,7 +38,6 @@
   let width = 1,
     height = 1,
     progress = 0,
-    targetProgress = 0,
     frame = 0,
     lastTime = 0,
     time = 0;
@@ -102,12 +100,12 @@
   function resize() {
     const mobile = stage.clientWidth <= 700;
     roomWidth = mobile
-      ? stage.clientWidth * 1.65
-      : Math.max(stage.clientWidth * 1.35, stage.clientHeight * 1.5);
+      ? stage.clientWidth * 1.5
+      : Math.max(stage.clientWidth, stage.clientHeight * 1.5);
     roomHeight = roomWidth / 1.5;
     world.style.width = `${roomWidth}px`;
-    width = Math.round(roomWidth * 0.386);
-    height = Math.round(roomHeight * 0.24);
+    width = Math.round(roomWidth * 0.465);
+    height = Math.round(roomHeight * 0.441);
     // Render enough pixels for the initial close-up, bounded for mobile GPUs.
     const ratio = Math.min(
       5,
@@ -121,38 +119,29 @@
   }
   function updateScroll() {
     const box = journey.getBoundingClientRect();
-    targetProgress = reduced
+    progress = reduced
       ? 0
       : clamp(-box.top / Math.max(1, box.height - stage.clientHeight));
-    if (reduced) progress = 0;
-    requestFrame();
-  }
-  function updateCamera() {
     const p = sceneReady ? progress : 0;
     sceneProgress = p;
-    // Retreat vertically from the silicon under the keys, then orbit around
-    // the keyboard hinge. The screen is a separate upright plane, never a
-    // container for hardware imagery. Both are transformed in the same space.
-    const pullback = reduced ? 1 : smooth(0.39, 0.76, p);
-    const orbit = reduced ? 1 : smooth(0.76, 0.98, p);
+    // The camera traverses the silicon first. The laptop stays beyond the
+    // viewport until the board has been revealed, then the outer camera retreats.
+    const pullback = smooth(0.53, 0.9, p);
     const startScale =
       Math.max(stage.clientWidth / width, stage.clientHeight / height) * 1.16;
-    const zoom = reduced ? 1 : Math.exp(Math.log(startScale) * (1 - pullback));
-    // Complete the vertical dolly before lowering the camera. Keeping the
-    // room's scale fixed during the orbit avoids the impression of a moving desk.
-    const finalScale = stage.clientWidth <= 700 ? 0.968 : 0.6864;
-    const scale = zoom * (1 + (finalScale - 1) * pullback);
-    const baseCenterX = (0.306 + 0.386 / 2 - 0.5) * roomWidth;
-    const baseCenterY = (0.282 + 0.24 / 2 - 0.5) * roomHeight;
-    const offsetX = reduced ? 0 : -baseCenterX * scale * (1 - pullback);
-    const finalY =
-      stage.clientHeight * (stage.clientWidth <= 700 ? 0.18 : 0.22);
-    const offsetY = -baseCenterY * scale * (1 - pullback) + finalY * orbit;
-    world.style.transform = `translate(calc(-50% + ${offsetX}px),calc(-50% + ${offsetY}px)) rotateX(${orbit * 67}deg) scale3d(${scale},${scale},${scale})`;
-    cutaway.style.opacity = reduced ? 0 : 1 - smooth(0.49, 0.73, p);
+    const scale = reduced ? 1 : Math.exp(Math.log(startScale) * (1 - pullback));
+    const screenCenterX = (0.265 + 0.465 / 2 - 0.5) * roomWidth;
+    const screenCenterY = (0.211 + 0.441 / 2 - 0.5) * roomHeight;
+    const mobileOffset =
+      stage.clientWidth <= 700 ? stage.clientHeight * 0.16 : 0;
+    const offsetX = -screenCenterX * scale * (1 - pullback);
+    const offsetY = reduced
+      ? mobileOffset
+      : -screenCenterY * scale * (1 - pullback) + mobileOffset * pullback;
+    world.style.transform = `translate(calc(-50% + ${offsetX}px),calc(-50% + ${offsetY}px)) scale(${scale})`;
     const opacities = [
       reduced ? 1 : 1 - smooth(0.06, 0.2, p),
-      reduced ? 0 : smooth(0.94, 0.995, p),
+      reduced ? 0 : smooth(0.84, 0.95, p),
     ];
     copies.forEach((copy, index) => {
       copy.style.opacity = opacities[index];
@@ -160,22 +149,26 @@
       copy.inert = opacities[index] < 0.1;
       if (index > 0)
         copy.setAttribute("aria-hidden", String(opacities[index] < 0.1));
-      copy.style.transform = reduced
-        ? "none"
-        : index === 0
+      copy.style.transform =
+        index === 0
           ? `translateY(${-p * 100}px) scale(${1 - pullback * 0.35})`
           : `translateY(${(1 - pullback) * 60}px)`;
     });
+    appImage.style.opacity = reduced ? 1 : smooth(0.72, 0.84, p);
+    glass.style.opacity = reduced
+      ? 0
+      : smooth(0.67, 0.75, p) * (1 - smooth(0.77, 0.87, p));
     const labels = [
       "01 / NEURAL ACTIVATIONS",
-      "02 / SILICON UNDER THE KEYS",
-      "03 / THROUGH THE KEYBOARD",
-      "04 / ABOVE YOUR DESK",
+      "02 / THE SILICON DIE",
+      "03 / CHIP & CIRCUIT BOARD",
+      "04 / THROUGH THE DISPLAY",
       "05 / YOUR MAC",
     ];
-    const depth = p < 0.19 ? 0 : p < 0.45 ? 1 : p < 0.62 ? 2 : p < 0.84 ? 3 : 4;
+    const depth = p < 0.21 ? 0 : p < 0.38 ? 1 : p < 0.62 ? 2 : p < 0.86 ? 3 : 4;
     depthLabel.textContent = reduced ? "APPLE SILICON × MLX" : labels[depth];
     $(".journey-progress b").style.width = `${progress * 100}%`;
+    requestFrame();
   }
   window.addEventListener("scroll", updateScroll, { passive: true });
   window.addEventListener("resize", resize, { passive: true });
@@ -199,18 +192,12 @@
   }
   function draw(now) {
     frame = 0;
-    const dt = Math.min((now - lastTime) / 1000 || 1 / 60, 0.05);
-    if (!reduced) time += dt;
-    progress += (targetProgress - progress) * (1 - Math.exp(-dt * 8));
-    if (Math.abs(targetProgress - progress) < 0.00001)
-      progress = targetProgress;
-    updateCamera();
+    if (!reduced) time += Math.min((now - lastTime) / 1000 || 0, 0.05);
     lastTime = now;
     pointerX += ((reduced ? 0 : targetX) - pointerX) * 0.055;
     pointerY += ((reduced ? 0 : targetY) - pointerY) * 0.055;
     if (context) drawUniverse();
-    if (!reduced && (sceneProgress < 0.74 || progress !== targetProgress))
-      requestFrame();
+    if (!reduced) requestFrame();
   }
   function drawUniverse() {
     const ctx = context;
@@ -218,13 +205,13 @@
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = "#070e0c";
     ctx.fillRect(0, 0, width, height);
-    if (reduced || p > 0.74) return;
+    if (reduced || p > 0.85) return;
     const boardWidth = Math.max(width, height * 1.5) * 1.08;
     const boardHeight = boardWidth / 1.5;
     const startZoom =
       Math.max(width / (boardWidth * die.w), height / (boardHeight * die.h)) *
       1.15;
-    const zoom = Math.exp(Math.log(startZoom) * (1 - smooth(0.06, 0.42, p)));
+    const zoom = Math.exp(Math.log(startZoom) * (1 - smooth(0.06, 0.62, p)));
     ctx.save();
     ctx.translate(width / 2, height / 2);
     ctx.scale(zoom, zoom);
@@ -442,12 +429,7 @@
       selectShot(button.dataset.selectShot),
     ),
   );
-  Promise.all([
-    photo.decode(),
-    backdrop.decode(),
-    board.decode(),
-    appImage.decode(),
-  ])
+  Promise.all([photo.decode(), board.decode(), appImage.decode()])
     .then(() => {
       sceneReady = true;
       resize();
