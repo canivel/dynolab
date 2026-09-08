@@ -14,6 +14,7 @@
   box-sizing: border-box;
 }
 html {
+  overflow-x: clip;
   scroll-behavior: smooth;
   scroll-padding-top: 95px;
 }
@@ -192,379 +193,162 @@ em {
   background: var(--acid);
   color: #080a09;
 }
-/* A long scroll moves through one continuous, spatial scene. */
+/* One camera pulls out of the model universe through the physical display.
+   Photo and screen share a transform, preserving their point of contact. */
 .journey {
-  height: 340svh;
-  min-height: 2000px;
+  height: 280svh;
   position: relative;
 }
 .universe-stage {
   height: 100svh;
-  min-height: 680px;
+  min-height: 600px;
   position: sticky;
   top: 0;
   overflow: hidden;
   isolation: isolate;
   background: #080a09;
 }
-.universe-stage:after {
-  content: "";
+.room-world {
   position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 5;
-  background: linear-gradient(
-    0deg,
-    #080a09 0%,
-    transparent 16%,
-    transparent 80%,
-    #080a0970
-  );
-  opacity: 0.7;
+  left: 50%;
+  top: 50%;
+  width: 100%;
+  aspect-ratio: 1.5;
+  transform: translate(-50%, -50%);
+  transform-origin: 50% 50%;
+  will-change: transform;
 }
-#universe {
+.room-photo {
   position: absolute;
-  inset: 0;
   width: 100%;
   height: 100%;
-  z-index: 1;
+  display: block;
 }
-.orbital-glow {
+.screen-portal {
   position: absolute;
-  left: 10%;
-  right: 10%;
-  top: 10%;
-  height: 90%;
-  background: radial-gradient(ellipse at center, #96b97112, transparent 60%);
-  filter: blur(35px);
-  pointer-events: none;
+  left: 26.5%;
+  top: 21.1%;
+  width: 46.5%;
+  height: 44.1%;
+  overflow: hidden;
+  background: #080d0b;
+  clip-path: polygon(
+    1.5% 0,
+    44% 0,
+    44% 3.5%,
+    55% 3.5%,
+    55% 0,
+    98.7% 0,
+    100% 100%,
+    0 100%
+  );
 }
-.grain {
+#universe {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.portal-glow {
   position: absolute;
   inset: 0;
-  opacity: 0.045;
+  background: radial-gradient(ellipse at 60% 50%, #bafa6a16, transparent 65%);
   pointer-events: none;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' opacity='.6' filter='url(%23n)'/%3E%3C/svg%3E");
-  z-index: 8;
+}
+.scene-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    #080a0955,
+    transparent 30%,
+    transparent 80%,
+    #080a09
+  );
+  pointer-events: none;
 }
 .stage-copy {
   position: absolute;
-  z-index: 4;
-  top: 14%;
-  left: 0;
-  right: 0;
-  text-align: center;
-  will-change: transform, opacity;
-  pointer-events: none;
-}
-.stage-copy a {
-  pointer-events: auto;
-}
-.stage-copy .eyebrow {
-  justify-content: center;
-  margin-bottom: 22px;
+  z-index: 3;
+  left: 8%;
+  top: 29%;
+  width: 84%;
+  transform-origin: center;
 }
 .stage-copy h1,
 .stage-copy h2 {
-  font-size: clamp(50px, min(6.8vw, 10svh), 106px);
-  letter-spacing: -0.068em;
+  font-size: clamp(60px, 7.5vw, 120px);
+  line-height: 0.97;
+  letter-spacing: -0.065em;
+  margin: 24px 0;
 }
 .stage-copy p:not(.eyebrow) {
-  color: #a8afa1;
-  font-size: 16px;
-  line-height: 1.65;
-  margin-top: 22px;
+  color: #b9c5b8;
+  font-size: 17px;
+  line-height: 1.6;
 }
 .stage-copy .text-link {
-  margin-top: 22px;
-  font-size: 12px;
+  display: inline-flex;
+  margin-top: 20px;
 }
-.copy-two,
-.copy-three {
+.copy-two {
+  top: 12%;
   opacity: 0;
   visibility: hidden;
 }
-.hardware-space {
-  position: absolute;
-  z-index: 3;
-  left: 50%;
-  top: 75%;
-  width: min(560px, 54vw, 65svh);
-  height: min(240px, 28svh);
-  transform: translate(-50%, -50%);
-  perspective: 1100px;
-  will-change: transform;
-  pointer-events: none;
-}
-.hardware {
-  width: 100%;
-  height: 100%;
-  position: relative;
-  transform: rotateX(7deg) rotateY(-12deg);
-  transform-style: preserve-3d;
-  transition: transform 0.9s var(--ease);
-  will-change: transform;
-}
-.device-screen {
-  position: absolute;
-  width: 88%;
-  height: 100%;
-  left: 6%;
-  bottom: 10%;
-  border: 7px solid #151716;
-  border-bottom: 15px solid #101210;
-  border-radius: 12px 12px 5px 5px;
-  background: #121412;
-  box-shadow:
-    0 0 0 1px #7a817b,
-    0 0 0 2px #242923,
-    inset 0 0 12px #000,
-    0 0 55px #c6fc8612;
-  overflow: hidden;
-  transition: all 1s var(--ease);
-}
-.device-screen img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: top;
-  opacity: 0.83;
-}
-.screen-camera {
-  position: absolute;
-  left: 46%;
-  top: 0;
-  width: 8%;
-  height: 8px;
-  background: #111;
-  border-radius: 0 0 5px 5px;
-  z-index: 3;
-}
-.screen-sheen {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(115deg, #fff0 40%, #eaffda09 41%, #eaffda01 80%);
-}
-.device-base {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 19px;
-  background: linear-gradient(#d6d9d2, #737a72 25%, #434a43 65%, #212621);
-  border-radius: 2px 2px 48% 48%/2px 2px 90% 90%;
-  box-shadow:
-    0 12px 28px #000,
-    0 1px 0 #b7c1ac;
-  transition: all 1s var(--ease);
-}
-.device-notch {
-  position: absolute;
-  top: 0;
-  left: 40%;
-  width: 20%;
-  height: 4px;
-  background: #3d423a;
-  border-radius: 0 0 7px 7px;
-}
-.device-emblem,
-.device-ports,
-.device-led {
-  opacity: 0;
-  transition: opacity 0.6s;
-}
-.machine-shadow {
-  position: absolute;
-  left: 5%;
-  width: 90%;
-  height: 40px;
-  bottom: -20px;
-  background: #000;
-  filter: blur(18px);
-  transform: rotateX(60deg);
-  z-index: -1;
-}
-.machine-aura {
-  position: absolute;
-  width: 120%;
-  height: 90%;
-  left: -10%;
-  top: 25%;
-  background: radial-gradient(ellipse, #b4ef6830, transparent 65%);
-  filter: blur(30px);
-}
-.hardware-caption {
-  position: absolute;
-  bottom: -50px;
-  left: 0;
-  right: 0;
-  text-align: center;
-  font: 9px var(--mono);
-  letter-spacing: 0.18em;
-  color: #a4ad98;
-}
-.hardware-caption span {
-  padding: 0 14px;
-  color: var(--acid);
-}
-.hardware[data-device="mini"] .device-base,
-.hardware[data-device="studio"] .device-base {
-  width: 54%;
-  height: 82px;
-  left: 23%;
-  bottom: 2%;
-  border-radius: 18px;
-  background: linear-gradient(
-    175deg,
-    #d2d4d1,
-    #868d85 27%,
-    #41463f 28%,
-    #9ba397 32%,
-    #777f73 72%,
-    #404a3e
-  );
-  box-shadow:
-    inset 0 1px #f6fff1,
-    inset 2px 0 #faffef66,
-    0 25px 40px #0008;
-  transform: rotateX(10deg);
-}
-.hardware[data-device="studio"] .device-base {
-  height: 118px;
-  bottom: -5%;
-}
-.hardware[data-device="mini"] .device-screen,
-.hardware[data-device="studio"] .device-screen {
-  width: 65%;
-  left: 17.5%;
-  height: 70%;
-  bottom: 47%;
-  transform: translateY(-15px);
-  border: 1px solid #9bed6877;
-  border-radius: 7px;
-  box-shadow: 0 0 25px #b7fa6933;
-  opacity: 0.9;
-}
-.hardware[data-device="mini"] .device-emblem,
-.hardware[data-device="studio"] .device-emblem {
-  opacity: 0.8;
-  text-align: center;
-  line-height: 38px;
-  font-size: 24px;
-  color: #353c32;
-}
-.hardware[data-device="mini"] .device-ports,
-.hardware[data-device="studio"] .device-ports {
-  opacity: 1;
-  display: flex;
-  position: absolute;
-  bottom: 18%;
-  left: 15%;
-  gap: 8px;
-}
-.device-ports i {
-  width: 13px;
-  height: 5px;
-  border-radius: 4px;
-  background: #252b21;
-}
-.device-ports b {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #252b21;
-}
-.hardware[data-device="mini"] .device-led,
-.hardware[data-device="studio"] .device-led {
-  opacity: 1;
-  position: absolute;
-  right: 12%;
-  bottom: 20%;
-  width: 3px;
-  height: 3px;
-  background: #e7ffd9;
-  box-shadow: 0 0 6px #fff;
-  border-radius: 50%;
-}
-.hardware:not([data-device="book"]) .device-notch,
-.hardware:not([data-device="book"]) .screen-camera {
-  display: none;
+.copy-two h2 {
+  font-size: clamp(44px, 5vw, 76px);
 }
 .universe-foot {
   position: absolute;
-  left: 42px;
-  right: 42px;
-  bottom: 58px;
-  z-index: 9;
+  bottom: 48px;
+  left: 5%;
+  width: 90%;
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  align-items: center;
+  z-index: 6;
 }
-.device-picker {
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: 30px;
-  background: #0a0d0bbb;
-}
-.device-picker button {
-  border: 0;
-  border-radius: 25px;
-  background: transparent;
-  color: #949d8c;
-  font-size: 11px;
-  padding: 8px 13px;
-}
-.device-picker button[aria-pressed="true"] {
-  background: #c6fc8619;
-  color: var(--acid);
+.scene-label,
+.scroll-cue,
+.motion-toggle {
+  font: 10px var(--mono);
+  letter-spacing: 0.1em;
 }
 .scroll-cue {
-  font: 9px var(--mono);
-  letter-spacing: 0.13em;
   display: flex;
-  align-items: center;
   gap: 12px;
-  color: #a2ab98;
-}
-.scroll-line {
-  display: block;
-  width: 28px;
-  height: 1px;
-  background: var(--acid);
-  animation: cue 2s ease-in-out infinite;
+  align-items: center;
 }
 .motion-toggle {
-  background: none;
-  border: 0;
-  color: #9ca591;
-  font: 10px var(--mono);
+  border: 1px solid #ffffff35;
+  background: #080a0966;
+  border-radius: 30px;
+  padding: 10px 15px;
+  color: #ddd;
+  cursor: pointer;
 }
 .journey-progress {
   position: absolute;
-  bottom: 21px;
-  left: 42px;
-  right: 42px;
-  z-index: 9;
+  bottom: 16px;
+  left: 5%;
+  width: 90%;
   display: flex;
   align-items: center;
   gap: 20px;
   font: 8px var(--mono);
-  letter-spacing: 0.1em;
-  color: #68745e;
+  color: #919d8b;
+  z-index: 6;
 }
 .journey-progress i {
-  height: 1px;
-  background: #b3cc9622;
   flex: 1;
+  height: 1px;
+  background: #ffffff25;
 }
 .journey-progress b {
+  display: block;
   height: 1px;
   background: var(--acid);
-  display: block;
-  width: 0%;
-  box-shadow: 0 0 7px var(--acid);
+  width: 0;
 }
 /* The universe resolves into the actual product. */
 .arrival {
@@ -1651,5 +1435,67 @@ body.reduced .scroll-line {
   p,
   .muted {
     color: #333 !important;
+  }
+}
+
+/* Final art direction overrides shared small-screen type rules. */
+@media (max-width: 700px) {
+  .journey {
+    height: 250svh;
+    min-height: 0;
+  }
+  .universe-stage {
+    min-height: 580px;
+  }
+  .stage-copy {
+    top: 26%;
+    left: 7%;
+    width: 86%;
+  }
+  .stage-copy h1 {
+    font-size: clamp(48px, 12vw, 80px);
+  }
+  .copy-two {
+    top: 15%;
+  }
+  .copy-two h2 {
+    font-size: 46px;
+  }
+  .universe-foot {
+    bottom: 40px;
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+  .scene-label {
+    display: none;
+  }
+  .scroll-cue {
+    font-size: 8px;
+  }
+  .motion-toggle {
+    font-size: 9px;
+  }
+}
+body.reduced .journey {
+  height: 100svh;
+  min-height: 600px;
+}
+body.reduced .copy-one {
+  top: 15%;
+}
+body.reduced .copy-one h1 {
+  font-size: clamp(44px, 6vw, 80px);
+}
+body.reduced .hero-description,
+body.reduced .copy-one .eyebrow {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .scroll-cue {
+    display: flex;
+  }
+  .room-photo {
+    mask-image: linear-gradient(transparent, black 12%, black 90%, transparent);
   }
 }

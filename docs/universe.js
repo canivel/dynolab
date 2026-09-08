@@ -7,8 +7,11 @@
   const motionPreference = matchMedia("(prefers-reduced-motion: reduce)");
   const journey = $(".journey");
   const stage = $(".universe-stage");
-  const hardware = $(".hardware");
-  const hardwareSpace = $(".hardware-space");
+  const world = $(".room-world");
+  const photo = $(".room-photo");
+  let sceneReady = false;
+  let roomWidth = 1,
+    roomHeight = 1;
   const canvas = $("#universe");
   const context = canvas.getContext("2d");
   const copies = $$(".stage-copy");
@@ -83,9 +86,19 @@
     }
   });
   function resize() {
-    width = stage.clientWidth;
-    height = stage.clientHeight;
-    const ratio = Math.min(devicePixelRatio || 1, 2);
+    const mobile = stage.clientWidth <= 700;
+    roomWidth = mobile
+      ? stage.clientWidth * 1.5
+      : Math.max(stage.clientWidth, stage.clientHeight * 1.5);
+    roomHeight = roomWidth / 1.5;
+    world.style.width = `${roomWidth}px`;
+    width = Math.round(roomWidth * 0.465);
+    height = Math.round(roomHeight * 0.441);
+    // Render enough pixels for the initial close-up, bounded for mobile GPUs.
+    const ratio = Math.min(
+      5,
+      Math.max(devicePixelRatio || 1, (stage.clientHeight / height) * 1.5),
+    );
     canvas.width = Math.round(width * ratio);
     canvas.height = Math.round(height * ratio);
     if (context) context.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -97,30 +110,35 @@
     progress = reduced
       ? 0
       : clamp(-box.top / Math.max(1, box.height - stage.clientHeight));
+    const p = sceneReady ? progress : 0;
+    const pullback = smooth(0.08, 0.82, p);
+    const startScale =
+      Math.max(stage.clientWidth / width, stage.clientHeight / height) * 1.16;
+    const scale = reduced ? 1 : Math.exp(Math.log(startScale) * (1 - pullback));
+    const screenCenterX = (0.265 + 0.465 / 2 - 0.5) * roomWidth;
+    const screenCenterY = (0.211 + 0.441 / 2 - 0.5) * roomHeight;
+    const mobileOffset =
+      stage.clientWidth <= 700 ? stage.clientHeight * 0.16 : 0;
+    const offsetX = -screenCenterX * scale * (1 - pullback);
+    const offsetY = reduced
+      ? mobileOffset
+      : -screenCenterY * scale * (1 - pullback) + mobileOffset * pullback;
+    world.style.transform = `translate(calc(-50% + ${offsetX}px),calc(-50% + ${offsetY}px)) scale(${scale})`;
     const opacities = [
-      1 - smooth(0.08, 0.27, progress),
-      smooth(0.2, 0.34, progress) * (1 - smooth(0.49, 0.63, progress)),
-      smooth(0.56, 0.7, progress) * (1 - smooth(0.9, 1, progress)),
+      reduced ? 1 : 1 - smooth(0.05, 0.32, p),
+      reduced ? 0 : smooth(0.65, 0.85, p),
     ];
     copies.forEach((copy, index) => {
-      const opacity = opacities[index];
-      copy.style.opacity = opacity;
-      copy.style.visibility = opacity < 0.01 ? "hidden" : "visible";
-      copy.inert = opacity < 0.1;
-      const shift =
+      copy.style.opacity = opacities[index];
+      copy.style.visibility = opacities[index] < 0.01 ? "hidden" : "visible";
+      copy.inert = opacities[index] < 0.1;
+      if (index > 0)
+        copy.setAttribute("aria-hidden", String(opacities[index] < 0.1));
+      copy.style.transform =
         index === 0
-          ? -progress * 200
-          : index === 1
-            ? (0.4 - progress) * 110
-            : (0.77 - progress) * 100;
-      copy.style.transform = `translateY(${reduced ? 0 : shift}px)`;
+          ? `translateY(${-p * 100}px) scale(${1 - pullback * 0.35})`
+          : `translateY(${(1 - pullback) * 60}px)`;
     });
-    const scale =
-      1 + smooth(0.08, 0.46, progress) * 0.25 - smooth(0.65, 1, progress) * 0.4;
-    const y =
-      smooth(0.25, 0.5, progress) * 30 - smooth(0.73, 1, progress) * 170;
-    hardwareSpace.style.transform = `translate(-50%,calc(-50% + ${y}px)) scale(${scale})`;
-    hardwareSpace.style.opacity = 1 - smooth(0.91, 1, progress);
     $(".journey-progress b").style.width = `${progress * 100}%`;
     requestFrame();
   }
@@ -140,15 +158,6 @@
     targetX = 0;
     targetY = 0;
   });
-  $$(".device-picker button").forEach((button) =>
-    button.addEventListener("click", () => {
-      hardware.dataset.device = button.dataset.device;
-      $$(".device-picker button").forEach((item) =>
-        item.setAttribute("aria-pressed", String(item === button)),
-      );
-      requestFrame();
-    }),
-  );
   function requestFrame() {
     if (!frame && !document.hidden && visible)
       frame = requestAnimationFrame(draw);
@@ -159,14 +168,13 @@
     lastTime = now;
     pointerX += ((reduced ? 0 : targetX) - pointerX) * 0.055;
     pointerY += ((reduced ? 0 : targetY) - pointerY) * 0.055;
-    hardware.style.transform = `rotateX(${7 - pointerY * 4 + progress * 4}deg) rotateY(${-12 + pointerX * 6 + progress * 18}deg)`;
     if (context) drawUniverse();
     if (!reduced) requestFrame();
   }
   function drawUniverse() {
     const ctx = context;
     ctx.clearRect(0, 0, width, height);
-    const fade = 1 - smooth(0.88, 1, progress) * 0.8;
+    const fade = 1;
     stars.forEach((star) => {
       const twinkle = 0.2 + (Math.sin(time * 0.6 + star.phase) + 1) * 0.22;
       ctx.fillStyle = `rgba(218,233,203,${twinkle * fade})`;
@@ -181,7 +189,7 @@
       );
       ctx.fill();
     });
-    const centerX = width * 0.5 + pointerX * 12;
+    const centerX = width * 0.64 + pointerX * 12;
     const centerY = height * (0.54 + progress * 0.13) + pointerY * 10;
     const baseRadius = Math.min(width * 0.47, height * 0.6);
     const collapse = smooth(0.2, 0.62, progress);
@@ -336,6 +344,17 @@
       selectShot(button.dataset.selectShot),
     ),
   );
+  photo
+    .decode()
+    .then(() => {
+      sceneReady = true;
+      resize();
+    })
+    .catch(() => {
+      // Keep the complete universe opening if the photographic asset cannot load.
+      journey.style.height = "100svh";
+      world.style.opacity = "1";
+    });
   resize();
   applyMotion();
 })();

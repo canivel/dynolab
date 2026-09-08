@@ -30,8 +30,11 @@
         .universe-stage {
           position: relative;
         }
+        .room-world {
+          transform: translate(-50%, -50%);
+          width: max(100%, 100svh);
+        }
         .motion-toggle,
-        .device-picker,
         .journey-progress {
           display: none;
         }
@@ -59,74 +62,39 @@
         aria-label="A universe of models, running locally on your Mac"
       >
         <div class="universe-stage">
-          <canvas id="universe" aria-hidden="true"></canvas>
-          <div class="orbital-glow" aria-hidden="true"></div>
-          <div class="grain" aria-hidden="true"></div>
+          <div class="room-world" aria-hidden="true">
+            <img
+              class="room-photo"
+              src="assets/mac-workspace.jpg"
+              alt=""
+              fetchpriority="high"
+              width="1536"
+              height="1024"
+            />
+            <div class="screen-portal">
+              <canvas id="universe"></canvas>
+              <div class="portal-glow"></div>
+            </div>
+          </div>
+          <div class="scene-shade" aria-hidden="true"></div>
           <div class="stage-copy copy-one">
             <p class="eyebrow">
               <span class="live-dot"></span> OPEN MODELS. YOUR HARDWARE.
             </p>
-            <h1>A universe of models.<br /><em>One Mac.</em></h1>
+            <h1>A universe<br />of possibilities.</h1>
             <p class="hero-description">
-              All that intelligence. Right here.<br />Run, measure, and connect
-              your local models with Dyno.
+              Billions of parameters.<br />Closer than you think.
             </p>
             <a class="text-link" href="#download"
-              >Download for Apple Silicon <span>↗</span></a
+              >Download Dyno <span>↗</span></a
             >
           </div>
           <div class="stage-copy copy-two" aria-hidden="true">
-            <p class="eyebrow">BILLIONS OF PARAMETERS. A LOCAL CONNECTION.</p>
-            <h2>Let the universe<br /><em>come to you.</em></h2>
-            <p>
-              From open weights to Apple Silicon.<br />No hosted inference
-              service required.
-            </p>
-          </div>
-          <div class="stage-copy copy-three" aria-hidden="true">
-            <p class="eyebrow">YOUR MODELS. YOUR MACHINE.</p>
-            <h2>Intelligence.<br /><em>Within reach.</em></h2>
-            <p>
-              A native Mac app. Real measurements.<br />Everything you need to
-              put your model on the dyno.
-            </p>
-          </div>
-          <div class="hardware-space" aria-hidden="true">
-            <div class="machine-aura"></div>
-            <div class="hardware" data-device="book">
-              <div class="device-screen">
-                <div class="screen-camera"></div>
-                <img
-                  src="screenshots/window-run-dark.png"
-                  alt=""
-                  fetchpriority="high"
-                />
-                <div class="screen-sheen"></div>
-              </div>
-              <div class="device-base">
-                <div class="device-notch"></div>
-                <div class="device-emblem">✦</div>
-                <div class="device-ports"><i></i><i></i><b></b></div>
-                <span class="device-led"></span>
-              </div>
-              <div class="machine-shadow"></div>
-            </div>
-            <span class="hardware-caption"
-              >APPLE SILICON <span>×</span> MLX</span
-            >
+            <p class="eyebrow">ALL THAT INTELLIGENCE.</p>
+            <h2>Right here.<br /><em>On your Mac.</em></h2>
           </div>
           <div class="universe-foot">
-            <div
-              class="device-picker"
-              role="group"
-              aria-label="Preview Mac form factor"
-            >
-              <button data-device="book" aria-pressed="true">MacBook</button
-              ><button data-device="mini" aria-pressed="false">Mac mini</button
-              ><button data-device="studio" aria-pressed="false">
-                Mac Studio
-              </button>
-            </div>
+            <span class="scene-label">APPLE SILICON × MLX</span>
             <a class="scroll-cue" href="#explore"
               ><span class="scroll-line"></span>SCROLL TO BRING IT HOME ↓</a
             >
@@ -492,7 +460,8 @@ dyno top</code></pre>
       </div>
       <p>
         Model-space animation is an illustration of local inference, not a live
-        activation trace. Mac hardware is illustrated; app screenshots are real.
+        activation trace. Workspace imagery is AI-generated; app screenshots are
+        real.
       </p>
     </footer>
   </body>

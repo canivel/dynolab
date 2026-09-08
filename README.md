@@ -487,8 +487,9 @@ views. Review images for private model names before publishing them.
 ### Website
 
 The GitHub Pages site lives in `docs/`. Its model-universe introduction uses a
-local canvas animation and scroll-driven CSS transforms, with illustrated
-MacBook, Mac mini, and Mac Studio views. No animation library or external font
+local canvas animation and scroll-driven CSS transforms. The view begins inside
+the model universe and pulls back through a MacBook display into an AI-generated
+photographic workspace. The scene and screen share a transform to stay aligned. No animation library or external font
 service is required. The page supports reduced motion and has an explicit
 motion toggle; the universe stops rendering when it is offscreen or the tab is
 hidden. App screenshots and setup instructions remain available without animation.
