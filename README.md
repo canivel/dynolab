@@ -486,13 +486,16 @@ views. Review images for private model names before publishing them.
 
 ### Website
 
-The GitHub Pages site lives in `docs/`. Its model-universe introduction uses a
-local canvas animation and scroll-driven CSS transforms. The view begins inside
-the model universe and pulls back through a MacBook display into an AI-generated
-photographic workspace. The scene and screen share a transform to stay aligned. No animation library or external font
-service is required. The page supports reduced motion and has an explicit
-motion toggle; the universe stops rendering when it is offscreen or the tab is
-hidden. App screenshots and setup instructions remain available without animation.
+The GitHub Pages site lives in `docs/`. Its scroll-driven introduction travels
+from animated neural connections through a silicon die, chip package, circuit
+board, and laptop display into a Mac workspace. Nested camera transforms keep
+each layer anchored to the next; reverse scrolling retraces the same path.
+Hardware and workspace images are conceptual AI-generated artwork; the Dyno
+screen is an actual app capture. Asset prompts are in `docs/assets/README.md`.
+No animation library or external font service is required. The page supports
+reduced motion and has an explicit motion toggle; the canvas stops rendering
+when offscreen or the tab is hidden. App screenshots and setup instructions
+remain available without animation.
 
 Preview with `python3 -m http.server 8766 --directory docs`, then open
 `http://localhost:8766`. Changes pushed to `main` are published by GitHub Pages.

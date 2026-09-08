@@ -9,6 +9,16 @@
   const stage = $(".universe-stage");
   const world = $(".room-world");
   const photo = $(".room-photo");
+  const appImage = $(".screen-app");
+  const glass = $(".portal-glow");
+  const depthLabel = $(".scene-label");
+  const board = new Image();
+  board.src = "assets/silicon-board.jpg";
+  let sceneProgress = 0;
+  // Normalized anchors measured against the supplied photographic plate.
+  // Everything is nested: neural field → die → board → display → room.
+  const die = { x: 586 / 1536, y: 296 / 1024, w: 360 / 1536, h: 380 / 1024 };
+  const dieCenter = { x: die.x + die.w / 2, y: die.y + die.h / 2 };
   let sceneReady = false;
   let roomWidth = 1,
     roomHeight = 1;
@@ -46,19 +56,21 @@
     seed = (seed * 1664525 + 1013904223) >>> 0;
     return seed / 4294967296;
   };
-  const stars = Array.from({ length: 150 }, () => ({
-    x: random(),
-    y: random(),
-    radius: random() * 1.1 + 0.15,
-    phase: random() * 6.28,
+  const neurons = Array.from({ length: 96 }, (_, i) => ({
+    layer: Math.floor(i / 12),
+    row: i % 12,
+    z: random() * 2 - 1,
+    phase: random(),
   }));
-  const nodes = Array.from({ length: 76 }, (_, index) => ({
-    angle: index * 2.39996,
-    latitude: Math.acos(1 - (2 * (index + 0.5)) / 76),
-    size: 0.7 + random() * 1.4,
-    phase: random() * 6.28,
-  }));
-  const labels = ["QWEN", "LLAMA", "GEMMA", "MISTRAL", "DEEPSEEK", "PHI"];
+  const synapses = [];
+  neurons.forEach((neuron, i) => {
+    if (neuron.layer === 7) return;
+    for (let offset = -2; offset <= 2; offset++) {
+      const row = neuron.row + offset;
+      if (row >= 0 && row < 12)
+        synapses.push([i, (neuron.layer + 1) * 12 + row]);
+    }
+  });
 
   function applyMotion() {
     document.body.classList.toggle("reduced", reduced);
@@ -111,7 +123,10 @@
       ? 0
       : clamp(-box.top / Math.max(1, box.height - stage.clientHeight));
     const p = sceneReady ? progress : 0;
-    const pullback = smooth(0.08, 0.82, p);
+    sceneProgress = p;
+    // The camera traverses the silicon first. The laptop stays beyond the
+    // viewport until the board has been revealed, then the outer camera retreats.
+    const pullback = smooth(0.53, 0.9, p);
     const startScale =
       Math.max(stage.clientWidth / width, stage.clientHeight / height) * 1.16;
     const scale = reduced ? 1 : Math.exp(Math.log(startScale) * (1 - pullback));
@@ -125,8 +140,8 @@
       : -screenCenterY * scale * (1 - pullback) + mobileOffset * pullback;
     world.style.transform = `translate(calc(-50% + ${offsetX}px),calc(-50% + ${offsetY}px)) scale(${scale})`;
     const opacities = [
-      reduced ? 1 : 1 - smooth(0.05, 0.32, p),
-      reduced ? 0 : smooth(0.65, 0.85, p),
+      reduced ? 1 : 1 - smooth(0.06, 0.2, p),
+      reduced ? 0 : smooth(0.84, 0.95, p),
     ];
     copies.forEach((copy, index) => {
       copy.style.opacity = opacities[index];
@@ -139,6 +154,19 @@
           ? `translateY(${-p * 100}px) scale(${1 - pullback * 0.35})`
           : `translateY(${(1 - pullback) * 60}px)`;
     });
+    appImage.style.opacity = reduced ? 1 : smooth(0.72, 0.84, p);
+    glass.style.opacity = reduced
+      ? 0
+      : smooth(0.67, 0.75, p) * (1 - smooth(0.77, 0.87, p));
+    const labels = [
+      "01 / NEURAL ACTIVATIONS",
+      "02 / THE SILICON DIE",
+      "03 / CHIP & CIRCUIT BOARD",
+      "04 / THROUGH THE DISPLAY",
+      "05 / YOUR MAC",
+    ];
+    const depth = p < 0.21 ? 0 : p < 0.38 ? 1 : p < 0.62 ? 2 : p < 0.86 ? 3 : 4;
+    depthLabel.textContent = reduced ? "APPLE SILICON × MLX" : labels[depth];
     $(".journey-progress b").style.width = `${progress * 100}%`;
     requestFrame();
   }
@@ -148,8 +176,8 @@
     "pointermove",
     (event) => {
       if (reduced || event.pointerType === "touch") return;
-      targetX = (event.clientX / width - 0.5) * 2;
-      targetY = (event.clientY / height - 0.5) * 2;
+      targetX = (event.clientX / stage.clientWidth - 0.5) * 2;
+      targetY = (event.clientY / stage.clientHeight - 0.5) * 2;
       requestFrame();
     },
     { passive: true },
@@ -173,121 +201,178 @@
   }
   function drawUniverse() {
     const ctx = context;
+    const p = sceneProgress;
     ctx.clearRect(0, 0, width, height);
-    const fade = 1;
-    stars.forEach((star) => {
-      const twinkle = 0.2 + (Math.sin(time * 0.6 + star.phase) + 1) * 0.22;
-      ctx.fillStyle = `rgba(218,233,203,${twinkle * fade})`;
+    ctx.fillStyle = "#070e0c";
+    ctx.fillRect(0, 0, width, height);
+    if (reduced || p > 0.85) return;
+    const boardWidth = Math.max(width, height * 1.5) * 1.08;
+    const boardHeight = boardWidth / 1.5;
+    const startZoom =
+      Math.max(width / (boardWidth * die.w), height / (boardHeight * die.h)) *
+      1.15;
+    const zoom = Math.exp(Math.log(startZoom) * (1 - smooth(0.06, 0.62, p)));
+    ctx.save();
+    ctx.translate(width / 2, height / 2);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-boardWidth * dieCenter.x, -boardHeight * dieCenter.y);
+    if (sceneReady) ctx.drawImage(board, 0, 0, boardWidth, boardHeight);
+    const x = boardWidth * die.x,
+      y = boardHeight * die.y;
+    const w = boardWidth * die.w,
+      h = boardHeight * die.h;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+    const silicon = smooth(0.15, 0.4, p);
+    ctx.fillStyle = `rgba(5,14,11,${1 - silicon * 0.28})`;
+    ctx.fillRect(x, y, w, h);
+    // The architectural grid resolves from darkness as the camera clears the die.
+    ctx.lineWidth = 0.22;
+    ctx.strokeStyle = `rgba(155,190,132,${0.04 + silicon * 0.16})`;
+    for (let i = 0; i <= 24; i++) {
       ctx.beginPath();
-      ctx.arc(
-        (star.x * width + pointerX * star.radius * 6 + width) % width,
-        (star.y * height - progress * (80 + star.radius * 80) + height) %
-          height,
-        star.radius,
-        0,
-        Math.PI * 2,
-      );
-      ctx.fill();
-    });
-    const centerX = width * 0.64 + pointerX * 12;
-    const centerY = height * (0.54 + progress * 0.13) + pointerY * 10;
-    const baseRadius = Math.min(width * 0.47, height * 0.6);
-    const collapse = smooth(0.2, 0.62, progress);
-    const radius =
-      baseRadius * (1 - collapse * 0.58 + smooth(0.7, 1, progress) * 0.25);
-    const rotation = time * 0.025 + progress * 2;
-    // Inclined orbital paths give depth even when motion is paused.
-    for (let ring = 0; ring < 3; ring++) {
-      ctx.save();
-      ctx.translate(centerX, centerY);
-      ctx.rotate(-0.3 + ring * 0.38 + progress * 0.5);
-      ctx.strokeStyle =
-        ring === 1
-          ? `rgba(182,156,231,${0.12 * fade})`
-          : `rgba(186,225,142,${0.1 * fade})`;
-      ctx.lineWidth = 0.65;
-      ctx.beginPath();
-      ctx.ellipse(
-        0,
-        0,
-        radius * (1 + ring * 0.16),
-        radius * (0.38 + ring * 0.08),
-        0,
-        0,
-        Math.PI * 2,
-      );
+      ctx.moveTo(x + (w * i) / 24, y);
+      ctx.lineTo(x + (w * i) / 24, y + h);
       ctx.stroke();
-      const phase = time * (0.08 + ring * 0.025) + ring * 2;
-      ctx.fillStyle = ring === 1 ? "#c8b3ff" : "#d0ff98";
-      ctx.shadowColor = ctx.fillStyle;
-      ctx.shadowBlur = 12;
       ctx.beginPath();
-      ctx.arc(
-        Math.cos(phase) * radius * (1 + ring * 0.16),
-        Math.sin(phase) * radius * (0.38 + ring * 0.08),
-        2,
-        0,
-        Math.PI * 2,
-      );
-      ctx.fill();
-      ctx.restore();
+      ctx.moveTo(x, y + (h * i) / 24);
+      ctx.lineTo(x + w, y + (h * i) / 24);
+      ctx.stroke();
     }
-    const projected = nodes.map((node) => {
-      const angle = node.angle + rotation;
-      const x = Math.sin(node.latitude) * Math.cos(angle);
-      const z = Math.sin(node.latitude) * Math.sin(angle);
-      const y = Math.cos(node.latitude);
-      const depth = 1 / (1.55 - z * 0.45);
+    // A layered neural field, with animated signal packets and firing neurons.
+    // This is a conceptual illustration, not live measured model activity.
+    const projected = neurons.map((n) => {
+      const depth = 1 / (1.7 - n.z * 0.3);
       return {
-        x: centerX + x * radius * depth * 1.45,
-        y: centerY + y * radius * depth * 0.93,
-        alpha: (0.15 + (z + 1) * 0.19) * fade,
-        z,
-        size: node.size * depth,
-        phase: node.phase,
+        x:
+          x +
+          w * (0.5 + (n.layer / 7 - 0.5) * 1.38 * depth) +
+          pointerX * w * 0.018 * n.z,
+        y:
+          y +
+          h * (0.5 + (n.row / 11 - 0.5) * 1.55 * depth) +
+          Math.sin(time * 0.22 + n.phase * 6.28) * h * 0.016 +
+          pointerY * h * 0.018 * n.z,
+        z: n.z,
+        phase: n.phase,
+        layer: n.layer,
       };
     });
-    const reach = radius * 0.43;
-    projected.forEach((node, i) => {
-      for (let j = i + 1; j < projected.length; j++) {
-        const other = projected[j];
-        const distance = Math.hypot(node.x - other.x, node.y - other.y);
-        if (distance > reach || Math.abs(node.z - other.z) > 0.65) continue;
-        const alpha = (1 - distance / reach) * 0.2 * fade;
-        ctx.strokeStyle = `rgba(188,227,150,${alpha})`;
-        ctx.lineWidth = 0.55;
-        ctx.beginPath();
-        ctx.moveTo(node.x, node.y);
-        ctx.lineTo(other.x, other.y);
-        ctx.stroke();
-        if ((i + j) % 11 === 0) {
-          const t = (time * 0.26 + node.phase) % 1;
-          ctx.fillStyle = `rgba(209,255,161,${0.65 * fade})`;
+    for (let i = 0; i < synapses.length; i++) {
+      const [ai, bi] = synapses[i],
+        a = projected[ai],
+        b = projected[bi];
+      ctx.strokeStyle = `rgba(165,218,158,${0.1 + (a.z + 1) * 0.065})`;
+      ctx.lineWidth = w * 0.0014;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      if (i % 5 !== 0) continue;
+      const t = (time * 0.65 - a.layer * 0.15 + a.phase + 10) % 1;
+      const tail = Math.max(0, t - 0.16);
+      ctx.strokeStyle = i % 3 === 0 ? "#c5b1ff" : "#cfff9c";
+      ctx.lineWidth = w * 0.0028;
+      ctx.beginPath();
+      ctx.moveTo(a.x + (b.x - a.x) * tail, a.y + (b.y - a.y) * tail);
+      ctx.lineTo(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+      ctx.stroke();
+    }
+    for (const n of projected) {
+      const firing = Math.pow(
+        Math.max(0, Math.sin(time * 3.4 - n.layer * 0.8 + n.phase * 6.28)),
+        10,
+      );
+      const radius = w * (0.0025 + firing * 0.0035);
+      if (firing > 0.25) {
+        const glow = ctx.createRadialGradient(
+          n.x,
+          n.y,
+          0,
+          n.x,
+          n.y,
+          radius * 5,
+        );
+        glow.addColorStop(0, `rgba(190,255,137,${firing * 0.5})`);
+        glow.addColorStop(1, "rgba(190,255,137,0)");
+        ctx.fillStyle = glow;
+        ctx.fillRect(
+          n.x - radius * 5,
+          n.y - radius * 5,
+          radius * 10,
+          radius * 10,
+        );
+      }
+      ctx.fillStyle = `rgba(210,255,184,${0.45 + firing * 0.55})`;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    // Signals continue from the silicon out along component-level traces.
+    const traceAlpha = smooth(0.2, 0.42, p) * 0.65;
+    if (traceAlpha > 0) {
+      ctx.save();
+      ctx.globalAlpha = traceAlpha;
+      ctx.strokeStyle = "#c7f88d";
+      ctx.lineWidth = boardWidth * 0.00065;
+      for (let side = 0; side < 4; side++)
+        for (let i = 0; i < 5; i++) {
+          const f = (i + 1) / 6;
+          const cx = x + w * f,
+            cy = y + h * f;
+          const path =
+            side === 0
+              ? [
+                  [x, cy],
+                  [x - w * 0.35, cy],
+                  [x - w * 0.6, cy - h * 0.16],
+                  [x - w * 1.5, cy - h * 0.16],
+                ]
+              : side === 1
+                ? [
+                    [x + w, cy],
+                    [x + w * 1.35, cy],
+                    [x + w * 1.6, cy + h * 0.16],
+                    [x + w * 2.5, cy + h * 0.16],
+                  ]
+                : side === 2
+                  ? [
+                      [cx, y],
+                      [cx, y - h * 0.32],
+                      [cx - w * 0.16, y - h * 0.55],
+                      [cx - w * 0.16, y - h * 1.1],
+                    ]
+                  : [
+                      [cx, y + h],
+                      [cx, y + h * 1.32],
+                      [cx + w * 0.16, y + h * 1.55],
+                      [cx + w * 0.16, y + h * 2.1],
+                    ];
+          ctx.beginPath();
+          path.forEach((v, j) => (j ? ctx.lineTo(...v) : ctx.moveTo(...v)));
+          ctx.stroke();
+          const t = ((time * 0.38 + i * 0.17 + side * 0.11) % 1) * 3,
+            segment = Math.floor(t),
+            fraction = t - segment;
+          const a = path[segment],
+            b = path[segment + 1];
+          ctx.fillStyle = "#e4ffb6";
           ctx.beginPath();
           ctx.arc(
-            node.x + (other.x - node.x) * t,
-            node.y + (other.y - node.y) * t,
-            1.2,
+            a[0] + (b[0] - a[0]) * fraction,
+            a[1] + (b[1] - a[1]) * fraction,
+            boardWidth * 0.002,
             0,
             Math.PI * 2,
           );
           ctx.fill();
         }
-      }
-      ctx.fillStyle = `rgba(206,245,169,${node.alpha})`;
-      ctx.beginPath();
-      ctx.arc(node.x, node.y, node.size, 0, Math.PI * 2);
-      ctx.fill();
-      if (i % 13 === 0 && width > 550) {
-        ctx.font = "9px ui-monospace, monospace";
-        ctx.fillStyle = `rgba(167,190,144,${node.alpha * 0.9})`;
-        ctx.fillText(
-          labels[Math.floor(i / 13) % labels.length],
-          node.x + 9,
-          node.y - 7,
-        );
-      }
-    });
+      ctx.restore();
+    }
+    ctx.restore();
   }
   // Never keep rendering a hidden tab or an offscreen universe.
   new IntersectionObserver((entries) => {
@@ -344,8 +429,7 @@
       selectShot(button.dataset.selectShot),
     ),
   );
-  photo
-    .decode()
+  Promise.all([photo.decode(), board.decode(), appImage.decode()])
     .then(() => {
       sceneReady = true;
       resize();

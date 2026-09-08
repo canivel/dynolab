@@ -1,5 +1,15 @@
 # Workspace scene
 
+## Silicon board
+
+`silicon-board.jpg` was generated with the built-in OpenAI imagegen tool at 1536 × 1024 and encoded as JPEG at quality 88. It is conceptual hardware artwork, not an accurate teardown of a specific Apple chip or motherboard. Animated neural connections are anchored to its central die; component-level signal traces continue outward onto the board.
+
+Generation prompt:
+
+Use case: product-mockup. Asset type: cinematic scroll-through website scene, 1536x1024 landscape. Generate a hyperreal premium macro photograph of a laptop silicon circuit board viewed directly straight down, perfectly parallel to image plane, absolutely no perspective angle or rotation. One central large square silicon processor package on a black/dark green motherboard. The processor package centered exactly at image center, outer square package occupies x30% to70% and y20% to80%. Inside its package, a clean dark near-black square exposed silicon die occupies exactly x40% to60%, y35% to65% (so 307 by307 pixels). This die surface is very dark flat obsidian with delicate barely visible microcircuit grid; no lettering or logo. Surround it with intricate tiny gold contacts, graphite memory chips, capacitors, solder and green-gold traces radiating across the motherboard, realistic layer depth, sharp architectural grid of components. Board extends past all four edges, no empty background. Photoreal microelectronics materials, precise engineering detail, cinematic grazing warm gold light from left and restrained green light right, deep charcoal palette, no neon sci-fi fantasy, no text, no labels, no brands, no watermark. Usage: an animated neural network will be composited on central dark square die; scrolling zooms out from inside that die to reveal its processor package and then full motherboard. Keep the die centered and unobstructed, geometry axis-aligned. It represents conceptual Apple Silicon local inference hardware, not a specific manufacturer's exact board layout.
+
+## Mac workspace
+
 `mac-workspace.jpg` is an AI-generated illustrative workspace, created with OpenAI imagegen for this site. It is not an app screenshot or a photograph of a particular Mac. The actual Dyno captures live in `../screenshots/`.
 
 Generated at 1536 × 1024, then encoded as JPEG at quality 86 for delivery. The canvas is composited inside the display; the display and photograph share a single scroll transform. No external image service is contacted by the page.

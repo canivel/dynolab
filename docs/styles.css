@@ -196,7 +196,7 @@ em {
 /* One camera pulls out of the model universe through the physical display.
    Photo and screen share a transform, preserving their point of contact. */
 .journey {
-  height: 280svh;
+  height: 420svh;
   position: relative;
 }
 .universe-stage {
@@ -1441,7 +1441,7 @@ body.reduced .scroll-line {
 /* Final art direction overrides shared small-screen type rules. */
 @media (max-width: 700px) {
   .journey {
-    height: 250svh;
+    height: 380svh;
     min-height: 0;
   }
   .universe-stage {
@@ -1497,5 +1497,35 @@ body.reduced .copy-one .eyebrow {
   }
   .room-photo {
     mask-image: linear-gradient(transparent, black 12%, black 90%, transparent);
+  }
+}
+
+.screen-app {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+  opacity: 0;
+}
+.portal-glow {
+  background: linear-gradient(
+    115deg,
+    transparent 25%,
+    #c2e9db44 48%,
+    transparent 70%
+  );
+  opacity: 0;
+}
+body.reduced .screen-app {
+  opacity: 1 !important;
+}
+@media (max-width: 700px) {
+  .scene-label {
+    display: block;
+    width: 100%;
+    font-size: 8px;
+    color: var(--acid);
   }
 }
