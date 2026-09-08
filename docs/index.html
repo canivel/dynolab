@@ -30,7 +30,7 @@
         .universe-stage {
           position: relative;
         }
-        .room-world {
+        .orbit-world {
           transform: translate(-50%, -50%);
           width: max(100%, 100svh);
         }
@@ -62,25 +62,37 @@
         aria-label="A universe of models, running locally on your Mac"
       >
         <div class="universe-stage">
-          <div class="room-world" aria-hidden="true">
+          <img
+            class="office-background"
+            src="assets/office-background.jpg"
+            alt=""
+            aria-hidden="true"
+            width="1536"
+            height="1024"
+          />
+          <div class="orbit-world" aria-hidden="true">
             <img
-              class="room-photo"
-              src="assets/mac-workspace.jpg"
+              class="desk-photo"
+              src="assets/office-overhead.jpg"
               alt=""
               fetchpriority="high"
               width="1536"
               height="1024"
             />
-            <div class="screen-portal">
-              <canvas id="universe"></canvas>
-              <img
-                class="screen-app"
-                src="screenshots/window-run-dark.png"
-                alt=""
-                width="1800"
-                height="1250"
-              />
-              <div class="portal-glow"></div>
+            <div class="keyboard-deck"></div>
+            <div class="base-cutaway"><canvas id="universe"></canvas></div>
+            <div class="orbit-display">
+              <div class="display-bezel">
+                <img
+                  class="screen-app"
+                  src="screenshots/window-run-dark.png"
+                  alt=""
+                  width="1800"
+                  height="1250"
+                />
+                <span class="display-camera"></span>
+                <div class="display-reflection"></div>
+              </div>
             </div>
           </div>
           <div class="scene-shade" aria-hidden="true"></div>

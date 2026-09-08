@@ -193,10 +193,10 @@ em {
   background: var(--acid);
   color: #080a09;
 }
-/* One camera pulls out of the model universe through the physical display.
-   Photo and screen share a transform, preserving their point of contact. */
+/* The circuit plane belongs to the base. A shared 3D transform orbits
+   the tabletop, keyboard and hinged display from overhead to front. */
 .journey {
-  height: 420svh;
+  height: 460svh;
   position: relative;
 }
 .universe-stage {
@@ -207,8 +207,18 @@ em {
   overflow: hidden;
   isolation: isolate;
   background: #080a09;
+  perspective: 1600px;
+  perspective-origin: 50% 50%;
 }
-.room-world {
+.office-background {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+}
+.orbit-world {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -216,42 +226,88 @@ em {
   aspect-ratio: 1.5;
   transform: translate(-50%, -50%);
   transform-origin: 50% 50%;
+  transform-style: preserve-3d;
   will-change: transform;
 }
-.room-photo {
+.desk-photo {
   position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  display: block;
+  transform: translateZ(-1px);
 }
-.screen-portal {
+.keyboard-deck {
   position: absolute;
-  left: 26.5%;
-  top: 21.1%;
-  width: 46.5%;
-  height: 44.1%;
+  left: 27.2%;
+  top: 24.7%;
+  width: 45.6%;
+  height: 45.4%;
+  background: url("assets/office-overhead.jpg") 50% 45.24% / 219.298% 220.264%;
+  border-radius: 2%;
+  transform: translateZ(1px);
+  box-shadow:
+    0 4px 0 #343332,
+    0 8px 8px #0008;
+}
+.base-cutaway {
+  position: absolute;
+  left: 30.6%;
+  top: 28.2%;
+  width: 38.6%;
+  height: 24%;
+  transform: translateZ(2px);
   overflow: hidden;
   background: #080d0b;
-  clip-path: polygon(
-    1.5% 0,
-    44% 0,
-    44% 3.5%,
-    55% 3.5%,
-    55% 0,
-    98.7% 0,
-    100% 100%,
-    0 100%
-  );
+  border-radius: 2px;
 }
 #universe {
   width: 100%;
   height: 100%;
   display: block;
 }
-.portal-glow {
+.orbit-display {
+  position: absolute;
+  left: 26.8%;
+  top: -19.2%;
+  width: 46.4%;
+  height: 43.7%;
+  transform-origin: 50% 100%;
+  transform: rotateX(-90deg);
+  transform-style: preserve-3d;
+}
+.display-bezel {
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 60% 50%, #bafa6a16, transparent 65%);
+  background: #080a0a;
+  border: 3px solid #383a3a;
+  border-bottom-width: 8px;
+  border-radius: 10px 10px 3px 3px;
+  box-shadow:
+    0 0 0 1px #000,
+    inset 0 0 0 1px #64666455;
+  overflow: hidden;
+  backface-visibility: hidden;
+}
+.screen-app {
+  position: absolute;
+  inset: 1.5%;
+  width: 97%;
+  height: 97%;
+  object-fit: fill;
+}
+.display-camera {
+  position: absolute;
+  top: 0;
+  left: 45%;
+  width: 10%;
+  height: 4%;
+  border-radius: 0 0 3px 3px;
+  background: #050707;
+}
+.display-reflection {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, #dbf3e911, transparent 55%);
   pointer-events: none;
 }
 .scene-shade {
@@ -1495,37 +1551,25 @@ body.reduced .copy-one .eyebrow {
   .scroll-cue {
     display: flex;
   }
-  .room-photo {
+  .desk-photo {
     mask-image: linear-gradient(transparent, black 12%, black 90%, transparent);
   }
 }
 
-.screen-app {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: top;
-  opacity: 0;
-}
-.portal-glow {
-  background: linear-gradient(
-    115deg,
-    transparent 25%,
-    #c2e9db44 48%,
-    transparent 70%
-  );
-  opacity: 0;
-}
-body.reduced .screen-app {
-  opacity: 1 !important;
-}
 @media (max-width: 700px) {
+  .journey {
+    height: 420svh;
+  }
   .scene-label {
     display: block;
     width: 100%;
     font-size: 8px;
     color: var(--acid);
   }
+  .office-background {
+    object-position: center;
+  }
+}
+body.reduced .base-cutaway {
+  visibility: hidden;
 }

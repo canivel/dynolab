@@ -1,5 +1,17 @@
 # Workspace scene
 
+## Overhead camera orbit
+
+`office-overhead.jpg` and `office-background.jpg` were created with the built-in OpenAI imagegen tool using `mac-workspace.jpg` as the visual reference. Both are 1536 × 1024; JPEG delivery quality is 88 and 86 respectively. The overhead image textures the tabletop and keyboard deck. The empty workspace supplies the background as the camera lowers. The display is a separate hinged 3D plane carrying the real Dyno screenshot. Circuit imagery appears only in the base, underneath the keyboard.
+
+Overhead prompt:
+
+Create a new overhead camera view of the SAME desk and MacBook from the reference photograph. Asset for a real 3D camera orbit website scene. Photorealistic orthographic TOP DOWN flat lay, camera looking perfectly vertically down at the walnut tabletop, zero tilt, no perspective convergence. Entire image 1536x1024 landscape filled edge to edge with the same warm dark walnut desktop. Laptop open at exactly 90 degrees, so its upright display is viewed EDGE ON from above, only a very thin dark horizontal hinge line visible behind the base. The entire keyboard deck is seen flat, rectangular, perfectly axis aligned. Laptop base rectangle EXACTLY x=448 to1088, y=330 to770, width640 height440; keyboard in upper half, large trackpad lower half, realistic dark gray aluminum, black Mac keyboard small key legends, no logo. The laptop front edge at y770, hinge at y330. Real contact shadow. Accessories: dark potted plant at far left edge around y400, small book stack upper-left, closed dark notebook and black pen bottom-right, very restrained hints of creative studio at far margins. Keep area immediately around laptop unobstructed. Warm dusk light from left, muted green/gold highlights, identical dark warm cinematic editorial photography mood to reference. No wide visible laptop display face, no second laptop, no room walls, no neon, no text overlays, no watermark. Critical: a truly overhead keyboard photo, screen seen only edge-on, entire laptop base straight and rectangular; this will be used as texture on a 3D tabletop with a separate upright screen rendered in code.
+
+Empty-workspace prompt:
+
+Edit this reference photo: REMOVE ONLY the entire MacBook laptop and its shadow from the walnut desk. Fill its former space with continuous realistic matching walnut wood grain, and reconstruct the previously occluded background wall/chair/window where the screen had been. Keep the exact camera position, lighting, color grading, window, lamp, plants, books, notebook, desk edges and every other object identical. Photoreal empty workspace background plate with no laptop and no computer screen. Output1536x1024 landscape. No added text or logos.
+
 ## Silicon board
 
 `silicon-board.jpg` was generated with the built-in OpenAI imagegen tool at 1536 × 1024 and encoded as JPEG at quality 88. It is conceptual hardware artwork, not an accurate teardown of a specific Apple chip or motherboard. Animated neural connections are anchored to its central die; component-level signal traces continue outward onto the board.
@@ -8,11 +20,11 @@ Generation prompt:
 
 Use case: product-mockup. Asset type: cinematic scroll-through website scene, 1536x1024 landscape. Generate a hyperreal premium macro photograph of a laptop silicon circuit board viewed directly straight down, perfectly parallel to image plane, absolutely no perspective angle or rotation. One central large square silicon processor package on a black/dark green motherboard. The processor package centered exactly at image center, outer square package occupies x30% to70% and y20% to80%. Inside its package, a clean dark near-black square exposed silicon die occupies exactly x40% to60%, y35% to65% (so 307 by307 pixels). This die surface is very dark flat obsidian with delicate barely visible microcircuit grid; no lettering or logo. Surround it with intricate tiny gold contacts, graphite memory chips, capacitors, solder and green-gold traces radiating across the motherboard, realistic layer depth, sharp architectural grid of components. Board extends past all four edges, no empty background. Photoreal microelectronics materials, precise engineering detail, cinematic grazing warm gold light from left and restrained green light right, deep charcoal palette, no neon sci-fi fantasy, no text, no labels, no brands, no watermark. Usage: an animated neural network will be composited on central dark square die; scrolling zooms out from inside that die to reveal its processor package and then full motherboard. Keep the die centered and unobstructed, geometry axis-aligned. It represents conceptual Apple Silicon local inference hardware, not a specific manufacturer's exact board layout.
 
-## Mac workspace
+## Original Mac workspace reference
 
 `mac-workspace.jpg` is an AI-generated illustrative workspace, created with OpenAI imagegen for this site. It is not an app screenshot or a photograph of a particular Mac. The actual Dyno captures live in `../screenshots/`.
 
-Generated at 1536 × 1024, then encoded as JPEG at quality 86 for delivery. The canvas is composited inside the display; the display and photograph share a single scroll transform. No external image service is contacted by the page.
+Generated at 1536 × 1024, then encoded as JPEG at quality 86 for delivery. This original image is retained as the visual reference for the overhead and empty-room assets. The current scene places its animated canvas beneath the keyboard and uses a separate hinged app display. No external image service is contacted by the page.
 
 ## Generation prompt
 
