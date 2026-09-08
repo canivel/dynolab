@@ -483,3 +483,15 @@ To refresh the public app pictures with real running-model telemetry, use
 This captures Models, Performance, Discover, and Dyno's own menu bar controls;
 it omits conversation history, router traces, network addresses, and inspection
 views. Review images for private model names before publishing them.
+
+### Website
+
+The GitHub Pages site lives in `docs/`. Its model-universe introduction uses a
+local canvas animation and scroll-driven CSS transforms, with illustrated
+MacBook, Mac mini, and Mac Studio views. No animation library or external font
+service is required. The page supports reduced motion and has an explicit
+motion toggle; the universe stops rendering when it is offscreen or the tab is
+hidden. App screenshots and setup instructions remain available without animation.
+
+Preview with `python3 -m http.server 8766 --directory docs`, then open
+`http://localhost:8766`. Changes pushed to `main` are published by GitHub Pages.
