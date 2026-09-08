@@ -7,7 +7,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 APP_NAME="Dyno"
 BUNDLE_ID="com.canivel.dyno"
-VERSION="0.1.0"
+VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' ../pyproject.toml | head -1)"
+[ -n "$VERSION" ] || { echo "error: missing project version" >&2; exit 1; }
 PYTHON_VERSION="3.12"
 BUILD_DIR="build"
 APP="$BUILD_DIR/$APP_NAME.app"
@@ -40,8 +41,8 @@ if [ "$SLIM" -eq 0 ]; then
   echo "==> Bundling the Python runtime (this is the slow part)"
   # uv ships python-build-standalone, which is relocatable: copied into the
   # bundle it keeps working wherever the app ends up.
-  PY_BIN="$(uv python find "$PYTHON_VERSION" 2>/dev/null || true)"
-  [ -n "$PY_BIN" ] || { uv python install "$PYTHON_VERSION"; PY_BIN="$(uv python find "$PYTHON_VERSION")"; }
+  PY_BIN="$(uv python find --managed-python "$PYTHON_VERSION" 2>/dev/null || true)"
+  [ -n "$PY_BIN" ] || { uv python install "$PYTHON_VERSION"; PY_BIN="$(uv python find --managed-python "$PYTHON_VERSION")"; }
   PY_ROOT="$(python3 -c "import os,sys;print(os.path.dirname(os.path.dirname(os.path.realpath('$PY_BIN'))))")"
 
   rm -rf "$RESOURCES/python"

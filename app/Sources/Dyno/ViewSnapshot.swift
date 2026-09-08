@@ -26,10 +26,12 @@ enum ViewSnapshot {
 
         let model = MonitorModel()
         waitForData(model)
+        model.selectRunningModelForSnapshot()
+        let publication = arguments.contains("--public")
 
         // Built lazily: constructing every view up front would run each one's
         // initialiser before the first capture.
-        let targets: [(String, () -> AnyView, CGSize)] = [
+        var targets: [(String, () -> AnyView, CGSize)] = [
             ("chat", { AnyView(MainWindow(model: model, chat: true)) },
              CGSize(width: 980, height: 620)),
             ("window-run", { AnyView(MainWindow(model: model, initialTab: .run)) },
@@ -43,12 +45,18 @@ enum ViewSnapshot {
             ("window-inspect", { AnyView(MainWindow(model: model, initialTab: .inspect)) },
              CGSize(width: 980, height: 620)),
             ("window-observe", { AnyView(MainWindow(model: model, initialTab: .observe)) },
-             CGSize(width: 980, height: 700)),
+             CGSize(width: 980, height: 960)),
             ("window-discover", { AnyView(MainWindow(model: model, initialTab: .discover)) },
              CGSize(width: 980, height: 620)),
             ("menu-panel", { AnyView(DashboardPanel(model: model)) },
-             CGSize(width: 320, height: 330)),
+             CGSize(width: 320, height: 240)),
         ]
+
+        if publication {
+            // Omit conversations, traces, connection addresses and filesystem views.
+            let allowed = ["window-run", "window-observe", "window-discover", "menu-panel"]
+            targets = targets.filter { allowed.contains($0.0) }
+        }
 
         // Both appearances: a colour that reads in one and vanishes in the
         // other is the most common way this UI can be wrong.
@@ -67,9 +75,19 @@ enum ViewSnapshot {
                      natural.height, visibleHeight,
                      natural.height > visibleHeight ? "  ** TOO TALL **" : ""))
 
+        if publication {
+            for (suffix, appearance) in appearances {
+                NSApp.appearance = NSAppearance(named: appearance)
+                let status = StatusItemController(model: model)
+                RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+                guard status.writeSnapshot(to: URL(fileURLWithPath: directory)
+                    .appendingPathComponent("menu-bar-\(suffix).png")) else { return 1 }
+            }
+        }
         var wrote = 0
         for (name, makeView, size) in targets {
             for (suffix, appearance) in appearances {
+                model.selectRunningModelForSnapshot()
                 let path = (directory as NSString)
                     .appendingPathComponent("\(name)-\(suffix).png")
                 if capture(view: makeView(), size: size, appearance: appearance, to: path) {
@@ -93,6 +111,7 @@ enum ViewSnapshot {
             if !model.catalog.isEmpty,
                !model.localModels.isEmpty,
                model.router.isReachable,
+               model.snapshot.models.contains(where: { $0.stats != nil }),
                model.snapshot.interval > 0 { break }
         }
         // A little longer so async sizes and a second sample arrive.

@@ -1,0 +1,31 @@
+name: Release macOS app
+on:
+  push:
+    tags: ['v[0-9]*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Verify release version and architecture
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          test "$(uname -m)" = arm64
+          VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml | head -1)
+          test "$RELEASE_TAG" = "v$VERSION"
+      - name: Test router
+        run: PYTHONPATH=src python3 -m unittest discover -s tests -v
+      - name: Build and verify DMG
+        run: ./app/package-dmg.sh
+      - name: Publish release with DMG and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" app/build/*.dmg app/build/*.sha256 \
+            --verify-tag --title "Dyno $RELEASE_TAG" --notes-file docs/release-notes.md

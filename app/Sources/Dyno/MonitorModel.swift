@@ -172,6 +172,16 @@ final class MonitorModel {
         start()
     }
 
+    /// Snapshot rendering can display an existing server without taking ownership
+    /// of it or starting/stopping a model in the user's running app.
+    func selectRunningModelForSnapshot() {
+        guard CommandLine.arguments.contains("--snapshot"),
+              let served = snapshot.models.first(where: { $0.stats != nil }),
+              let port = served.port else { return }
+        selectedModel = localModels.first { $0.name == served.name || $0.path == served.identifier }
+        serverState = .running(model: served.name, port: port)
+    }
+
     // MARK: - Catalog
 
     func loadCatalog() {

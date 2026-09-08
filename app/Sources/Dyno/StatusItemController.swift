@@ -38,6 +38,16 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         refreshTitle()
     }
 
+    /// Capture only Dyno's actual menu bar control, never other apps or the clock.
+    func writeSnapshot(to url: URL) -> Bool {
+        guard let button = item.button else { return false }
+        button.appearance = NSApp.appearance
+        guard let bitmap = button.bitmapImageRepForCachingDisplay(in: button.bounds) else { return false }
+        button.cacheDisplay(in: button.bounds, to: bitmap)
+        guard let png = bitmap.representation(using: .png, properties: [:]) else { return false }
+        return (try? png.write(to: url)) != nil
+    }
+
     // MARK: - Title
 
     private func refreshTitle() {

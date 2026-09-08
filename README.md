@@ -9,7 +9,16 @@ machine's own GPU, power and unified-memory telemetry.
 
 📖 **[canivel.github.io/mlx-dyno](https://canivel.github.io/mlx-dyno/)**
 
-![Dyno's window](docs/screenshots/window-run-light.png)
+[**Download Dyno for Apple Silicon (.dmg)**](https://github.com/canivel/mlx-dyno/releases/latest)
+
+![Dyno running a model, with the Models, Router, Inspect, Performance, Discover and Chat toolbar](docs/screenshots/window-run-dark.png)
+
+*The native app shows server throughput beside GPU, memory, bandwidth, and power.*
+
+<table>
+<tr><th>In your menu bar</th><th>A quick right-click summary</th></tr>
+<tr><td align="center"><img src="docs/screenshots/menu-bar-light.png" alt="Dyno's live menu bar GPU and power readout" width="160"><p>Click to open the main window.</p></td><td><img src="docs/screenshots/menu-panel-light.png" alt="Dyno's menu bar panel with running model, GPU, memory, bandwidth and power" width="320"></td></tr>
+</table>
 
 | | What it is |
 |---|---|
@@ -50,6 +59,13 @@ So expose the number instead of guessing it. The measurement happens inside the
 token stream, where it is simply a fact rather than an inference.
 
 ## Install
+
+Download the **Apple Silicon DMG** from [GitHub Releases](https://github.com/canivel/mlx-dyno/releases/latest), open it, and drag **Dyno** into **Applications**.
+Requires **macOS 14+ on Apple Silicon**. Python and MLX are included; model weights are downloaded separately in Discover.
+
+The release is ad-hoc signed and **not Apple-notarized**. macOS may block its first launch; see [Apple's instructions](https://support.apple.com/guide/mac-help/mh40616/mac) before deciding whether to open it. Releases include a SHA-256 checksum.
+
+### Build from source
 
 **Requirements to build:** macOS 14+ on Apple Silicon, Xcode's Swift toolchain
 (`xcode-select --install`), and [uv](https://docs.astral.sh/uv/) — which supplies
@@ -102,6 +118,12 @@ nearly said instead, and — running two builds at the same seed — exactly whi
 token a quantisation changed. See below.
 
 **Discover** — search the Hugging Face hub and download in one click.
+
+![Performance view with live model metrics and hardware charts](docs/screenshots/window-observe-dark.png)
+
+*Performance keeps inference throughput and machine telemetry together.*
+
+![Discover showing downloadable models and their sizes](docs/screenshots/window-discover-light.png)
 
 ## Sharing models on your local network
 
@@ -444,3 +466,20 @@ rather than serving without metrics.
 ## License
 
 MIT
+
+## Building a release
+
+Run `./app/package-dmg.sh` on Apple Silicon to build the bundled app, create
+`app/build/Dyno-<version>-arm64.dmg`, verify the disk image, and write its SHA-256
+checksum. The version comes from `pyproject.toml`.
+
+Pushing a matching `v<version>` tag runs the GitHub release workflow on an
+Apple Silicon runner. It tests the router, builds the DMG from a clean checkout,
+and publishes the DMG and checksum to GitHub Releases. Update
+`docs/release-notes.md` before tagging a new version.
+
+To refresh the public app pictures with real running-model telemetry, use
+`app/build/Dyno.app/Contents/MacOS/Dyno --snapshot docs/screenshots --public`.
+This captures Models, Performance, Discover, and Dyno's own menu bar controls;
+it omits conversation history, router traces, network addresses, and inspection
+views. Review images for private model names before publishing them.
