@@ -39,6 +39,7 @@
   let width = 1,
     height = 1,
     progress = 0,
+    targetProgress = 0,
     frame = 0,
     lastTime = 0,
     time = 0;
@@ -120,23 +121,27 @@
   }
   function updateScroll() {
     const box = journey.getBoundingClientRect();
-    progress = reduced
+    targetProgress = reduced
       ? 0
       : clamp(-box.top / Math.max(1, box.height - stage.clientHeight));
+    if (reduced) progress = 0;
+    requestFrame();
+  }
+  function updateCamera() {
     const p = sceneReady ? progress : 0;
     sceneProgress = p;
     // Retreat vertically from the silicon under the keys, then orbit around
     // the keyboard hinge. The screen is a separate upright plane, never a
     // container for hardware imagery. Both are transformed in the same space.
-    const pullback = reduced ? 1 : smooth(0.34, 0.67, p);
-    const orbit = reduced ? 1 : smooth(0.7, 0.96, p);
+    const pullback = reduced ? 1 : smooth(0.39, 0.76, p);
+    const orbit = reduced ? 1 : smooth(0.76, 0.98, p);
     const startScale =
       Math.max(stage.clientWidth / width, stage.clientHeight / height) * 1.16;
     const zoom = reduced ? 1 : Math.exp(Math.log(startScale) * (1 - pullback));
-    const scale =
-      zoom *
-      (1 - pullback * 0.12) *
-      (1 + orbit * (stage.clientWidth <= 700 ? 0.1 : -0.22));
+    // Complete the vertical dolly before lowering the camera. Keeping the
+    // room's scale fixed during the orbit avoids the impression of a moving desk.
+    const finalScale = stage.clientWidth <= 700 ? 0.968 : 0.6864;
+    const scale = zoom * (1 + (finalScale - 1) * pullback);
     const baseCenterX = (0.306 + 0.386 / 2 - 0.5) * roomWidth;
     const baseCenterY = (0.282 + 0.24 / 2 - 0.5) * roomHeight;
     const offsetX = reduced ? 0 : -baseCenterX * scale * (1 - pullback);
@@ -144,13 +149,10 @@
       stage.clientHeight * (stage.clientWidth <= 700 ? 0.18 : 0.22);
     const offsetY = -baseCenterY * scale * (1 - pullback) + finalY * orbit;
     world.style.transform = `translate(calc(-50% + ${offsetX}px),calc(-50% + ${offsetY}px)) rotateX(${orbit * 67}deg) scale3d(${scale},${scale},${scale})`;
-    cutaway.style.opacity = reduced ? 0 : 1 - smooth(0.48, 0.62, p);
-    photo.style.opacity = 1 - smooth(0.1, 0.85, orbit);
-    backdrop.style.opacity = smooth(0.1, 0.8, orbit);
-    backdrop.style.transform = `scale(${1 + (1 - orbit) * 0.12}) translateY(${(1 - orbit) * 40}px)`;
+    cutaway.style.opacity = reduced ? 0 : 1 - smooth(0.49, 0.73, p);
     const opacities = [
       reduced ? 1 : 1 - smooth(0.06, 0.2, p),
-      reduced ? 0 : smooth(0.84, 0.95, p),
+      reduced ? 0 : smooth(0.94, 0.995, p),
     ];
     copies.forEach((copy, index) => {
       copy.style.opacity = opacities[index];
@@ -174,7 +176,6 @@
     const depth = p < 0.19 ? 0 : p < 0.45 ? 1 : p < 0.62 ? 2 : p < 0.84 ? 3 : 4;
     depthLabel.textContent = reduced ? "APPLE SILICON × MLX" : labels[depth];
     $(".journey-progress b").style.width = `${progress * 100}%`;
-    requestFrame();
   }
   window.addEventListener("scroll", updateScroll, { passive: true });
   window.addEventListener("resize", resize, { passive: true });
@@ -198,12 +199,18 @@
   }
   function draw(now) {
     frame = 0;
-    if (!reduced) time += Math.min((now - lastTime) / 1000 || 0, 0.05);
+    const dt = Math.min((now - lastTime) / 1000 || 1 / 60, 0.05);
+    if (!reduced) time += dt;
+    progress += (targetProgress - progress) * (1 - Math.exp(-dt * 8));
+    if (Math.abs(targetProgress - progress) < 0.00001)
+      progress = targetProgress;
+    updateCamera();
     lastTime = now;
     pointerX += ((reduced ? 0 : targetX) - pointerX) * 0.055;
     pointerY += ((reduced ? 0 : targetY) - pointerY) * 0.055;
     if (context) drawUniverse();
-    if (!reduced && sceneProgress < 0.63) requestFrame();
+    if (!reduced && (sceneProgress < 0.74 || progress !== targetProgress))
+      requestFrame();
   }
   function drawUniverse() {
     const ctx = context;
@@ -211,13 +218,13 @@
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = "#070e0c";
     ctx.fillRect(0, 0, width, height);
-    if (reduced || p > 0.63) return;
+    if (reduced || p > 0.74) return;
     const boardWidth = Math.max(width, height * 1.5) * 1.08;
     const boardHeight = boardWidth / 1.5;
     const startZoom =
       Math.max(width / (boardWidth * die.w), height / (boardHeight * die.h)) *
       1.15;
-    const zoom = Math.exp(Math.log(startZoom) * (1 - smooth(0.06, 0.47, p)));
+    const zoom = Math.exp(Math.log(startZoom) * (1 - smooth(0.06, 0.42, p)));
     ctx.save();
     ctx.translate(width / 2, height / 2);
     ctx.scale(zoom, zoom);

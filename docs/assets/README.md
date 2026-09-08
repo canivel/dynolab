@@ -2,7 +2,7 @@
 
 ## Overhead camera orbit
 
-`office-overhead.jpg` and `office-background.jpg` were created with the built-in OpenAI imagegen tool using `mac-workspace.jpg` as the visual reference. Both are 1536 × 1024; JPEG delivery quality is 88 and 86 respectively. The overhead image textures the tabletop and keyboard deck. The empty workspace supplies the background as the camera lowers. The display is a separate hinged 3D plane carrying the real Dyno screenshot. Circuit imagery appears only in the base, underneath the keyboard.
+`office-overhead.jpg` and `office-background.jpg` were created with the built-in OpenAI imagegen tool using `mac-workspace.jpg` as the visual reference. Both are 1536 × 1024; JPEG delivery quality is 88 and 86 respectively. The overhead image textures the tabletop and keyboard deck. The empty workspace textures a fixed upright room wall and the extended tabletop. They remain in the same 3D coordinate system as the Mac throughout the camera move. The display is a separate hinged 3D plane carrying the real Dyno screenshot. Circuit imagery appears only in the base, underneath the keyboard.
 
 Overhead prompt:
 

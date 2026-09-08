@@ -491,7 +491,9 @@ from animated neural connections through a silicon die and circuit board beneath
 the keyboard. It rises into an overhead view of the Mac and desk, then orbits
 to a front view of Dyno on the display. A shared 3D transform keeps the keyboard
 and hinged display connected; the screen never contains circuit-board imagery.
-Reverse scrolling retraces the same camera path.
+The wall and extended tabletop share the same room coordinates. Scroll input
+is damped, the keyboard reveal is gradual, and the camera completes its vertical
+pullback before lowering toward the front. Reverse scrolling retraces the path.
 Hardware and workspace images are conceptual AI-generated artwork; the Dyno
 screen is an actual app capture. Asset prompts are in `docs/assets/README.md`.
 No animation library or external font service is required. The page supports
