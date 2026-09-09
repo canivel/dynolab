@@ -7,7 +7,7 @@ import SwiftUI
 /// and where did the cheaper build start giving a different answer. The second
 /// needs the same prompt at the same seed on two models, which is exactly what
 /// nobody has to hand.
-struct InspectView: View {
+struct TokenAnalysisView: View {
     var model: MonitorModel
 
     @State private var prompt = "Explain in two sentences why B-tree indexes suit range queries."
@@ -30,6 +30,13 @@ struct InspectView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Token analysis").font(.title2)
+                    Text("Uses an already-running endpoint; no extra model copy or Lab service is needed. Analysis sends inference requests and shares serving capacity.")
+                        .font(.callout).foregroundStyle(.secondary)
+                    Text("Token probability measures the likelihood of the next token, not correctness or safety.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 controls
                 if servers.isEmpty {
                     Text("Start a model on the Models tab first.")
@@ -82,15 +89,17 @@ struct InspectView: View {
                         .controlSize(.small).frame(width: 84)
                 }
                 Spacer()
-                Button(running ? "Running…" : "Inspect") { run() }
+                Button(running ? "Running…" : "Analyze tokens") { run() }
                     .controlSize(.large)
                     .buttonStyle(.borderedProminent)
                     .disabled(running || servers.isEmpty
                               || prompt.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
-        .onAppear {
-            if referencePort == nil { referencePort = servers.first?.port }
+        .onAppear { if referencePort == nil { referencePort = servers.first?.port } }
+        .onChange(of: model.snapshot.models) { _, _ in
+            if !servers.contains(where: { $0.port == referencePort }) { referencePort = servers.first?.port }
+            if !servers.contains(where: { $0.port == comparePort }) { comparePort = nil }
         }
     }
 
@@ -135,7 +144,7 @@ struct InspectView: View {
             SectionHeading(
                 title.split(separator: "/").last.map(String.init) ?? title,
                 trailing: trace.meanProbability.map {
-                    String(format: "mean confidence %.2f · %d tokens", $0, trace.tokens.count)
+                    String(format: "mean token probability %.2f · %d tokens", $0, trace.tokens.count)
                 }
             )
             if let error = trace.error {
@@ -145,7 +154,7 @@ struct InspectView: View {
                 if let selected, trace.tokens.contains(where: { $0.id == selected.id }) {
                     alternativesView(selected)
                 }
-                leastConfident(trace)
+                lowestProbability(trace)
             }
         }
     }
@@ -178,10 +187,10 @@ struct InspectView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
     }
 
-    private func leastConfident(_ trace: TokenTrace) -> some View {
+    private func lowestProbability(_ trace: TokenTrace) -> some View {
         let ranked = trace.tokens.sorted { $0.probability < $1.probability }.prefix(5)
         return VStack(alignment: .leading, spacing: 3) {
-            Text("WHERE IT HESITATED")
+            Text("LOWEST TOKEN PROBABILITIES")
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.tertiary).tracking(0.7)
             ForEach(Array(ranked)) { token in
@@ -194,7 +203,7 @@ struct InspectView: View {
                     Text(String(format: "%.0f%%", token.probability * 100))
                         .font(.system(size: 10)).monospacedDigit()
                     if let runner = token.runnerUp {
-                        Text("wanted \(display(runner.token)) at "
+                        Text("alternative \(display(runner.token)) at "
                              + String(format: "%.0f%%", runner.probability * 100))
                             .font(.system(size: 10)).foregroundStyle(.tertiary)
                     }

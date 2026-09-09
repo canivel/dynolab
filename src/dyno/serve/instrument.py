@@ -17,6 +17,7 @@ from mlx_lm.server import APIHandler, ResponseGenerator
 
 from .exporters import PROMETHEUS_CONTENT_TYPE, prometheus_text, stats_json
 from .metrics import MetricsRegistry
+from ..execution import ExecutionHTTPMixin, ExecutionStore, current_execution
 
 registry = MetricsRegistry()
 
@@ -32,6 +33,11 @@ class InstrumentedResponseGenerator(ResponseGenerator):
     def generate(self, request, generation_args, progress_callback=None):
         model = _model_name(generation_args, request)
         record = registry.begin_request(model)
+        execution = current_execution()
+        if execution:
+            execution.tokens = True
+            execution.data["model"] = model
+            execution.event("lifecycle", "Queued for generation")
 
         try:
             # This call blocks until the scheduler picks the request up, so
@@ -42,6 +48,8 @@ class InstrumentedResponseGenerator(ResponseGenerator):
             raise
 
         registry.note_started(record)
+        if execution:
+            execution.event("lifecycle", "\nPrompt ready; generating")
 
         # The context carries the tokenized prompt and how much of it the
         # prompt cache satisfied, which is the only place those are exposed.
@@ -62,6 +70,12 @@ class InstrumentedResponseGenerator(ResponseGenerator):
         try:
             for token in stream:
                 registry.note_token(record)
+                execution = current_execution()
+                if execution:
+                    with execution.store.lock:
+                        execution.data["output_tokens"] += 1
+                    state = getattr(token, "state", "normal")
+                    execution.event({"reasoning": "thinking", "tool": "tool"}.get(state, "output"), getattr(token, "text", ""))
                 finish_reason = getattr(token, "finish_reason", None) or finish_reason
                 yield token
         except GeneratorExit:
@@ -74,6 +88,11 @@ class InstrumentedResponseGenerator(ResponseGenerator):
             raise
         finally:
             registry.finish_request(record, finish_reason=finish_reason, failed=failed)
+            execution = current_execution()
+            if execution:
+                execution.data["finish_reason"] = finish_reason
+                if failed:
+                    execution.event("error", "Generation failed")
 
 
 def _model_name(generation_args: Any, request: Any) -> str:
@@ -88,8 +107,10 @@ def _model_name(generation_args: Any, request: Any) -> str:
     return "unknown"
 
 
-class InstrumentedAPIHandler(APIHandler):
+class InstrumentedAPIHandler(ExecutionHTTPMixin, APIHandler):
     """Adds /metrics and /stats; everything else falls through to mlx_lm."""
+
+    execution_store = ExecutionStore()
 
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]

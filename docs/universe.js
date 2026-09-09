@@ -1,4 +1,4 @@
-import { createOfficeProps } from "./office-props.js";
+import { createOfficeProps } from "./office-props.js?v=3";
 import { createNeuralField } from "./neural-field.js";
 import * as THREE from "./vendor/three/three.module.js";
 import { cameraPose, ease, clamp } from "./camera-path.mjs";
@@ -115,7 +115,7 @@ async function init() {
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   scene = new THREE.Scene();
   scene.background = new THREE.Color("#171b16");
   camera = new THREE.PerspectiveCamera(45, 1, 0.02, 50);
@@ -125,7 +125,7 @@ async function init() {
       "assets/office-overhead.jpg",
       "assets/office-background.jpg",
       "assets/silicon-board.jpg",
-      "screenshots/window-run-dark.png",
+      "screenshots/window-lab-dark.png",
     ].map((p) => loader.loadAsync(p)),
   );
   for (const t of [overhead, room, board, app]) {
@@ -142,7 +142,8 @@ async function init() {
   key.shadow.camera.top = 6;
   key.shadow.camera.bottom = -6;
   key.shadow.bias = -0.0004;
-  key.shadow.radius = 4;
+  key.shadow.radius = 3;
+  key.shadow.intensity = 0.65;
   scene.add(key);
   const fill = new THREE.DirectionalLight(0xb9cfcd, 0.6);
   fill.position.set(3, 4, -1);

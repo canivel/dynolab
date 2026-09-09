@@ -27,8 +27,12 @@ jobs:
           test "$(uname -m)" = arm64
           VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml | head -1)
           test "$RELEASE_TAG" = "v$VERSION"
-      - name: Test router
-        run: PYTHONPATH=src python3 -m unittest discover -s tests -v
+      - name: Install test dependencies
+        run: uv sync --extra serve --extra mcp
+      - name: Test research API, MCP and inference helpers
+        run: PYTHONPATH=src uv run --extra serve --extra mcp python -m unittest discover -s tests -v
+      - name: Test native resource checks
+        run: swift test --package-path app
       - name: Build and verify DMG
         run: ./app/package-dmg.sh
       - name: Publish release with DMG and checksum

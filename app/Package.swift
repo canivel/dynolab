@@ -5,6 +5,7 @@ let package = Package(
     name: "Dyno",
     platforms: [.macOS(.v14)],
     targets: [
+        .testTarget(name: "DynoKitTests", dependencies: ["DynoKit"]),
         .target(
             name: "DynoKit",
             swiftSettings: [.swiftLanguageMode(.v5)]

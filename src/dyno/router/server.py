@@ -18,6 +18,7 @@ from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from ..execution import ExecutionHTTPMixin, ExecutionStore, current_execution
 from .backends import Backend, discover
 from .policy import Policy, conversation_key, mean_confidence
 
@@ -33,6 +34,7 @@ class RouterState:
     def __init__(
         self, policy: Policy, ports: tuple[int, ...], extra: list[str], scan: bool = True
     ) -> None:
+        self.executions = ExecutionStore()
         self.policy = policy
         self.ports = ports
         self.extra = extra
@@ -74,10 +76,15 @@ class RouterState:
                 pass
 
 
+def _execution_headers():
+    execution = current_execution()
+    return {"X-Dyno-Execution-ID": execution.data["id"]} if execution else {}
+
+
 def _post(url: str, payload: dict[str, Any], timeout: float = 900) -> dict[str, Any]:
     request = urllib.request.Request(
         url, data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"}, method="POST",
+        headers={"Content-Type": "application/json", **_execution_headers()}, method="POST",
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode())
@@ -86,7 +93,7 @@ def _post(url: str, payload: dict[str, Any], timeout: float = 900) -> dict[str, 
 def _post_stream(url: str, payload: dict[str, Any], timeout: float = 900):
     request = urllib.request.Request(
         url, data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"}, method="POST",
+        headers={"Content-Type": "application/json", **_execution_headers()}, method="POST",
     )
     return urllib.request.urlopen(request, timeout=timeout)
 
@@ -146,8 +153,20 @@ def tag_conversation(state: RouterState, backend: Backend, prompt: str, key: str
         logging.info("tagged conversation %s as %s", key, tier)
 
 
-class RouterHandler(BaseHTTPRequestHandler):
+class _RouterDispatch(BaseHTTPRequestHandler):
+    def do_POST(self):
+        return self._route_POST()
+
+    def do_GET(self):
+        return self._route_GET()
+
+
+class RouterHandler(ExecutionHTTPMixin, _RouterDispatch):
     state: RouterState  # injected
+
+    @property
+    def execution_store(self):
+        return self.state.executions
 
     protocol_version = "HTTP/1.1"
 
@@ -184,7 +203,7 @@ class RouterHandler(BaseHTTPRequestHandler):
         self._send_json({"error": "router administration is local-only"}, status=403)
         return False
 
-    def do_GET(self) -> None:
+    def _route_GET(self) -> None:
         path = self.path.split("?", 1)[0]
         state = self.state
         if path in ("/backends", "/routes", "/v1/routes", "/config", "/metrics"):
@@ -236,7 +255,7 @@ class RouterHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
 
-    def do_POST(self) -> None:
+    def _route_POST(self) -> None:
         path = self.path.split("?", 1)[0]
 
         if path == "/config":
@@ -288,6 +307,9 @@ class RouterHandler(BaseHTTPRequestHandler):
             self._send_json({"error": str(error)}, status=503)
             return
 
+        execution = current_execution()
+        if execution:
+            execution.event("routing", json.dumps(decision.describe(), ensure_ascii=False, indent=2))
         started = time.time()
         stream = bool(body.get("stream"))
         strongest = max(backends, key=lambda b: b.capability)
@@ -388,6 +410,10 @@ class RouterHandler(BaseHTTPRequestHandler):
         stronger = state.policy.should_escalate(confidence, decision.chosen, backends)
         result = first
         if stronger is not None:
+            execution = current_execution()
+            if execution:
+                execution.event("routing", "\nEscalating from " + decision.chosen.name + " to " + stronger.name)
+                execution.event("candidate", json.dumps(first, ensure_ascii=False, indent=2))
             trace["escalated_from"] = decision.chosen.name
             trace["escalated_to"] = stronger.name
             trace["escalation_reason"] = (
@@ -412,15 +438,16 @@ class RouterHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "close")
         self.end_headers()
-        content = (result.get("choices") or [{}])[0].get("message", {}).get("content", "")
+        message = (result.get("choices") or [{}])[0].get("message", {})
+        finish_reason = (result.get("choices") or [{}])[0].get("finish_reason") or "stop"
         chunk = {
             "id": result.get("id", "router"), "object": "chat.completion.chunk",
             "created": int(time.time()), "model": result.get("model", ""),
-            "choices": [{"index": 0, "delta": {"role": "assistant", "content": content},
+            "choices": [{"index": 0, "delta": {"role": "assistant", **message},
                          "finish_reason": None}],
         }
         done = dict(chunk)
-        done["choices"] = [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+        done["choices"] = [{"index": 0, "delta": {}, "finish_reason": finish_reason}]
         for message in (chunk, done):
             self.wfile.write(f"data: {json.dumps(message)}\n\n".encode())
         self.wfile.write(b"data: [DONE]\n\n")

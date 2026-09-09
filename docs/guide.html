@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dyno Docs — Lab, SDK, API &amp; MCP</title>
+<meta name="description" content="Set up Dyno Research Lab, run experiments through Python and HTTP, and connect agents through a local MCP server.">
+<link rel="stylesheet" href="guide.css"></head><body>
+<header><a class="brand" href="index.html">dyno <span>DOCUMENTATION</span></a><a href="https://github.com/canivel/mlx-dyno">GitHub ↗</a></header>
+<div class="layout"><aside><nav aria-label="Documentation sections"><div class="toc">
+<ul>
+<li><a href="#dyno-research-lab-api-and-sdk">Dyno Research Lab — API and SDK</a><ul>
+<li><a href="#start">Start</a></li>
+<li><a href="#app-navigation">App navigation</a></li>
+<li><a href="#python-sdk">Python SDK</a><ul>
+<li><a href="#probe-and-sae-examples">Probe and SAE examples</a></li>
+</ul>
+</li>
+<li><a href="#http">HTTP</a></li>
+<li><a href="#experiment-semantics">Experiment semantics</a></li>
+<li><a href="#reproducibility-and-resources">Reproducibility and resources</a><ul>
+<li><a href="#running-beside-an-inference-server">Running beside an inference server</a></li>
+</ul>
+</li>
+<li><a href="#mcp-integration">MCP integration</a></li>
+</ul>
+</li>
+<li><a href="#local-mcp-server">Local MCP server</a><ul>
+<li><a href="#setup">Setup</a></li>
+<li><a href="#tools">Tools</a></li>
+<li><a href="#resources-and-privacy">Resources and privacy</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</nav><a href="openapi.json">Download OpenAPI JSON ↗</a></aside>
+<main><h1 id="dyno-research-lab-api-and-sdk">Dyno Research Lab — API and SDK</h1>
+<p>An experimental local workbench for AI safety and alignment research. Its results are measurements and hypotheses, not safety certifications. Current jobs inspect residual block outputs, compare interventions, train binary probes, and train small sparse autoencoders. Pretrained SAE imports and circuit tracing are not yet implemented.</p>
+<h2 id="start">Start</h2>
+<p>In an updated app, select <strong>Lab → Experiments → Start lab</strong>. From a checkout of
+this repository, install and run:</p>
+<pre><code class="language-bash">python3 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[serve,mcp]'
+</code></pre>
+<p>Then:</p>
+<pre><code class="language-bash">dyno lab --port 8980
+</code></pre>
+<p>The service binds loopback. HTTP clients on the same Mac can use <code>/lab/v1</code>; browser-origin requests and LAN clients are rejected. It uses the same Python package as the dependency-free SDK, <code>dyno.sdk</code>. This is separate from the OpenAI-compatible inference API.</p>
+<h2 id="app-navigation">App navigation</h2>
+<p>The main tabs are <strong>Lab, Execution, Models, Discover, Router, Performance</strong>.
+Lab opens first. <strong>Experiments</strong> runs isolated activation, intervention, probe
+and SAE jobs. <strong>Token analysis</strong> is the former Inspect tab: it sends prompts to
+an already-running endpoint and displays token probabilities and alternative
+tokens without loading another model copy. It does consume serving capacity.
+Execution shows captured API requests; it is separate from either experiment mode.</p>
+<h2 id="python-sdk">Python SDK</h2>
+<pre><code class="language-python">from dyno.sdk import Lab
+
+lab = Lab()
+job = lab.inspect(
+    model=&quot;mlx-community/Qwen1.5-0.5B-Chat-4bit&quot;,
+    prompt=&quot;The capital of France is&quot;,
+    layers=[4, 8], seed=0,
+)
+completed = lab.wait(job[&quot;id&quot;])
+print(completed[&quot;result&quot;][&quot;next_tokens&quot;])
+lab.artifact(job[&quot;id&quot;], &quot;activations.npz&quot;, &quot;activations.npz&quot;)
+
+comparison = lab.compare(
+    model=&quot;mlx-community/Qwen1.5-0.5B-Chat-4bit&quot;,
+    prompt=&quot;The capital of France is&quot;,
+    layers=[8], intervention=&quot;scale&quot;,
+    strengths=[0, 0.5, 1, 1.5], max_tokens=24,
+)
+print(lab.wait(comparison[&quot;id&quot;])[&quot;result&quot;][&quot;trials&quot;])
+</code></pre>
+<p><code>lab.schema()</code> returns the OpenAPI schema.</p>
+<p><code>lab.probe(model, examples, layers=[8])</code> trains regularized logistic classifiers. <code>lab.sae(model, examples, layers=[8], features=64, steps=100)</code> trains a small ReLU/L1 autoencoder. <code>lab.jobs()</code>, <code>lab.job(id)</code>, <code>lab.cancel(id)</code> and <code>lab.health()</code> manage runs. An SDK wait timeout does not cancel the job.</p>
+<h3 id="probe-and-sae-examples">Probe and SAE examples</h3>
+<p>This eight-example sentiment dataset demonstrates the input format; it is not
+large enough to establish useful generalization or validate a safety detector.</p>
+<pre><code class="language-python">examples = [
+    {&quot;text&quot;: &quot;I loved this&quot;, &quot;label&quot;: 1, &quot;split&quot;: &quot;train&quot;},
+    {&quot;text&quot;: &quot;A wonderful day&quot;, &quot;label&quot;: 1, &quot;split&quot;: &quot;train&quot;},
+    {&quot;text&quot;: &quot;I hated this&quot;, &quot;label&quot;: 0, &quot;split&quot;: &quot;train&quot;},
+    {&quot;text&quot;: &quot;A terrible day&quot;, &quot;label&quot;: 0, &quot;split&quot;: &quot;train&quot;},
+    {&quot;text&quot;: &quot;Excellent service&quot;, &quot;label&quot;: 1, &quot;split&quot;: &quot;test&quot;},
+    {&quot;text&quot;: &quot;A delightful meal&quot;, &quot;label&quot;: 1, &quot;split&quot;: &quot;test&quot;},
+    {&quot;text&quot;: &quot;Awful service&quot;, &quot;label&quot;: 0, &quot;split&quot;: &quot;test&quot;},
+    {&quot;text&quot;: &quot;A disappointing meal&quot;, &quot;label&quot;: 0, &quot;split&quot;: &quot;test&quot;},
+]
+model = &quot;mlx-community/Qwen1.5-0.5B-Chat-4bit&quot;
+probe = lab.probe(model, examples, layers=[8])
+print(lab.wait(probe[&quot;id&quot;])[&quot;result&quot;][&quot;reports&quot;])
+sae = lab.sae(model, examples, layers=[8], features=64, steps=100)
+print(lab.wait(sae[&quot;id&quot;])[&quot;result&quot;][&quot;reports&quot;])
+</code></pre>
+<h2 id="http">HTTP</h2>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/lab/v1/health</code></td>
+<td>Capability list</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/lab/v1/openapi.json</code></td>
+<td>OpenAPI 3 specification</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/lab/v1/jobs</code></td>
+<td>Submit configuration; returns 202</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/lab/v1/jobs</code></td>
+<td>Last 100 job summaries</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/lab/v1/jobs/{id}</code></td>
+<td>Configuration, status, result, artifact names</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/lab/v1/jobs/{id}/cancel</code></td>
+<td>Cancel worker; send <code>{}</code></td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/lab/v1/jobs/{id}</code></td>
+<td>Delete a terminal job and its files</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/lab/v1/jobs/{id}/artifacts/{name}</code></td>
+<td>Download a listed activation/probe/SAE artifact</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-bash">curl http://127.0.0.1:8980/lab/v1/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{&quot;operation&quot;:&quot;inspect&quot;,&quot;model&quot;:&quot;mlx-community/Qwen1.5-0.5B-Chat-4bit&quot;,&quot;prompt&quot;:&quot;The capital of France is&quot;,&quot;layers&quot;:[4,8]}'
+</code></pre>
+<h2 id="experiment-semantics">Experiment semantics</h2>
+<p>Inputs are <strong>raw text</strong>: no hidden chat template or implicit system prompt. Layers are zero-indexed; capture is at the residual block output. The worker supports MLX models exposing <code>model.layers</code> with <code>[batch, token, hidden]</code> outputs; unsupported block layouts fail explicitly. The real-model acceptance tests use Qwen1.5-0.5B-Chat-4bit; availability in Discover does not guarantee Lab compatibility.</p>
+<ul>
+<li><strong>Inspect:</strong> per-token activation norms, raw intermediate logit-lens predictions where a final normalization and vocabulary head are available, final next-token probabilities, and saved activation arrays. This readout does not prove what later layers causally use.</li>
+<li><strong>Compare:</strong> same-prefix target-token probability changes and paired greedy continuations. <code>scale=1</code> is unchanged; <code>ablate=0</code> is unchanged; <code>patch=0</code> and <code>steer=0</code> are unchanged. Intervention applies to the selected block's last position on every forward pass. <code>patch</code> uses <code>donor_prompt</code>; <code>steer</code> uses a unit vector from last-token <code>positive − negative</code> activations. All other settings are held fixed. Optional <code>target_token</code> must tokenize to exactly one token; otherwise the baseline's top token is used. <code>prompts</code> can contain up to 32 inputs. Free-running completions may diverge and must not be interpreted as token-aligned comparisons. These trials do not automatically grade behavioral safety.</li>
+<li><strong>Probe:</strong> examples need <code>text</code>, binary <code>label</code>, and <code>split</code> (<code>train</code> or <code>test</code>). Both classes must occur in each split; exact cross-split duplicates are rejected. Standardization and weights are fit on training data only. Results include held-out accuracy, AUROC, Brier score, majority baseline and a shuffled-label control. Avoid template/topic leakage; do not tune layers against your final test set. Scores are not a general deception detector. Artifacts contain weight, bias, training mean and scale; score with sigmoid(((x−mean)/std) @ weight + bias).</li>
+<li><strong>SAE sandbox:</strong> explicit train/test examples, last-token activations, ReLU encoder, linear decoder and L1 penalty. Results include held-out MSE, active/dead feature statistics, training loss and top activating examples. This small dictionary can be undercomplete; it is not a substitute for a large pretrained SAE. Features are numbered, not given invented semantic labels. Decoder features are not yet steerable through this API. Normalization artifacts accompany weights.</li>
+</ul>
+<h2 id="reproducibility-and-resources">Reproducibility and resources</h2>
+<p>One job runs at a time in a disposable model process. It never modifies inference-server weights or saves an altered base model. Cancellation kills only that worker. Jobs persist under <code>~/.mlx-dyno/lab/&lt;id&gt;</code> (configuration, output, logs, activations and weights), with user-only directory permissions. Export and delete deliberately: prompts/datasets may be sensitive.</p>
+<p>Record exact model revisions; <code>revision</code> can pin a Hugging Face revision. Results include model configuration, runtime versions, requested revision, resolved tokenizer/model path where available, and a weight-file size/time manifest. This manifest is <strong>not a cryptographic checksum of weights</strong>. Configurations receive their own SHA-256 hash.</p>
+<p>Limits: 8 selected layers, 1,024 input tokens, 128 generated tokens, 512 dataset examples, 9 intervention strengths, and a 30-minute worker deadline. A research worker loads a separate model copy and shares the Mac's memory/GPU budget. Start small; there is no universal memory-fit guarantee. SAE training is limited to 8–512 features and 500 steps in this first version.</p>
+<h3 id="running-beside-an-inference-server">Running beside an inference server</h3>
+<p>The native Lab selects a matching serving model when available on disk and labels
+it <strong>Serving now</strong>. Experiments still load their own copy; they do not hook,
+replace, or unload a serving model. You can select another downloaded model.</p>
+<p>Before enabling <strong>Run experiment</strong>, the app checks fresh hardware telemetry,
+active serving requests, and GPU utilization. It estimates additional memory as
+1.35 × weights + 2 GiB workspace + an input-length margin, and keeps the larger
+of 4 GiB or 5% of physical RAM in reserve. Available memory is the smaller of
+system headroom and Metal headroom, after that reserve. Missing telemetry,
+insufficient headroom, active requests, or GPU utilization of 50% or more block
+launch and show a next step. This conservative estimate is not a measured peak
+or a resource reservation. The SDK/API currently do not apply this native UI check.</p>
+<p>No concurrent experiment can promise zero impact on inference: processes share
+GPU execution and memory bandwidth, and new requests may arrive after admission.
+For latency-sensitive serving, run experiments during a quiet period or on another
+Mac. Dyno never automatically stops a serving model to make room.</p>
+<h2 id="mcp-integration">MCP integration</h2>
+<p>See the <a href="#local-mcp-server">local MCP setup and tool reference</a>. The same research jobs are available through stdio MCP, HTTP and Python.</p>
+<hr />
+<h1 id="local-mcp-server">Local MCP server</h1>
+<p>Dyno includes a <strong>stdio MCP bridge</strong> for assistants and agent tools on your Mac.
+It exposes the Research Lab through the <a href="https://py.sdk.modelcontextprotocol.io/v1/">official MCP Python SDK</a>.
+It is not an inference server, and it does not listen on a network port.</p>
+<h2 id="setup">Setup</h2>
+<p>Start <strong>Lab → Experiments → Start lab</strong> in Dyno, or run <code>dyno lab --port 8980</code>.
+The bridge connects to that existing loopback service. Starting MCP alone does
+not start a Lab worker, download a model, or submit an experiment.</p>
+<p>From a checkout of this repository:</p>
+<pre><code class="language-bash">python3 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[serve,mcp]'
+dyno mcp --port 8980
+</code></pre>
+<p>A stdio server waits for an MCP client; it has no interactive terminal prompt.
+Configure your client's MCP server settings using either the installed <code>dyno</code>
+executable (use its absolute path if your client does not inherit PATH), or the
+launcher bundled in an updated Dyno app:</p>
+<pre><code class="language-json">{
+  &quot;mcpServers&quot;: {
+    &quot;dyno&quot;: {
+      &quot;command&quot;: &quot;/Applications/Dyno.app/Contents/MacOS/dyno-cli&quot;,
+      &quot;args&quot;: [&quot;mcp&quot;, &quot;--port&quot;, &quot;8980&quot;]
+    }
+  }
+}
+</code></pre>
+<p>The launcher resolves its own runtime after relocation. Adjust the app path if
+Dyno is installed elsewhere. The <code>mcpServers</code> envelope is a common client format;
+use your client's equivalent command and argument fields when its format differs.
+An older DMG may not contain this launcher; build the current source with
+<code>./app/build.sh</code> until a release containing these features is available.</p>
+<h2 id="tools">Tools</h2>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Purpose</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lab_health</code></td>
+<td>Check service availability</td>
+<td>Read only</td>
+</tr>
+<tr>
+<td><code>lab_jobs</code></td>
+<td>List recent experiment metadata</td>
+<td>Read only</td>
+</tr>
+<tr>
+<td><code>lab_job</code></td>
+<td>Read configuration, status, results or errors</td>
+<td>Read only</td>
+</tr>
+<tr>
+<td><code>lab_submit</code></td>
+<td>Submit <code>inspect</code>, <code>compare</code>, <code>probe</code> or <code>sae</code></td>
+<td>Loads a separate model and runs an experiment</td>
+</tr>
+<tr>
+<td><code>lab_cancel</code></td>
+<td>Cancel the selected experiment worker</td>
+<td>Stops that worker only</td>
+</tr>
+<tr>
+<td><code>lab_artifacts</code></td>
+<td>List HTTP download links for saved artifacts</td>
+<td>Read only</td>
+</tr>
+</tbody>
+</table>
+<p>The resource <code>dyno://lab/openapi</code> returns the service's OpenAPI schema.
+Large arrays stay in artifact files; use the SDK or HTTP URLs to download them.</p>
+<p>Example <code>lab_submit</code> arguments:</p>
+<pre><code class="language-json">{
+  &quot;operation&quot;: &quot;inspect&quot;,
+  &quot;model&quot;: &quot;mlx-community/Qwen1.5-0.5B-Chat-4bit&quot;,
+  &quot;settings&quot;: {
+    &quot;prompt&quot;: &quot;The capital of France is&quot;,
+    &quot;layers&quot;: [4, 8],
+    &quot;max_input_tokens&quot;: 256
+  }
+}
+</code></pre>
+<p>Submission returns a job ID immediately. Call <code>lab_job</code> to poll that ID, then
+<code>lab_artifacts</code> for files. Only one experiment can run at a time. A model ID may
+download weights; a local model path uses your existing download.</p>
+<h2 id="resources-and-privacy">Resources and privacy</h2>
+<p>The MCP bridge and Python SDK use the same job API. The native UI's memory/GPU
+admission check does <strong>not</strong> apply to these clients. Check headroom and serving
+activity before submitting, especially for a large model. Separate processes
+still compete for unified memory and GPU bandwidth. Cancellation never stops a
+serving model; the bridge cannot reconfigure or unload inference servers.</p>
+<p>Job inputs and results are stored locally, but a connected assistant can read
+them and may send tool results to its model provider. Choose which jobs and
+prompts you expose accordingly. There is no remote MCP transport, shell tool,
+arbitrary file reader, or automatic connection to an assistant in this release.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<ul>
+<li><strong>Connection refused:</strong> start Lab and match the configured port.</li>
+<li><strong>MCP dependency missing:</strong> install <code>.[mcp]</code> from the checkout, or use the updated app launcher.</li>
+<li><strong>A job is already running:</strong> poll its status or cancel that Lab job.</li>
+<li><strong>Older Lab service:</strong> quit the instance that owns the old Lab process and reopen the updated build.</li>
+<li><strong>Model error:</strong> inspect the job error and verify its architecture, layers and input limits. Hybrid Qwen layers are covered by regression tests; support is not universal across every MLX model.</li>
+</ul><footer>Generated from <a href="https://github.com/canivel/mlx-dyno/blob/main/docs/research-api.md">the GitHub documentation</a>. Research features are experimental.</footer></main></div></body></html>

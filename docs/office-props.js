@@ -44,7 +44,59 @@ export function createOfficeProps(T) {
     return texture;
   }
   const grain = grainTexture();
-  const ceramic = material(0xd2c4ac, 0.87, {
+  // Surface detail follows each leaf's UVs, so veins bend with the blade.
+  function leafTexture() {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 512;
+    const ctx = canvas.getContext("2d");
+    const gradient = ctx.createLinearGradient(0, 0, 256, 0);
+    gradient.addColorStop(0, "#233c19");
+    gradient.addColorStop(0.43, "#59713b");
+    gradient.addColorStop(0.5, "#82905a");
+    gradient.addColorStop(0.56, "#506b31");
+    gradient.addColorStop(1, "#293e1d");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 256, 512);
+    let seed = 137;
+    for (let i = 0; i < 18000; i++) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      const x = seed % 256;
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      const y = seed % 512;
+      ctx.fillStyle = i % 2 ? "rgba(160,175,100,.09)" : "rgba(12,30,8,.08)";
+      ctx.fillRect(x, y, 2, 3);
+    }
+    ctx.strokeStyle = "rgba(171,181,109,.25)";
+    ctx.lineWidth = 1.1;
+    for (let y = 30; y < 480; y += 37) {
+      for (const direction of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(128, y);
+        ctx.bezierCurveTo(
+          128 + direction * 34,
+          y + 7,
+          128 + direction * 83,
+          y + 39,
+          128 + direction * 121,
+          y + 62,
+        );
+        ctx.stroke();
+      }
+    }
+    ctx.strokeStyle = "rgba(181,190,126,.5)";
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(128, 0);
+    ctx.lineTo(128, 512);
+    ctx.stroke();
+    const texture = new T.CanvasTexture(canvas);
+    texture.colorSpace = T.SRGBColorSpace;
+    texture.anisotropy = 4;
+    return texture;
+  }
+  const leafMap = leafTexture();
+  const ceramic = material(0xb3a08a, 0.72, {
     bumpMap: grain,
     bumpScale: 0.002,
   });
@@ -97,14 +149,18 @@ export function createOfficeProps(T) {
     stone.scale.y = 0.45;
   }
   const stemMat = material(0x3a5931, 0.8);
-  const veinMat = material(0x70864c, 0.74);
   // Curved, tapered leaf blades, folded gently along the central rib.
-  const leafMats = [0x344c28, 0x466234, 0x526c38, 0x3f592e].map((color) =>
-    material(color, 0.48, { side: T.DoubleSide }),
+  const leafMats = [0xd6e2b9, 0xbacba5, 0xe0d4ac, 0xb3c49d].map((color) =>
+    material(color, 0.53, {
+      map: leafMap,
+      bumpMap: leafMap,
+      bumpScale: 0.0008,
+      side: T.DoubleSide,
+    }),
   );
-  for (let i = 0; i < 13; i++) {
-    const angle = i * 2.39996;
-    const height = 0.56 + (i % 5) * 0.09;
+  for (let i = 0; i < 11; i++) {
+    const angle = i * 2.39996 + Math.sin(i * 7.1) * 0.27;
+    const height = 0.49 + (i % 5) * 0.105 + Math.sin(i * 3.7) * 0.035;
     const root = new T.Vector3(
       Math.cos(angle) * 0.035,
       0.365,
@@ -122,8 +178,8 @@ export function createOfficeProps(T) {
       stemMat,
       "petiole-" + i,
     );
-    const length = 0.28 + (i % 4) * 0.038,
-      width = 0.1 + (i % 3) * 0.012;
+    const length = 0.27 + (i % 4) * 0.048,
+      width = 0.076 + (i % 3) * 0.018;
     const direction = new T.Vector3(Math.cos(angle), 0, Math.sin(angle));
     const side = new T.Vector3(-Math.sin(angle), 0, Math.cos(angle));
     const center = (t) =>
@@ -131,7 +187,12 @@ export function createOfficeProps(T) {
         .clone()
         .addScaledVector(direction, length * t)
         .add(
-          new T.Vector3(0, 0.17 * Math.sin(t * Math.PI * 0.9) - 0.1 * t * t, 0),
+          new T.Vector3(
+            0,
+            (0.1 + (i % 3) * 0.045) * Math.sin(t * Math.PI) -
+              (0.06 + (i % 4) * 0.035) * t * t,
+            0,
+          ),
         );
     const vertices = [],
       uvs = [],
@@ -143,8 +204,12 @@ export function createOfficeProps(T) {
       const half = width * Math.pow(Math.sin(Math.PI * t), 0.8);
       for (let col = 0; col <= cols; col++) {
         const s = (col / cols) * 2 - 1;
-        const point = center(t).addScaledVector(side, s * half);
-        point.y -= Math.abs(s) * half * 0.28;
+        const point = center(t).addScaledVector(
+          side,
+          s * half * (s < 0 ? 0.88 : 1),
+        );
+        point.y -= Math.abs(s) * half * 0.42;
+        point.y += s * t * t * Math.sin(i * 2.1) * 0.05;
         point.y += Math.sin(t * 20 + i) * 0.003 * s * s;
         vertices.push(point.x, point.y, point.z);
         uvs.push(col / cols, t);
@@ -164,31 +229,6 @@ export function createOfficeProps(T) {
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
     add(plant, geometry, leafMats[i % 4], "leaf-blade-" + i);
-    tube(
-      plant,
-      [center(0), center(0.3), center(0.65), center(0.97)],
-      0.0018,
-      veinMat,
-      "leaf-midrib-" + i,
-    );
-    for (let j = 1; j <= 5; j++) {
-      const t = j / 7;
-      for (const sign of [-1, 1]) {
-        const endT = t + 0.095;
-        const end = center(endT).addScaledVector(
-          side,
-          sign * width * Math.pow(Math.sin(Math.PI * endT), 0.8) * 0.85,
-        );
-        end.y -= width * 0.2;
-        tube(
-          plant,
-          [center(t), center(t + 0.05).lerp(end, 0.5), end],
-          0.00065,
-          veinMat,
-          "leaf-vein-" + i + "-" + j + "-" + sign,
-        );
-      }
-    }
   }
   // Clothbound notebook: rounded covers, ivory page block and elastic closure.
   const book = new T.Group();
@@ -221,8 +261,47 @@ export function createOfficeProps(T) {
     geo.rotateX(-Math.PI / 2);
     return geo;
   }
-  const cloth = material(0x34423e, 0.96, { bumpMap: grain, bumpScale: 0.0015 });
-  const paper = material(0xebe2ce, 0.95);
+  // Fine woven cover texture, rather than a uniformly shaded plastic slab.
+  const fabricCanvas = document.createElement("canvas");
+  fabricCanvas.width = fabricCanvas.height = 256;
+  const fabric = fabricCanvas.getContext("2d");
+  fabric.fillStyle = "#80715b";
+  fabric.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 256; i += 2) {
+    fabric.strokeStyle = i % 4 ? "rgba(30,23,16,.14)" : "rgba(225,215,183,.16)";
+    fabric.beginPath();
+    fabric.moveTo(i, 0);
+    fabric.lineTo(i, 256);
+    fabric.stroke();
+    fabric.beginPath();
+    fabric.moveTo(0, i);
+    fabric.lineTo(256, i);
+    fabric.stroke();
+  }
+  // Small dye variations and worn edges break up the broad, flat cover.
+  for (let i = 0; i < 32; i++) {
+    const x = (i * 73) % 256,
+      y = (i * 109) % 256;
+    const shade = fabric.createRadialGradient(x, y, 0, x, y, 24 + (i % 19));
+    shade.addColorStop(
+      0,
+      i % 2 ? "rgba(210,196,159,.11)" : "rgba(36,27,18,.09)",
+    );
+    shade.addColorStop(1, "rgba(100,80,55,0)");
+    fabric.fillStyle = shade;
+    fabric.fillRect(0, 0, 256, 256);
+  }
+  const fabricMap = new T.CanvasTexture(fabricCanvas);
+  fabricMap.colorSpace = T.SRGBColorSpace;
+  fabricMap.wrapS = fabricMap.wrapT = T.RepeatWrapping;
+  fabricMap.repeat.set(1, 1);
+  fabricMap.anisotropy = 4;
+  const cloth = material(0xe1d5bd, 0.89, {
+    map: fabricMap,
+    bumpMap: fabricMap,
+    bumpScale: 0.001,
+  });
+  const paper = material(0xded5c3, 0.95, { bumpMap: grain, bumpScale: 0.0004 });
   add(
     book,
     roundedSlab(0.9, 1.15, 0.009, 0.04),
@@ -244,21 +323,21 @@ export function createOfficeProps(T) {
     "notebook-front-cover",
     [0, 0.061, 0],
   );
-  const pageLine = material(0xb9af99, 1);
-  for (let i = 0; i < 9; i++) {
+  const pageLine = material(0xbfb6a5, 1);
+  for (let i = 0; i < 24; i++) {
     add(
       book,
-      new T.BoxGeometry(0.001, 0.0007, 1.035),
+      new T.BoxGeometry(0.001, 0.0003, 1.035),
       pageLine,
       "page-edge-" + i,
-      [0.431, 0.02 + i * 0.004, 0],
+      [0.431, 0.02 + i * 0.00155, 0],
     );
     add(
       book,
-      new T.BoxGeometry(0.77, 0.0007, 0.001),
+      new T.BoxGeometry(0.77, 0.0003, 0.001),
       pageLine,
       "page-foot-" + i,
-      [0.018, 0.02 + i * 0.004, 0.551],
+      [0.018, 0.02 + i * 0.00155, 0.551],
     );
   }
   add(
@@ -268,7 +347,10 @@ export function createOfficeProps(T) {
     "bound-spine",
     [-0.435, 0.037, 0],
   );
-  const elastic = material(0x1b2420, 1);
+  const elastic = material(0x433a2c, 0.94, {
+    bumpMap: fabricMap,
+    bumpScale: 0.0008,
+  });
   add(
     book,
     new T.BoxGeometry(0.025, 0.003, 1.13),
@@ -284,6 +366,16 @@ export function createOfficeProps(T) {
       "elastic-edge-" + z,
       [0.31, 0.043, z],
     );
+  const hinge = material(0x75644e, 0.98);
+  for (const x of [-0.392, -0.385]) {
+    add(
+      book,
+      new T.BoxGeometry(0.002, 0.0006, 1.055),
+      hinge,
+      "cover-hinge-" + x,
+      [x, 0.074, 0],
+    );
+  }
   const ribbon = add(
     book,
     new T.PlaneGeometry(0.022, 0.16),

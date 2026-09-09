@@ -28,6 +28,15 @@ enum ViewSnapshot {
         waitForData(model)
         model.selectRunningModelForSnapshot()
         let publication = arguments.contains("--public")
+        if arguments.contains("--lab-only") {
+            if let value = ProcessInfo.processInfo.environment["DYNO_LAB_PORT"], let port = UInt16(value) { model.researchLab.port = port }
+            Task {
+                await model.researchLab.start(); await model.researchLab.refresh()
+                model.researchLab.selected = model.researchLab.jobs.first(where: { $0["status"] as? String == "completed" && (ProcessInfo.processInfo.environment["DYNO_LAB_OPERATION"] == nil || $0["operation"] as? String == ProcessInfo.processInfo.environment["DYNO_LAB_OPERATION"]) })?["id"] as? String
+                await model.researchLab.refresh()
+            }
+            RunLoop.main.run(until: Date().addingTimeInterval(1.0))
+        }
 
         // Built lazily: constructing every view up front would run each one's
         // initialiser before the first capture.
@@ -42,7 +51,14 @@ enum ViewSnapshot {
                 model.shareRouterOnNetwork = true
                 return AnyView(MainWindow(model: model, initialTab: .router))
             }, CGSize(width: 980, height: 620)),
-            ("window-inspect", { AnyView(MainWindow(model: model, initialTab: .inspect)) },
+            ("window-lab", { AnyView(MainWindow(model: model, initialTab: .lab)) },
+             CGSize(width: 1200, height: 850)),
+            ("window-execution", { AnyView(MainWindow(model: model, initialTab: .execution)) },
+             CGSize(width: 1100, height: 760)),
+            ("window-inspect", {
+                model.researchLab.tokenAnalysis = true
+                return AnyView(MainWindow(model: model, initialTab: .lab))
+            },
              CGSize(width: 980, height: 620)),
             ("window-observe", { AnyView(MainWindow(model: model, initialTab: .observe)) },
              CGSize(width: 980, height: 960)),
@@ -56,6 +72,17 @@ enum ViewSnapshot {
             // Omit conversations, traces, connection addresses and filesystem views.
             let allowed = ["window-run", "window-observe", "window-discover", "menu-panel"]
             targets = targets.filter { allowed.contains($0.0) }
+        }
+
+        if arguments.contains("--token-only") {
+            targets = targets.filter { $0.0 == "window-inspect" }
+        }
+        if arguments.contains("--execution-only") {
+            targets = targets.filter { $0.0 == "window-execution" }
+        }
+
+        if arguments.contains("--lab-only") {
+            targets = targets.filter { $0.0 == "window-lab" }
         }
 
         // Both appearances: a colour that reads in one and vanishes in the

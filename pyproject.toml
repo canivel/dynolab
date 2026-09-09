@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "mlx-dyno"
 version = "0.1.0"
-description = "Real metrics for local LLMs on Apple Silicon: an MLX server that reports its own throughput, and a monitor for the machine underneath"
+description = "AI safety and alignment research lab: probes, interventions, SAE experiments, SDK and APIs, powered by local MLX inference"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -24,6 +24,8 @@ dependencies = ["rich>=13.7"]
 
 [project.optional-dependencies]
 serve = ["mlx-lm>=0.28"]
+mcp = ["mcp>=1.28,<2"]
+docs = ["markdown>=3.7,<4"]
 
 [project.scripts]
 dyno = "dyno.cli:main"

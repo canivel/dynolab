@@ -15,11 +15,13 @@ import sys
 from . import __version__
 
 USAGE = f"""\
-MLX Dyno {__version__} — real metrics for local LLMs on Apple Silicon
+MLX Dyno {__version__} — local AI research, inference and observability on Apple Silicon
 
 usage: dyno <command> [options]
 
 commands:
+  mcp      local stdio MCP bridge for research tools
+  lab      local AI safety and alignment research API
   serve    run an MLX model and expose its generation metrics
   route    one endpoint in front of every running model, choosing between them
   run      one prompt, one answer, with the numbers
@@ -65,6 +67,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     command, rest = argv[0], argv[1:]
+
+    if command == "mcp":
+        from .mcp import main as mcp_main
+        return mcp_main(rest)
+
+    if command == "lab":
+        from .lab.server import main as lab_main
+        return lab_main(rest)
 
     if command == "serve":
         try:

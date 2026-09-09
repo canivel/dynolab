@@ -1,0 +1,277 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Dyno Research Lab API",
+    "version": "1.0.0",
+    "description": "Local native clients only. Experiments persist on disk; one isolated worker at a time."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8980/lab/v1"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Service capabilities"
+          }
+        }
+      }
+    },
+    "/jobs": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Recent job summaries"
+          }
+        }
+      },
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "operation",
+                  "model"
+                ],
+                "properties": {
+                  "operation": {
+                    "type": "string",
+                    "enum": [
+                      "inspect",
+                      "compare",
+                      "probe",
+                      "sae"
+                    ]
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "revision": {
+                    "type": "string"
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "layers": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 8,
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    }
+                  },
+                  "seed": {
+                    "type": "integer",
+                    "default": 0
+                  },
+                  "max_input_tokens": {
+                    "type": "integer",
+                    "default": 256,
+                    "maximum": 1024
+                  },
+                  "max_tokens": {
+                    "type": "integer",
+                    "default": 32,
+                    "maximum": 128
+                  },
+                  "intervention": {
+                    "type": "string",
+                    "enum": [
+                      "scale",
+                      "ablate",
+                      "patch",
+                      "steer"
+                    ]
+                  },
+                  "strengths": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": -5,
+                      "maximum": 5
+                    }
+                  },
+                  "positive": {
+                    "type": "string"
+                  },
+                  "negative": {
+                    "type": "string"
+                  },
+                  "donor_prompt": {
+                    "type": "string"
+                  },
+                  "target_token": {
+                    "type": "string"
+                  },
+                  "prompts": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "features": {
+                    "type": "integer",
+                    "minimum": 8,
+                    "maximum": 512
+                  },
+                  "steps": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 500
+                  },
+                  "examples": {
+                    "type": "array",
+                    "maxItems": 512,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "text",
+                        "split"
+                      ],
+                      "properties": {
+                        "text": {
+                          "type": "string"
+                        },
+                        "split": {
+                          "enum": [
+                            "train",
+                            "test"
+                          ]
+                        },
+                        "label": {
+                          "type": "integer",
+                          "enum": [
+                            0,
+                            1
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Job accepted"
+          },
+          "400": {
+            "description": "Invalid configuration"
+          },
+          "409": {
+            "description": "Worker busy"
+          }
+        }
+      }
+    },
+    "/jobs/{id}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Configuration, state and result"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "delete": {
+        "responses": {
+          "200": {
+            "description": "Job and artifacts deleted"
+          },
+          "409": {
+            "description": "Cancel active job first"
+          }
+        }
+      }
+    },
+    "/jobs/{id}/cancel": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cancelled or already terminal job"
+          }
+        }
+      }
+    },
+    "/jobs/{id}/artifacts/{name}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "name",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Binary artifact",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    }
+  }
+}

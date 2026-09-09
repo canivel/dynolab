@@ -14,18 +14,19 @@ struct MainWindow: View {
     /// leaves the tab you were on selected, so going back lands where you were.
     @State private var showingChat = false
 
-    init(model: MonitorModel, initialTab: Tab = .run, chat: Bool = false) {
+    init(model: MonitorModel, initialTab: Tab = .lab, chat: Bool = false) {
         self.model = model
         _tab = State(initialValue: initialTab)
         _showingChat = State(initialValue: chat)
     }
 
     enum Tab: String, CaseIterable, Identifiable {
+        case lab = "Lab"
+        case execution = "Execution"
         case run = "Models"
-        case router = "Router"
-        case inspect = "Inspect"
-        case observe = "Performance"
         case discover = "Discover"
+        case router = "Router"
+        case observe = "Performance"
         var id: String { rawValue }
     }
 
@@ -45,7 +46,7 @@ struct MainWindow: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 400)
+                .frame(width: 485)
                 .opacity(showingChat ? 0.55 : 1)
                 Spacer()
                 if case let .running(name, port) = model.serverState {
@@ -121,10 +122,12 @@ struct MainWindow: View {
     private var dashboard: some View {
         Group {
             switch tab {
+            case .lab:
+                ResearchLabView(model: model)
+            case .execution:
+                ExecutionView(model: model)
             case .router:
                 RouterView(model: model)
-            case .inspect:
-                InspectView(model: model)
             case .observe:
                 ObservabilityView(model: model)
             case .run:

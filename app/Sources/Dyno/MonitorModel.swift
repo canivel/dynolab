@@ -56,6 +56,7 @@ final class MonitorModel {
     var searchText: String = ""
 
     // -- chat -----------------------------------------------------------------
+    let researchLab = ResearchLab()
     let conversations = ConversationStore()
     var generationOptions = GenerationOptions.default {
         didSet { persistGenerationOptions() }
@@ -312,6 +313,7 @@ final class MonitorModel {
     /// Called when the app quits so a model server is never left orphaned.
     func shutdown() {
         conversations.saveNow()
+        researchLab.stop()
         routerController.stop()
         server.stop()
         stop()

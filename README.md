@@ -1,32 +1,66 @@
 # MLX Dyno
 
-**Put your model on the dyno.**
+**Your AI safety and alignment research lab.**
 
-An MLX inference server for Apple Silicon that reports what it is actually
-doing — tokens per second, time to first token, prefill throughput, queue wait
-and prompt-cache hits — plus a native menu bar app that shows those beside the
-machine's own GPU, power and unified-memory telemetry.
+Investigate model behavior, test hypotheses, and visualize what changes.
+Dyno brings activation exploration, linear probes, a small SAE sandbox, live
+execution traces, and controlled intervention comparisons into one research
+workbench—with a Python SDK, research API and local MCP tools for your own experiments.
+
+Local model serving is the lab’s foundation: bundled MLX inference runs your
+models on your Mac, alongside the hardware telemetry that helps you manage
+experiments within its memory and GPU budget.
+
+Research features are experimental: model-emitted thinking and interpretability
+readouts are evidence to investigate, not a guarantee that a model is safe or aligned.
 
 📖 **[canivel.github.io/mlx-dyno](https://canivel.github.io/mlx-dyno/)**
 
 [**Download Dyno for Apple Silicon (.dmg)**](https://github.com/canivel/mlx-dyno/releases/latest)
 
-![Dyno running a model, with the Models, Router, Inspect, Performance, Discover and Chat toolbar](docs/screenshots/window-run-dark.png)
+![Dyno Research Lab: measured intervention comparisons](docs/screenshots/window-lab-dark.png)
 
-*The native app shows server throughput beside GPU, memory, bandwidth, and power.*
-
-<table>
-<tr><th>In your menu bar</th><th>A quick right-click summary</th></tr>
-<tr><td align="center"><img src="docs/screenshots/menu-bar-light.png" alt="Dyno's live menu bar GPU and power readout" width="160"><p>Click to open the main window.</p></td><td><img src="docs/screenshots/menu-panel-light.png" alt="Dyno's menu bar panel with running model, GPU, memory, bandwidth and power" width="320"></td></tr>
-</table>
+*Explore activations, train probes, and compare interventions with an unchanged baseline.*
 
 | | What it is |
 |---|---|
-| **`dyno serve`** | MLX inference server reporting its own throughput over `/metrics` and `/stats`. OpenAI-compatible. |
-| **Dyno.app** | Native Swift menu bar app. Starts models, shows their metrics and the machine's. |
-| **`dyno top`** | Terminal dashboard for the hardware metrics alone, with JSON and CSV output. |
+| **Dyno.app** | Native AI research workbench: inspect, probe, intervene and compare. |
+| **`dyno lab` + `dyno.sdk`** | Isolated research jobs, saved artifacts, HTTP API and Python SDK. |
+| **`dyno serve`** | The lab’s inference foundation: OpenAI-compatible MLX serving with throughput metrics. |
+| **`dyno top`** | Hardware telemetry for understanding your experiments’ resource use. |
+
+## Research Lab
+
+Lab is the default workspace. **Experiments** provides isolated activation,
+probe, intervention and SAE jobs. **Token analysis** uses an existing serving
+endpoint to inspect token probabilities and compare outputs, without loading a
+second model. It still consumes inference capacity. Token probabilities do not
+measure correctness or safety.
+
+Open **Lab → Start lab**, choose a local model and a method, then run an editable
+experiment template. Activation heatmaps show layer/token structure; intervention
+charts compare target-token probabilities and generated answers; probes report
+held-out metrics and control baselines; the SAE sandbox displays training curves
+and feature examples. Export each experiment with its parameters and provenance.
+
+The current scope is block-output analysis with raw-text prompts. Pretrained SAE
+imports, full circuit tracing and automated safety certification are not included.
+
+**[Website documentation](https://canivel.github.io/mlx-dyno/guide.html)** ·
+[Python SDK & HTTP API](docs/research-api.md) · [Local MCP setup](docs/local-mcp.md)
+
+Use `dyno mcp` to expose research tools to a local MCP client over stdio.
+The updated app bundles a `Contents/MacOS/dyno-cli` launcher; source installs
+use `pip install -e '.[serve,mcp]'`. The MCP bridge connects to an explicitly
+started Lab service. It does not start experiments on connection.
 
 ## Why this exists
+
+Understanding a model means connecting observations to experiments. Dyno keeps
+inference, measurement and controlled changes in one local workflow, while exposing
+the same research jobs to scripts. Its original hardware observability remains the
+foundation: every experiment still runs within a real Mac's memory and GPU budget.
+
 
 Running a large model locally on a Mac is mostly a memory problem, and the
 tools do not show you memory the way it matters.
@@ -87,7 +121,7 @@ the app**; right-click it for a summary without leaving what you are doing.
 
 ## Using it
 
-Five tabs — **Models**, **Router**, **Inspect**, **Performance**, **Discover** — and a
+Six tabs — **Lab**, **Execution**, **Models**, **Discover**, **Router**, **Performance** — and a
 **Chat** button at the top right (⌘J) that swaps the view for the conversation
 and back again, leaving whichever tab you were on selected.
 
@@ -99,6 +133,12 @@ rather than inline. The picker at the top selects the model, or a **Router** swi
 choice to the router instead — the reply then reports which model it actually
 went to. Conversations are saved to disk and can be continued on a different
 model than they started on.
+
+**Execution**
+
+Open **Execution** to watch requests sent by Chat, API clients, or other devices through Dyno's router. Select a request to see its input and generation parameters, routing decisions, model-emitted thinking, answer text, tool-call data, errors and finish reason. The view refreshes while generation runs; direct Dyno servers also expose token output before a non-streaming response finishes. Thinking is shown only when the model emits it; this is not access to hidden internal reasoning. Tool calls are displayed as emitted data, not executed by this viewer.
+
+Pause freezes the view, while capture continues. Clear finished removes completed history. Each endpoint retains up to 64 requests in memory, with a 256 Ki-character / 1,024-step capture limit per request; truncated or uncaptured requests are marked. Nothing is written to disk. The `/executions` list, `/executions/<id>` detail and `DELETE /executions` clear endpoints are local-only, even when inference is shared over LAN. Restart model servers and the router after updating Dyno to enable capture. Other OpenAI-compatible runtimes can be inspected through the Dyno router; buffered upstream replies appear when they arrive.
 
 **Models** — your library, with **Start**. Launch options are one disclosure
 away: max tokens, prompt-cache size, decode and prompt concurrency, sampling
@@ -113,7 +153,7 @@ for the GPU.
 **Router** — see below. Also where you point Continue, Aider, Zed or Cline at
 your local models, in one click.
 
-**Inspect** — the model's own token probabilities. Where it hesitated, what it
+**Lab → Token analysis** — the model's token probabilities. Low-probability tokens, what it
 nearly said instead, and — running two builds at the same seed — exactly which
 token a quantisation changed. See below.
 

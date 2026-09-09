@@ -54,13 +54,22 @@ if [ "$SLIM" -eq 0 ]; then
          "$RESOURCES/python/lib/python$PYTHON_VERSION/lib2to3" \
          "$RESOURCES/python/share" "$RESOURCES/python/include" 2>/dev/null || true
 
-  echo "==> Installing mlx-dyno[serve] into the bundle"
+  echo "==> Installing mlx-dyno[serve,mcp] into the bundle"
   rm -rf "$RESOURCES/pylib"
   ( cd .. && uv pip install --quiet \
       --python "$OLDPWD/$RESOURCES/python/bin/python$PYTHON_VERSION" \
-      --target "$OLDPWD/$RESOURCES/pylib" ".[serve]" )
+      --target "$OLDPWD/$RESOURCES/pylib" ".[serve,mcp]" )
   find "$RESOURCES/pylib" -name "__pycache__" -type d -prune -exec rm -rf {} + 2>/dev/null || true
 fi
+
+# Shell entry point for MCP clients; resolves paths after the app is relocated.
+cat > "$APP/Contents/MacOS/dyno-cli" <<'CLI'
+#!/bin/sh
+DYNO_RESOURCES="$(CDPATH= cd -- "$(dirname -- "$0")/../Resources" && pwd)"
+export PYTHONPATH="$DYNO_RESOURCES/pylib"
+exec "$DYNO_RESOURCES/python/bin/python3.12" -m dyno "$@"
+CLI
+chmod +x "$APP/Contents/MacOS/dyno-cli"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
