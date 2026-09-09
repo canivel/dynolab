@@ -17,7 +17,8 @@ jobs:
   build:
     name: Build reviewed release
     runs-on: macos-15
-    timeout-minutes: 40
+    timeout-minutes: 60
+    environment: release-signing
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -52,11 +53,51 @@ jobs:
           uv export --frozen --extra serve --extra mcp --no-dev --no-emit-project --format cyclonedx1.5 -o dist/runtime-sbom.json
           cp docs/release-notes.md dist/release-notes.md
           cp uv.lock dist/uv.lock
-      - name: Build and verify DMG
+      - name: Import release signing credentials
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
         run: |
+          set -euo pipefail
+          : "${CERTIFICATE_BASE64:?Missing signing certificate}"
+          : "${CERTIFICATE_PASSWORD:?Missing certificate password}"
+          : "${APPLE_ID:?Missing Apple ID}"
+          : "${APPLE_APP_PASSWORD:?Missing notarization password}"
+          : "${APPLE_TEAM_ID:?Missing Apple team ID}"
+          KEYCHAIN="$RUNNER_TEMP/dyno-signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 32)
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATE_PASSWORD" -k "$KEYCHAIN" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" "$HOME/Library/Keychains/login.keychain-db"
+          xcrun notarytool store-credentials dynolab-release --keychain "$KEYCHAIN" \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
+      - name: Build and verify DMG
+        env:
+          DYNO_SIGN_IDENTITY: ${{ vars.APPLE_SIGN_IDENTITY }}
+          DYNO_NOTARY_PROFILE: dynolab-release
+          DYNO_NOTARY_KEYCHAIN: ${{ runner.temp }}/dyno-signing.keychain-db
+        run: |
+          : "${DYNO_SIGN_IDENTITY:?Missing Developer ID signing identity}"
           ./app/package-dmg.sh
-          cp app/build/*.dmg app/build/*.sha256 dist/
-          (cd dist && shasum -a 256 *.dmg *.whl *.tar.gz runtime-sbom.json uv.lock release-notes.md > SHA256SUMS)
+          spctl --assess --type open --context context:primary-signature --verbose=2 app/build/*.dmg
+          cp app/build/*.dmg app/build/*.sha256 app/build/*.notary.json dist/
+          (cd dist && shasum -a 256 *.dmg *.whl *.tar.gz *.notary.json runtime-sbom.json uv.lock release-notes.md > SHA256SUMS)
+      - name: Remove signing credentials
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          if [ -f "$RUNNER_TEMP/dyno-signing.keychain-db" ]; then
+            security delete-keychain "$RUNNER_TEMP/dyno-signing.keychain-db"
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: reviewed-release

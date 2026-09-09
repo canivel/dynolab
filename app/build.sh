@@ -73,13 +73,15 @@ if [ "$SLIM" -eq 0 ]; then
 fi
 
 # Shell entry point for MCP clients; resolves paths after the app is relocated.
-cat > "$APP/Contents/MacOS/dyno-cli" <<'CLI'
+cat > "$RESOURCES/dyno-cli" <<'CLI'
 #!/bin/sh
 DYNO_RESOURCES="$(CDPATH= cd -- "$(dirname -- "$0")/../Resources" && pwd)"
 export PYTHONPATH="$DYNO_RESOURCES/pylib"
+export PYTHONDONTWRITEBYTECODE=1
 exec "$DYNO_RESOURCES/python/bin/python3.12" -m dyno "$@"
 CLI
-chmod +x "$APP/Contents/MacOS/dyno-cli"
+chmod +x "$RESOURCES/dyno-cli"
+ln -s ../Resources/dyno-cli "$APP/Contents/MacOS/dyno-cli"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -103,7 +105,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 echo "==> Signing"
-codesign --force --deep --sign - "$APP" 2>/dev/null
+./sign-app.sh "$APP"
 
 rm -rf "$BUILD_DIR/AppIcon.iconset" "$BUILD_DIR/AppIcon.icns"
 echo

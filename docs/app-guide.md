@@ -18,7 +18,7 @@ Dyno Lab is the research product; the installed macOS application is currently n
 
 The release includes a SHA-256 checksum beside the DMG. If you want to verify your download, run `shasum -a 256` on the downloaded DMG and compare the output with that file.
 
-The current release is ad-hoc signed and not Apple-notarized. If macOS blocks first launch, follow [Apple's instructions for opening an app from an unidentified developer](https://support.apple.com/guide/mac-help/mh40616/mac) only after checking that you downloaded the intended release.
+Version 0.2.1 introduces Developer ID signing and Apple notarization. Download the new DMG from its release assets; older 0.2.0 downloads remain ad-hoc signed. If macOS reports damaged or unverified software, verify the download and checksum before proceeding.
 
 ![Dyno menu bar performance summary from a running workload](https://dynolab.dev/screenshots/menu-panel-dark.png)
 

@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Dyno Research Lab API",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "description": "Local native clients only. Isolated jobs persist on disk. Resident capture runs on the serving endpoint at a separate port; it returns results directly. Native app history is not a Lab jobs API."
   },
   "servers": [

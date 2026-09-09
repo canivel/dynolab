@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mlx-dyno"
-version = "0.2.0"
+version = "0.2.1"
 description = "AI safety and alignment research lab: probes, interventions, SAE experiments, SDK and APIs, powered by local MLX inference"
 readme = "README.md"
 requires-python = ">=3.10"
