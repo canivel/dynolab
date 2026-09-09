@@ -1,0 +1,22 @@
+name: Bug report
+description: Report a reproducible app, inference or research failure.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Expected behavior, actual behavior and exact reproduction steps.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Version and environment
+      description: Dyno version, macOS version, Mac chip/RAM, model ID/revision/quantization, and selected operation.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Redacted error, settings and screenshot. Do not post credentials, private prompts or full personal paths. Report vulnerabilities privately through Security Advisories.

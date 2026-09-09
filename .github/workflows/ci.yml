@@ -1,0 +1,52 @@
+name: CI
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  python:
+    name: Python API and SDK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: '0.12.9'
+          enable-cache: false
+      - name: Install locked client, MCP and documentation dependencies
+        run: uv sync --locked --extra mcp --extra docs --python 3.12
+      - name: Test Python, HTTP, SDK and MCP contracts
+        run: PYTHONPATH=src uv run --frozen python -m unittest discover -s tests -v
+      - name: Check documentation and examples
+        run: uv run --frozen python scripts/check-docs.py
+      - name: Build Python distributions
+        run: uv build
+  native:
+    name: Native macOS build
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: '0.12.9'
+          enable-cache: false
+      - name: Test native behavior
+        run: swift test --package-path app
+      - name: Compile and verify the native app bundle
+        run: |
+          ./app/build.sh --slim
+          plutil -lint app/build/Dyno.app/Contents/Info.plist
+          codesign --verify --deep --strict app/build/Dyno.app

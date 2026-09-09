@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: App handbook
+    url: https://dynolab.dev/guide.html
+    about: Installation, feature walkthroughs and troubleshooting.
+  - name: Report a security vulnerability privately
+    url: https://github.com/canivel/dynolab/security/advisories/new
+    about: Do not disclose vulnerabilities, secrets or private prompts in public issues.

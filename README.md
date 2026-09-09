@@ -555,3 +555,9 @@ Preview with `python3 -m http.server 8766 --directory docs`, then open
 ## Website development
 
 The website is maintained separately in `canivel/dynolab-website` and deployed by Vercel at [dynolab.dev](https://dynolab.dev). API documentation remains in this repository. To regenerate the site guide from a sibling website checkout, run `uv run --with markdown python scripts/build-docs.py --website-root ../dynolab-website`.
+
+## Contributing and releases
+
+See [contribution guidelines](CONTRIBUTING.md), [security reporting](SECURITY.md),
+and the [maintainer/release handbook](docs/maintaining.md). Community changes are
+reviewed through pull requests with Python and native macOS checks.
