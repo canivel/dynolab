@@ -1,0 +1,11 @@
+# Review ownership applies only when GitHub rules require code-owner approval.
+* @canivel
+# Keep explicit sensitive paths visible when more owners are added later.
+/.github/ @canivel
+/app/ @canivel
+/src/dyno/serve/ @canivel
+/src/dyno/lab/ @canivel
+/src/dyno/sdk.py @canivel
+/src/dyno/mcp.py @canivel
+/pyproject.toml @canivel
+/uv.lock @canivel

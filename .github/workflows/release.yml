@@ -5,44 +5,94 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing version tag to build and publish
+        description: Existing reviewed version tag to build as a draft release
         required: true
-        default: v0.2.0
         type: string
 permissions:
-  contents: write
+  contents: read
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 jobs:
-  release:
+  build:
+    name: Build reviewed release
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.tag || github.ref }}
-      - uses: astral-sh/setup-uv@v6
-      - name: Verify release version and architecture
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: '0.12.9'
+          enable-cache: false
+      - name: Verify tag, reviewed ancestry, version and architecture
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]
           test "$(uname -m)" = arm64
+          test "$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")" = "$(git rev-parse HEAD)"
+          git merge-base --is-ancestor HEAD origin/main
           VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml | head -1)
           test "$RELEASE_TAG" = "v$VERSION"
-      - name: Install test dependencies
-        run: uv sync --extra serve --extra mcp
-      - name: Test research API, MCP and inference helpers
-        run: PYTHONPATH=src uv run --extra serve --extra mcp python -m unittest discover -s tests -v
-      - name: Test native resource checks
+      - name: Install locked test dependencies
+        run: uv sync --locked --extra mcp --extra docs --python 3.12
+      - name: Test API, SDK, MCP and documentation
+        run: |
+          PYTHONPATH=src uv run --frozen python -m unittest discover -s tests -v
+          uv run --frozen python scripts/check-docs.py
+      - name: Test native behavior
         run: swift test --package-path app
-      - name: Build Python SDK and CLI distributions
+      - name: Build distributions and dependency inventory
         run: |
           uv build
-          (cd dist && shasum -a 256 *.whl *.tar.gz > SHA256SUMS)
+          uv export --frozen --extra serve --extra mcp --no-dev --no-emit-project --format cyclonedx1.5 -o dist/runtime-sbom.json
+          cp docs/release-notes.md dist/release-notes.md
+          cp uv.lock dist/uv.lock
       - name: Build and verify DMG
-        run: ./app/package-dmg.sh
-      - name: Publish release with DMG and checksum
+        run: |
+          ./app/package-dmg.sh
+          cp app/build/*.dmg app/build/*.sha256 dist/
+          (cd dist && shasum -a 256 *.dmg *.whl *.tar.gz runtime-sbom.json uv.lock release-notes.md > SHA256SUMS)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: reviewed-release
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+  publish:
+    name: Attest and create draft
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      # This job never checks out the repository or executes the built app.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: reviewed-release
+          path: dist
+      - name: Verify transferred artifacts
+        working-directory: dist
+        run: sha256sum --check SHA256SUMS
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: |
+            dist/*.dmg
+            dist/*.whl
+            dist/*.tar.gz
+            dist/runtime-sbom.json
+      - name: Create a draft for maintainer smoke testing
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          gh release create "$RELEASE_TAG" app/build/*.dmg app/build/*.sha256 dist/*.whl dist/*.tar.gz dist/SHA256SUMS \
-            --verify-tag --title "Dyno $RELEASE_TAG" --notes-file docs/release-notes.md
+          gh release create "$RELEASE_TAG" dist/* --draft --verify-tag \
+            --title "Dyno $RELEASE_TAG" --notes-file dist/release-notes.md

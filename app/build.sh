@@ -56,9 +56,19 @@ if [ "$SLIM" -eq 0 ]; then
 
   echo "==> Installing mlx-dyno[serve,mcp] into the bundle"
   rm -rf "$RESOURCES/pylib"
-  ( cd .. && uv pip install --quiet \
-      --python "$OLDPWD/$RESOURCES/python/bin/python$PYTHON_VERSION" \
-      --target "$OLDPWD/$RESOURCES/pylib" ".[serve,mcp]" )
+  # The shipped runtime must match the reviewed lockfile, not whatever versions
+  # happen to be newest when the release is built.
+  LOCKED_REQUIREMENTS=$(mktemp "$PWD/$BUILD_DIR/runtime-requirements.XXXXXX")
+  trap 'rm -f "$LOCKED_REQUIREMENTS"' EXIT
+  ( cd .. && uv export --locked --extra serve --extra mcp --no-dev \
+      --no-emit-project --output-file "$LOCKED_REQUIREMENTS" >/dev/null )
+  uv pip install --quiet --require-hashes \
+      --python "$PWD/$RESOURCES/python/bin/python$PYTHON_VERSION" \
+      --target "$PWD/$RESOURCES/pylib" -r "$LOCKED_REQUIREMENTS"
+  uv pip install --quiet --no-deps \
+      --python "$PWD/$RESOURCES/python/bin/python$PYTHON_VERSION" \
+      --target "$PWD/$RESOURCES/pylib" ..
+  rm -f "$LOCKED_REQUIREMENTS"
   find "$RESOURCES/pylib" -name "__pycache__" -type d -prune -exec rm -rf {} + 2>/dev/null || true
 fi
 

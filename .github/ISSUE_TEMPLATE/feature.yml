@@ -1,0 +1,17 @@
+name: Feature proposal
+description: Discuss scope before a large implementation.
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Research or user problem
+      description: Who needs this and what cannot they do today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior and validation
+      description: Include alternatives, expected memory/latency cost, and how the result can be verified.
+    validations:
+      required: true
