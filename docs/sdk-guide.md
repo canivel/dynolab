@@ -6,12 +6,12 @@ The SDK has two clients: **ServingModel** captures an already-loaded model; **La
 
 ## Install
 
-Create a Python 3.10+ environment. Download the Python wheel from the [0.2.0 release assets](https://github.com/canivel/dynolab/releases/tag/v0.2.0), then install it:
+Create a Python 3.10+ environment. Download the Python wheel from the [0.2.1 release assets](https://github.com/canivel/dynolab/releases/tag/v0.2.1), then install it:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install ./mlx_dyno-0.2.0-py3-none-any.whl
+python -m pip install ./mlx_dyno-0.2.1-py3-none-any.whl
 python -c 'from dyno.sdk import Lab, ServingModel; print("SDK ready")'
 ```
 
@@ -20,7 +20,7 @@ On Windows, activate with `.venv\Scripts\activate`; in WSL, use the Bash command
 The client uses Python's standard library. Installing the client alone does not install the MLX inference runtime. For a source installation that can also serve models, run this on an Apple Silicon Mac:
 
 ```bash
-python -m pip install 'mlx-dyno[serve,mcp] @ git+https://github.com/canivel/dynolab.git@v0.2.0'
+python -m pip install 'mlx-dyno[serve,mcp] @ git+https://github.com/canivel/dynolab.git@v0.2.1'
 ```
 
 The repository is named `dynolab`, the distribution remains `mlx-dyno`, and the import namespace is `dyno`. These instructions use the GitHub release rather than assuming a matching PyPI release. The Mac DMG bundles the server runtime; you can use it without installing a second serving environment.

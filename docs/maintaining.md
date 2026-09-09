@@ -36,9 +36,62 @@ Use the actual downloaded filename. These checks are complementary: provenance c
 
 ## Developer ID signing and notarization
 
-The current app is **ad-hoc signed, not Developer ID signed or notarized**. The repository safeguards do not change that. Production macOS distribution should use a Developer ID Application certificate, hardened runtime, secure timestamp, notarization with `notarytool`, and a stapled ticket. Validate the nested Python executables and MLX libraries with appropriate entitlements before shipping.
+Published ad-hoc releases remain unchanged. Local builds default to ad-hoc signing;
+set `DYNO_SIGN_IDENTITY` to select an installed **Developer ID Application**
+certificate with its private key. The build signs every nested Mach-O executable
+and library with hardened runtime and a secure timestamp, then seals and verifies
+the app. No runtime entitlements are relaxed by default.
 
-Provision Apple credentials through a protected release environment, never in source, PR workflows or the browser conversation. Use a temporary keychain on an ephemeral release runner and remove it after signing. Independent review/approval of that environment is preferable once another trusted maintainer exists. Certificate/account setup and a tested signing workflow are still required before claiming this protection.
+```bash
+export DYNO_SIGN_IDENTITY='Developer ID Application: Your Name (YOUR_TEAM_ID)'
+./app/package-dmg.sh
+```
+
+Signing alone is not notarization. Create an app-specific password in your Apple
+Account, then run this interactively in your own terminal. Enter your Apple ID,
+team ID and app-specific password when prompted; do not put them in source or chat.
+
+```bash
+xcrun notarytool store-credentials dynolab-notary
+export DYNO_NOTARY_PROFILE=dynolab-notary
+./app/package-dmg.sh
+```
+
+The CLI disables Python bytecode writes so running it cannot modify the sealed
+bundle. Packaging tests MLX and the CLI and rechecks the app signature afterward.
+
+The packaging script submits the signed DMG, waits for explicit acceptance, staples and validates
+the ticket, and only then writes the final checksum. A failed submission or staple
+stops packaging. Test the downloaded/stapled DMG on a clean Mac before publishing.
+For rejected submissions, retrieve the submission log with `xcrun notarytool log`
+using the same Keychain profile and investigate rather than bypassing the check.
+
+The GitHub release workflow requires signing and notarization; missing credentials
+fail the build instead of silently producing an ad-hoc release. Configure the
+`release-signing` GitHub environment with version-tag-only deployment access
+(`v*`) and the following environment secrets:
+
+| Secret | Value |
+| --- | --- |
+| `APPLE_CERTIFICATE_P12_BASE64` | Base64-encoded password-protected Developer ID Application certificate **and private key**, exported as `.p12` from Keychain Access |
+| `APPLE_CERTIFICATE_PASSWORD` | The password chosen when exporting that `.p12` |
+| `APPLE_ID` | Apple Account email used for notarization |
+| `APPLE_APP_PASSWORD` | App-specific password for notarization |
+
+Set environment variables `APPLE_TEAM_ID` and `APPLE_SIGN_IDENTITY` to your team ID
+and the complete Developer ID Application certificate name. A `.cer` file alone
+does not contain the private key and cannot sign a release.
+
+The release job imports the certificate into a temporary keychain on the hosted
+Mac, stores notarization credentials there, and removes the keychain in an
+`always()` cleanup step. PR jobs never reference this environment or these secrets.
+Inspect changes to the release workflow before merging. Add an independent
+required environment reviewer when another trusted maintainer is available.
+
+Local Keychain credentials are not automatically copied to GitHub. Upload secrets
+through GitHub's environment settings or `gh secret set`, never through source,
+chat, logs, issue comments or PR descriptions. Keep CI signing marked unverified
+until a complete hosted release run succeeds.
 
 ## Repository settings audit
 

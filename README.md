@@ -109,7 +109,7 @@ token stream, where it is simply a fact rather than an inference.
 Download the **Apple Silicon DMG** from [GitHub Releases](https://github.com/canivel/dynolab/releases/latest), open it, and drag **Dyno** into **Applications**.
 Requires **macOS 14+ on Apple Silicon**. Python and MLX are included; model weights are downloaded separately in Discover.
 
-The release is ad-hoc signed and **not Apple-notarized**. macOS may block its first launch; see [Apple's instructions](https://support.apple.com/guide/mac-help/mh40616/mac) before deciding whether to open it. Releases include a SHA-256 checksum.
+Version 0.2.1 introduces Developer ID signing and Apple notarization. Its release workflow requires successful notarization and a validated stapled ticket before producing release assets. Releases include a SHA-256 checksum. Older 0.2.0 downloads remain ad-hoc signed.
 
 ### Build from source
 

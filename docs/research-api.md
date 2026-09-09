@@ -216,16 +216,16 @@ not paused model execution or optimizer checkpoints.
 
 ## Install the versioned SDK
 
-The [0.2.0 GitHub release](https://github.com/canivel/dynolab/releases/tag/v0.2.0)
+The [0.2.1 GitHub release](https://github.com/canivel/dynolab/releases/tag/v0.2.1)
 includes a Python wheel, source distribution and checksums alongside the Mac DMG.
-Install the downloaded wheel with `python -m pip install mlx_dyno-0.2.0-py3-none-any.whl`.
+Install the downloaded wheel with `python -m pip install mlx_dyno-0.2.1-py3-none-any.whl`.
 For a pinned source install including the serving runtime and MCP tools:
 
 ```bash
-python -m pip install 'mlx-dyno[serve,mcp] @ git+https://github.com/canivel/dynolab.git@v0.2.0'
+python -m pip install 'mlx-dyno[serve,mcp] @ git+https://github.com/canivel/dynolab.git@v0.2.1'
 ```
 
 This release is distributed through GitHub; these instructions do not assume a
-matching PyPI release. The HTTP API remains `/lab/v1`; the package version is 0.2.0.
+matching PyPI release. The HTTP API remains `/lab/v1`; the package version is 0.2.1.
 The downloadable OpenAPI document includes per-path server URLs for the resident
 capture endpoints, which run on your inference server rather than port 8980.
