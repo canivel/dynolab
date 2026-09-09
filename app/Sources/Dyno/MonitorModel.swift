@@ -26,6 +26,9 @@ final class MonitorModel {
     private(set) var serverState: ServerController.State = .stopped
     private(set) var runtime: Runtime.Kind?
     var selectedModel: LocalModel?
+    var thinkingMode = UserDefaults.standard.string(forKey: "serverThinkingMode") ?? "default" {
+        didSet { UserDefaults.standard.set(thinkingMode, forKey: "serverThinkingMode") }
+    }
 
     // -- router ---------------------------------------------------------------
     private(set) var router = RouterClient.Snapshot()
@@ -297,12 +300,46 @@ final class MonitorModel {
         modelFolders.append(path)
     }
 
+    var serverActionError: String?
+    var launchPort: Int = UserDefaults.standard.integer(forKey: Defaults.serverPort) == 0
+        ? 8971 : UserDefaults.standard.integer(forKey: Defaults.serverPort)
+
+    func openModels(for endpoint: LLMModel?) {
+        if let endpoint {
+            selectedModel = localModels.first { $0.path == endpoint.identifier || $0.name == endpoint.identifier }
+            if let port = endpoint.port { launchPort = Int(port) }
+        }
+        requestedTab = .run
+    }
+
+    func canStopEndpoint(_ endpoint: LLMModel) -> Bool {
+        guard let command = snapshot.processes.first(where: { $0.pid == endpoint.pid })?.command else { return false }
+        return ServerController.isDynoServe(command)
+    }
+
+    func stopEndpoint(_ endpoint: LLMModel) {
+        serverActionError = nil
+        if server.ownedPID == endpoint.pid { server.stop(); return }
+        guard let command = snapshot.processes.first(where: { $0.pid == endpoint.pid })?.command,
+              let port = endpoint.port else { return }
+        do {
+            try ServerController.stopDetected(pid: endpoint.pid, port: port, expectedCommand: command)
+            openModels(for: endpoint)
+        } catch { serverActionError = error.localizedDescription }
+    }
+
     func startSelectedModel() {
         guard let model = selectedModel else { return }
-        let port = UInt16(UserDefaults.standard.integer(forKey: Defaults.serverPort))
+        serverActionError = nil
+        guard let port = UInt16(exactly: launchPort), port > 0 else {
+            serverActionError = "Choose a port between 1 and 65535."; return
+        }
+        guard !snapshot.models.contains(where: { $0.port == port }) else {
+            serverActionError = "Port \(port) is already serving. Stop that endpoint first or choose another port."; return
+        }
         server.start(
             model: model, port: port == 0 ? 8971 : port,
-            extraArguments: launchOptions.arguments
+            extraArguments: launchOptions.arguments + (thinkingMode == "default" ? [] : ["--chat-template-args", thinkingMode == "on" ? "{\"enable_thinking\":true}" : "{\"enable_thinking\":false}"])
         )
     }
 

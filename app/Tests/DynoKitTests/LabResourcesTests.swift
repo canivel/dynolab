@@ -26,6 +26,12 @@ final class LabResourcesTests: XCTestCase {
         XCTAssertFalse(LabResources(weightBytes: nil, memory: memory(), gpuBusy: 0, activeRequests: 0, fresh: true).canRun)
         XCTAssertFalse(LabResources(weightBytes: 1000, memory: memory(), gpuBusy: 0, activeRequests: 0, fresh: false).canRun)
     }
+    func testServingCaptureCountsWorkspaceOnlyAndCanQueueWhileBusy() {
+        let result = LabResources(weightBytes: Int64(40 * GB), memory: memory(),
+            gpuBusy: 99, activeRequests: 1, fresh: true, reuseServingModel: true)
+        XCTAssertTrue(result.canRun)
+        XCTAssertLessThan(result.estimatedBytes, Int64(3 * GB))
+    }
     func testLongerInputIncreasesWorkspaceEstimate() {
         let short = LabResources(weightBytes: 1000, memory: memory(), gpuBusy: 0, activeRequests: 0, fresh: true)
         let long = LabResources(weightBytes: 1000, memory: memory(), gpuBusy: 0, activeRequests: 0, fresh: true, maxInputTokens: 1024)

@@ -10,11 +10,12 @@ class DynoError(RuntimeError):
 
 
 class Lab:
+    api_prefix = "/lab/v1"
     def __init__(self, base_url='http://127.0.0.1:8980', timeout=10):
         self.base_url, self.timeout = base_url.rstrip('/'), timeout
 
     def _request(self, path, body=None):
-        request=urllib.request.Request(self.base_url+'/lab/v1'+path,
+        request=urllib.request.Request(self.base_url+self.api_prefix+path,
             data=json.dumps(body).encode() if body is not None else None,
             headers={'Content-Type':'application/json'})
         try:
@@ -51,3 +52,22 @@ class Lab:
             if job['status'] not in ('queued','running'): raise DynoError(job.get('error',job['status']))
             time.sleep(interval)
         raise TimeoutError('Wait timed out; job continues. Call cancel(id) to stop it.')
+
+
+class ServingModel:
+    """Read-only activation capture using loaded weights on a local Dyno server."""
+    def __init__(self, port=8971, timeout=75):
+        if type(port) is not int or not 1 <= port <= 65535:
+            raise ValueError('port must be 1–65535')
+        self._client = Lab(f'http://127.0.0.1:{port}', timeout)
+        self._client.api_prefix = '/lab'
+
+    def capabilities(self):
+        return self._client._request('/capabilities')
+
+    def inspect(self, prompt, layers=None, max_input_tokens=128):
+        capabilities = self.capabilities()
+        if not capabilities.get('serving_activations') or not capabilities.get('model'):
+            raise DynoError('This server has no supported resident model; update/restart dyno serve')
+        return self._client._request('/activations', dict(model=capabilities['model'], prompt=prompt,
+            layers=layers if layers is not None else [0], max_input_tokens=max_input_tokens))

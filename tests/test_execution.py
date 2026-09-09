@@ -106,3 +106,29 @@ class ExecutionHTTPTests(test_router_network.NetworkSharingTests):
 
 if __name__ == '__main__':
     unittest.main()
+
+class HistoryCleanupTests(unittest.TestCase):
+    def test_parser_failure_does_not_strand_active_record(self):
+        import io
+        from unittest.mock import patch
+        from dyno.execution import ExecutionHTTPMixin, current_execution
+        class Base:
+            def do_POST(self):
+                pass
+        class Handler(ExecutionHTTPMixin, Base):
+            pass
+        handler = Handler()
+        handler.path = '/v1/chat/completions'
+        handler.headers = {}
+        handler.rfile = io.BytesIO()
+        handler.wfile = io.BytesIO()
+        original_reader, original_writer = handler.rfile, handler.wfile
+        handler.execution_store = ExecutionStore(capacity=1)
+        with patch('dyno.execution.ResponseCapture.finish', side_effect=ValueError('bad response')):
+            with self.assertRaises(ValueError):
+                handler.do_POST()
+        self.assertEqual(handler.execution_store.snapshot()['executions'][0]['status'], 'completed')
+        self.assertIs(handler.rfile, original_reader)
+        self.assertIs(handler.wfile, original_writer)
+        self.assertIsNone(current_execution())
+        self.assertIsNotNone(handler.execution_store.begin('/v1/chat/completions'))

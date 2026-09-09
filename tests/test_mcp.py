@@ -38,12 +38,12 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                 launcher = os.environ.get('DYNO_MCP_TEST_COMMAND')
                 params = StdioServerParameters(command=launcher or sys.executable,
                     args=([] if launcher else ['-m','dyno']) + ['mcp','--port',str(server.server_port)],
-                    env=dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1]/'src')))
+                    env=dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1]/'src') + os.pathsep + os.environ.get('PYTHONPATH', '')))
                 async with stdio_client(params) as (read, write):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
                         tools = (await session.list_tools()).tools
-                        self.assertEqual({t.name for t in tools}, {'lab_health','lab_jobs','lab_job','lab_submit','lab_cancel','lab_artifacts'})
+                        self.assertEqual({t.name for t in tools}, {'lab_health','lab_jobs','lab_job','lab_submit','lab_cancel','lab_artifacts','serving_capabilities','serving_inspect'})
                         def content(result):
                             self.assertFalse(result.isError)
                             return json.loads(result.content[0].text)

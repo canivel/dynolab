@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Dyno Research Lab API",
-    "version": "1.0.0",
-    "description": "Local native clients only. Experiments persist on disk; one isolated worker at a time."
+    "version": "0.2.0",
+    "description": "Local native clients only. Isolated jobs persist on disk. Resident capture runs on the serving endpoint at a separate port; it returns results directly. Native app history is not a Lab jobs API."
   },
   "servers": [
     {
@@ -269,6 +269,98 @@
           },
           "404": {
             "description": "Not found"
+          }
+        }
+      }
+    },
+    "/capabilities": {
+      "servers": [
+        {
+          "url": "http://127.0.0.1:8971/lab",
+          "description": "Replace 8971 with your Dyno inference endpoint port."
+        }
+      ],
+      "get": {
+        "operationId": "servingCapabilities",
+        "summary": "Read resident model identity and capture limits",
+        "responses": {
+          "200": {
+            "description": "Resident model, serving_activations support, max_layers and max_input_tokens"
+          },
+          "403": {
+            "description": "Only native loopback clients accepted"
+          }
+        }
+      }
+    },
+    "/activations": {
+      "servers": [
+        {
+          "url": "http://127.0.0.1:8971/lab",
+          "description": "Replace 8971 with your Dyno inference endpoint port."
+        }
+      ],
+      "post": {
+        "operationId": "captureServingActivations",
+        "summary": "Read-only activation capture using resident weights",
+        "description": "No model reload. Raw-text input, at most four layers and 256 tokens. Queues on the generation scheduler and can delay inference. Returns norms and final next-token probabilities; no interventions or raw tensor artifact. Save the response in your client.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "model",
+                  "prompt",
+                  "layers"
+                ],
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "description": "Exact model identity from capabilities"
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "maxLength": 32768
+                  },
+                  "layers": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "max_input_tokens": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 256,
+                    "default": 128
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tokens, token IDs, layer norms, next_tokens and provenance"
+          },
+          "400": {
+            "description": "Invalid parameters, model mismatch or capture failure"
+          },
+          "403": {
+            "description": "Only native loopback clients accepted"
+          },
+          "408": {
+            "description": "Timed out waiting for capture"
+          },
+          "409": {
+            "description": "Another capture is pending or running"
           }
         }
       }

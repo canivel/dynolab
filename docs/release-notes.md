@@ -1,16 +1,26 @@
-Run local MLX models on Apple Silicon, measure their inference speed, and share them with other computers on your network.
+Dyno 0.2.0 turns the Mac app into an AI safety and alignment research workbench, with local MLX inference as its foundation.
 
-- Native Models, Router, Inspect, Performance, and Discover views, plus Chat and menu bar telemetry.
-- LAN sharing with automatically detected addresses, a copyable URL, and a test request.
-- OpenAI-compatible inference, streaming, and automatic or explicit model selection.
-- Router settings and request history remain local-only.
+## Research workflows
 
-## Install
+- Inspect activations in an already-serving model without loading another weight copy. See next-token probabilities and numeric activation norms on a shared color scale.
+- Run isolated interventions, labeled linear probes and small SAE experiments, with held-out metrics and control baselines.
+- Save activation captures and token analyses automatically. Reopen results and settings; rerunning creates a new record. Isolated job history also restores configuration.
+- Choose Thinking: Default, On or Off beside Start, with per-request controls in Chat and Token analysis. Requires a compatible model template; raw-text research does not require thinking.
+- Use the Python SDK, HTTP research APIs and eight local MCP tools. Documentation includes resident capture and resource/lifecycle constraints.
 
-Download **Dyno-0.1.0-arm64.dmg**, open it, and drag **Dyno** to **Applications**. Requires **macOS 14 or later on Apple Silicon**. Python and MLX are bundled; model weights are downloaded separately.
+## Reliability and model management
 
-The app is ad-hoc signed and **not Apple-notarized**. macOS may block the first launch; see [Apple's guidance](https://support.apple.com/guide/mac-help/mh40616/mac) before choosing whether to open it.
+- Preserve hybrid decoder metadata when tapping activations (fixes Qwen `is_linear` failures).
+- Detect already-running Dyno endpoints and expose Stop controls, port selection and clearer resource checks.
+- Resolve actual model paths when an endpoint advertises `default_model`.
+- Keep native execution history bounded; explain skipped traces separately from inference failures and release history slots even when final response parsing fails.
 
-Click the menu bar icon to open Dyno; right-click it for a quick summary. To share a running model, enable **Router → Share on local network**, then click **Start the router**. Use only trusted networks: inference is available without authentication while sharing is enabled.
+## Install and upgrade
 
-A SHA-256 checksum is included alongside the DMG.
+Download **Dyno-0.2.0-arm64.dmg**, open it, and drag Dyno to Applications. Requires **Apple Silicon and macOS 14+**. Python, MLX and the MCP launcher are bundled; model weights are separate. A SHA-256 checksum accompanies the DMG.
+
+Existing inference processes need an explicit stop/start with this version to gain resident capture. Dyno does not automatically restart external servers. Check active requests before stopping. Previous unsaved session-only results cannot be recovered after closing the old app.
+
+The app is ad-hoc signed, not Apple-notarized. See [Apple's first-launch guidance](https://support.apple.com/guide/mac-help/mh40616/mac).
+
+These are experimental research tools, not safety certification. Resident capture returns activation norms, not individual-neuron interpretations or causal explanations. Probes, interventions and SAE training use separate workers and require adequate memory and quiet GPU capacity. SDK/MCP jobs and native app histories use distinct stores documented in the guide. LAN inference has no authentication; enable sharing only on trusted networks. Research and execution endpoints remain local-only.

@@ -51,6 +51,33 @@ public final class ServerController: @unchecked Sendable {
         callback?(new)
     }
 
+    public var ownedPID: Int32? {
+        lock.lock(); defer { lock.unlock() }
+        return process?.processIdentifier
+    }
+
+    public static func isDynoServe(_ command: String) -> Bool {
+        command.range(of: #"(?:^|[ /])dyno(?:-cli)?\s+serve(?:\s|$)"#, options: .regularExpression) != nil
+    }
+
+    /// Only terminate the exact, still-listening Dyno process the user selected.
+    public static func stopDetected(pid: Int32, port: UInt16, expectedCommand: String) throws {
+        guard pid > 1, isDynoServe(expectedCommand),
+              ProcessScanner().commandLine(for: pid) == expectedCommand,
+              ListeningPorts.forProcess(pid).contains(port) else {
+            throw NSError(domain: "Dyno", code: 1, userInfo: [NSLocalizedDescriptionKey:
+                "This endpoint changed or is not a Dyno server. Refresh and try again; manage other runtimes in their own app."])
+        }
+        guard kill(pid, SIGTERM) == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+    }
+
+    private func isCurrent(_ task: Process) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return process === task
+    }
+
     public func start(model: LocalModel, port: UInt16, extraArguments: [String] = []) {
         stop()
 
@@ -88,13 +115,14 @@ public final class ServerController: @unchecked Sendable {
             guard let self else { return }
             pipe.fileHandleForReading.readabilityHandler = nil
             // A clean stop already moved us to .stopped; anything else is a crash.
-            if case .stopped = self.state { return }
+            guard self.isCurrent(finished) else { return }
             let reason = finished.terminationStatus == 0
                 ? "dyno serve exited."
                 : "dyno serve exited with status \(finished.terminationStatus)."
             self.setState(.failed(reason + " " + self.lastErrorLine()))
         }
 
+        lock.lock(); process = task; lock.unlock()
         do {
             try task.run()
         } catch {
@@ -111,14 +139,15 @@ public final class ServerController: @unchecked Sendable {
             let deadline = Date().addingTimeInterval(600)
             while Date() < deadline {
                 if case .failed = self.state { return }
-                if !task.isRunning { return }
-                if await Self.isHealthy(port: port) {
+                if !self.isCurrent(task) || !task.isRunning { return }
+                if ListeningPorts.forProcess(task.processIdentifier).contains(port),
+                   await Self.isHealthy(port: port), self.isCurrent(task) {
                     self.setState(.running(model: model.name, port: port))
                     return
                 }
                 try? await Task.sleep(nanoseconds: 500_000_000)
             }
-            self.setState(.failed("dyno serve did not become ready in time."))
+            if self.isCurrent(task) { self.setState(.failed("dyno serve did not become ready in time.")) }
         }
     }
 

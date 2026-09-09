@@ -1,10 +1,5 @@
-"""MLX Dyno — put your model on the dyno.
+"""Dyno: a local AI safety and alignment research workbench for Apple Silicon."""
 
-Two halves of one measurement: `dyno serve` runs an MLX inference server that
-reports its own throughput, and `dyno top` shows what the machine is doing
-underneath it.
-"""
-
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = ["__version__"]

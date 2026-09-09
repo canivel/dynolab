@@ -27,6 +27,7 @@ public struct TokenReading: Sendable, Identifiable {
 public struct TokenTrace: Sendable {
     public var model: String
     public var text: String = ""
+    public var reasoning: String = ""
     public var tokens: [TokenReading] = []
     public var error: String?
 
@@ -52,14 +53,14 @@ public struct Divergence: Sendable, Identifiable {
 public enum Inspection {
     public static func capture(
         port: UInt16, model: String, prompt: String,
-        maxTokens: Int = 120, topK: Int = 5, seed: Int = 0, temperature: Double = 0
+        maxTokens: Int = 120, topK: Int = 5, seed: Int = 0, temperature: Double = 0, thinking: Bool? = nil
     ) async -> TokenTrace {
         var trace = TokenTrace(model: model)
         guard let url = URL(string: "http://127.0.0.1:\(port)/v1/chat/completions") else {
             trace.error = "bad port"
             return trace
         }
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model,
             "messages": [["role": "user", "content": prompt]],
             "max_tokens": maxTokens,
@@ -68,6 +69,7 @@ public enum Inspection {
             "logprobs": true,
             "top_logprobs": max(1, min(topK, 10)),
         ]
+        if let thinking { body["chat_template_kwargs"] = ["enable_thinking": thinking] }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -87,6 +89,7 @@ public enum Inspection {
                 trace.error = "unexpected reply"
                 return trace
             }
+            trace.reasoning = ((choice["message"] as? [String: Any])?["reasoning_content"] as? String) ?? ((choice["message"] as? [String: Any])?["reasoning"] as? String) ?? ""
             trace.text = ((choice["message"] as? [String: Any])?["content"] as? String) ?? ""
             let entries = ((choice["logprobs"] as? [String: Any])?["content"]
                            as? [[String: Any]]) ?? []
@@ -128,5 +131,30 @@ public enum Inspection {
             ))
         }
         return (first, all)
+    }
+}
+
+extension TokenTrace {
+    public var archiveValue: [String: Any] {
+        var value: [String: Any] = ["model": model, "text": text, "reasoning": reasoning,
+            "tokens": tokens.map { token in
+                ["id": token.id, "text": token.text, "probability": token.probability,
+                 "alternatives": token.alternatives.map { ["token": $0.token, "probability": $0.probability] }] as [String: Any]
+            }]
+        if let error { value["error"] = error }
+        return value
+    }
+    public init(archiveValue value: [String: Any]) {
+        model = value["model"] as? String ?? "Unknown model"
+        text = value["text"] as? String ?? ""
+        reasoning = value["reasoning"] as? String ?? ""
+        error = value["error"] as? String
+        tokens = (value["tokens"] as? [[String: Any]] ?? []).map { token in
+            TokenReading(id: token["id"] as? Int ?? 0, text: token["text"] as? String ?? "",
+                probability: token["probability"] as? Double ?? 0,
+                alternatives: (token["alternatives"] as? [[String: Any]] ?? []).map {
+                    (token: $0["token"] as? String ?? "", probability: $0["probability"] as? Double ?? 0)
+                })
+        }
     }
 }

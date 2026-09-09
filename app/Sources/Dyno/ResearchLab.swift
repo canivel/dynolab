@@ -6,6 +6,15 @@ import Observation
 @Observable @MainActor
 final class ResearchLab {
     var tokenAnalysis = false
+    var servingResult: [String: Any] = [:]
+    var capturing = false
+    var savedCaptures: [[String: Any]] = []
+    var archiveError: String?
+    init() { reloadCaptures() }
+    func reloadCaptures() {
+        do { savedCaptures = try ResearchArchive().load(kind: "activation") }
+        catch { archiveError = error.localizedDescription }
+    }
     var draftPrompt: String?
     var draftModel: String?
     var connected = false
@@ -67,7 +76,8 @@ final class ResearchLab {
             jobs = try await request("/jobs")["jobs"] as? [[String: Any]] ?? []
             connected = true
             busy = jobs.contains { ["queued", "running"].contains($0["status"] as? String ?? "") }
-            if selected == nil { selected = jobs.first?["id"] as? String }
+            // Starting the service must not surface an old failure as a new run.
+            if selected == nil { job = [:] }
             let identifier = selected
             if let identifier {
                 let value = try await request("/jobs/\(identifier)")
@@ -92,10 +102,47 @@ final class ResearchLab {
         do { job = try await request("/jobs/\(id)/cancel", body: [:]); await refresh() }
         catch { self.error = error.localizedDescription }
     }
-    func export() {
+    func servingRequest(port: UInt16, path: String, body: [String: Any]? = nil) async throws -> [String: Any] {
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/lab/\(path)")!)
+        request.timeoutInterval = body == nil ? 3 : 75
+        if let body {
+            request.httpMethod = "POST"
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        guard let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status) else {
+            throw NSError(domain: "DynoLab", code: 3, userInfo: [NSLocalizedDescriptionKey: object["error"] as? String ?? "This endpoint does not support serving activation capture. Restart it with the updated dyno serve when traffic is quiet; no server has been stopped."])
+        }
+        return object
+    }
+    func captureServing(port: UInt16, model: String, parameters: [String: Any]) async {
+        capturing = true
+        let created = Date().timeIntervalSince1970
+        servingResult = ["operation": "inspect", "status": "running", "created": created]
+        defer {
+            capturing = false
+            servingResult["config"] = parameters
+            servingResult["model"] = model
+            servingResult["port"] = Int(port)
+            do {
+                servingResult = try ResearchArchive().save(servingResult, kind: "activation")
+                archiveError = nil; reloadCaptures()
+            } catch { archiveError = "Result could not be saved: \(error.localizedDescription). Export it to keep a copy." }
+        }
+        do {
+            var config = parameters; config["model"] = model
+            let result = try await servingRequest(port: port, path: "activations", body: config)
+            servingResult = ["operation": "inspect", "status": "completed", "created": created, "result": result]
+        } catch {
+            servingResult = ["operation": "inspect", "status": "failed", "created": created, "error": error.localizedDescription]
+        }
+    }
+    func export(_ value: [String: Any]? = nil) {
         let panel = NSSavePanel(); panel.nameFieldStringValue = "dyno-experiment.json"
         if panel.runModal() == .OK, let url = panel.url,
-           let data = try? JSONSerialization.data(withJSONObject: job, options: [.prettyPrinted, .sortedKeys]) {
+           let data = try? JSONSerialization.data(withJSONObject: value ?? job, options: [.prettyPrinted, .sortedKeys]) {
             do { try data.write(to: url) } catch { self.error = error.localizedDescription }
         }
     }

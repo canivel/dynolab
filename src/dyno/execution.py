@@ -313,8 +313,11 @@ class ExecutionHTTPMixin:
             record.event("error", str(error))
             raise
         finally:
-            capture.finish()
-            record.finish(status)
-            _current.reset(token)
-            self.rfile, self.wfile = original_reader, original_writer
-            self._execution_capture = None
+            try:
+                capture.finish()
+            finally:
+                # Parser failures must never strand a history slot as running.
+                record.finish(status)
+                _current.reset(token)
+                self.rfile, self.wfile = original_reader, original_writer
+                self._execution_capture = None

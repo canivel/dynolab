@@ -23,3 +23,19 @@ Generate a photorealistic cinematic editorial photograph for a premium Mac local
 `office-overhead.jpg` and `office-background.jpg` are AI-generated conceptual workspace images. The overhead image supplies keyboard and desk textures; the background supplies the upright wall. They are not photographs of a specific Mac or office. The real app capture is applied to the 3D display.
 
 The plant and notebook are modeled in `../office-props.js`, with procedural surface grain, curved leaves, ceramic pot, soil, rounded covers and layered page edges. All scene geometry stays fixed; scrolling moves only the camera. `mac-workspace.jpg` remains the static fallback.
+
+## Research walkthrough (0.2.0)
+
+`research-{inspect,compare,probe,sae}.png`, `research-walkthrough.gif`, and
+`research-walkthrough.mp4` show native Dyno views of completed local
+`mlx-community/Qwen1.5-0.5B-Chat-4bit` experiments. No numbers are simulated.
+The sequence is a saved-results walkthrough, not a real-time screen recording.
+The probe/SAE examples are the small sentiment demonstration in
+`tests/lab_acceptance.py`, not safety benchmarks.
+
+Render exported job JSON using `DYNO_LAB_RESULT_FIXTURE=<file> Dyno --snapshot
+<folder> --lab-only`, with folders named inspect, compare, probe, sae. Then run
+`scripts/build-research-media.py <folder-root>` (Pillow and imageio-ffmpeg).
+The packaging step crops to the result panel to exclude machine identities,
+private history, and filesystem paths. Site video is user-controlled and has a
+static poster; the GIF is used in the GitHub README.

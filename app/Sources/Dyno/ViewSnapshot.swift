@@ -28,7 +28,12 @@ enum ViewSnapshot {
         waitForData(model)
         model.selectRunningModelForSnapshot()
         let publication = arguments.contains("--public")
-        if arguments.contains("--lab-only") {
+        if let fixture = ProcessInfo.processInfo.environment["DYNO_LAB_RESULT_FIXTURE"],
+           let data = try? Data(contentsOf: URL(fileURLWithPath: fixture)),
+           let job = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            model.researchLab.servingResult = job
+            model.researchLab.job = job
+        } else if arguments.contains("--lab-only") {
             if let value = ProcessInfo.processInfo.environment["DYNO_LAB_PORT"], let port = UInt16(value) { model.researchLab.port = port }
             Task {
                 await model.researchLab.start(); await model.researchLab.refresh()

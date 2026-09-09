@@ -34,9 +34,7 @@ struct GenerationOptions: Codable, Equatable {
         if topK > 0 { payload["top_k"] = topK }
         if repetitionPenalty != 1.0 { payload["repetition_penalty"] = repetitionPenalty }
         if let seed { payload["seed"] = seed }
-        if !enableThinking {
-            payload["chat_template_kwargs"] = ["enable_thinking": false]
-        }
+        payload["chat_template_kwargs"] = ["enable_thinking": enableThinking]
         return payload
     }
 }

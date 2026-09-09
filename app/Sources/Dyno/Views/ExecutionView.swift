@@ -118,7 +118,7 @@ struct ExecutionView: View {
                     .padding(.horizontal, 14).padding(.bottom, 8)
             }
             if monitor.dropped > 0 {
-                Text("\(monitor.dropped) requests were not captured because all history slots were active.")
+                Text("\(monitor.dropped) execution traces skipped (cumulative): all 64 history slots per endpoint were marked active. Requests still run; this counter does not mean inference failed.")
                     .font(.caption).foregroundStyle(.orange).padding(.bottom, 6)
             }
             Divider()

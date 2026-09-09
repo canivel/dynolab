@@ -140,7 +140,7 @@
           <p class="reveal">
             Capture layer activations. Train a labeled probe. Patch or steer a
             representation. Compare the result with an unchanged baseline.
-            Experiments run in isolated model processes and stay on your Mac.
+            Resident activation capture reuses loaded weights. Probes, interventions and SAE training run in isolated workers. Results stay on your Mac.
           </p>
         </div>
         <div class="metric-grid">
@@ -170,19 +170,23 @@
             <code>SPARSE AUTOENCODERS</code>
           </article>
         </div>
-        <figure class="reveal" style="margin: 36px 0">
-          <img
-            src="screenshots/window-lab-dark.png"
-            alt="Dyno Research Lab comparing a real activation intervention against the unchanged baseline"
-            loading="lazy"
-            width="2400"
-            height="1700"
-            style="width: 100%; height: auto; border-radius: 16px"
-          />
-          <figcaption class="small-tag">
-            ACTUAL LOCAL EXPERIMENT / QWEN 0.5B / GREEDY DECODING
-          </figcaption>
+        <figure class="research-demo reveal">
+          <video controls muted playsinline loop preload="none" poster="assets/research-inspect.png" aria-label="Dyno native app walkthrough of recorded activation, intervention, probe and SAE results">
+            <source src="assets/research-walkthrough.mp4" type="video/mp4" />
+            <a href="assets/research-walkthrough.gif">View the animated walkthrough</a>
+          </video>
+          <figcaption>RECORDED NATIVE APP RESULTS · QWEN 0.5B · 20-SECOND WALKTHROUGH</figcaption>
+          <p>Observe a prediction. Change a representation. Test a probe. Explore sparse features.
+          These are real saved experiments rendered in Dyno, not a live generation recording.
+          The small sentiment dataset demonstrates the workflow; it is not a safety benchmark.</p>
         </figure>
+        <div class="research-gallery">
+          <figure><img src="assets/research-compare.png" alt="Actual Dyno intervention results comparing target-token probabilities and continuations" loading="lazy" width="1280" height="1120" /><figcaption>Controlled interventions · compare before and after.</figcaption></figure>
+          <figure><img src="assets/research-probe.png" alt="Actual Dyno labeled probe results showing held-out metrics and shuffled-label controls" loading="lazy" width="1280" height="1120" /><figcaption>Probe a hypothesis · keep held-out checks visible.</figcaption></figure>
+        </div>
+        <p class="reveal">Save the evidence. Activation captures and token analyses now save automatically,
+          including their settings and results. Reopen a run, adjust a hypothesis, and create a new experiment.
+          Extend the workflow through Python, HTTP, or eight local MCP tools.</p>
         <p class="reveal">
           Research tools are experimental. Interpretability readouts do not
           certify safety or alignment. Start with a small supported model.
@@ -462,7 +466,7 @@
             >
           </div>
           <p class="download-meta">
-            APPLE SILICON · macOS 14+ · OPEN SOURCE / MIT
+            VERSION 0.2.0 · APPLE SILICON · macOS 14+ · OPEN SOURCE / MIT
           </p>
           <div class="install-details">
             <details>

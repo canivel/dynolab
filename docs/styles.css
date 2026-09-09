@@ -1503,3 +1503,12 @@ body.reduced .screen-app {
     height: 460svh;
   }
 }
+
+.research-demo { margin: 36px 0; padding: 20px; border: 1px solid #34323f; border-radius: 20px; background: #101117; }
+.research-demo video { display:block; width:100%; max-height:78vh; border-radius:12px; background:#101117; }
+.research-demo figcaption,.research-gallery figcaption { color:#bcb4d9; font-size:12px; line-height:1.6; padding-top:16px; }
+.research-demo p { max-width:800px; color:#aeb1bf; line-height:1.7; }
+.research-gallery { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+.research-gallery figure { margin:0; min-width:0; }
+.research-gallery img { width:100%; height:auto; border-radius:16px; }
+@media(max-width:700px) { .research-gallery {grid-template-columns:1fr;} .research-demo {padding:10px;} }

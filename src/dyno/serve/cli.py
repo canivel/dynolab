@@ -53,6 +53,9 @@ def _patch(server_module: Any) -> None:
             + ". MLX Dyno needs mlx-lm >= 0.28; upgrade with `pip install -U mlx-lm`."
         )
 
+    if not hasattr(server_module.ResponseGenerator, '_next_request'):
+        raise UnsupportedMLXLM('Serving activation capture requires the mlx_lm generation scheduler hook. Upgrade mlx-lm.')
+
     # `run()` looks this up on the module at call time, so replacing it works.
     server_module.ResponseGenerator = InstrumentedResponseGenerator
 

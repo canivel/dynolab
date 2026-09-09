@@ -18,7 +18,9 @@ readouts are evidence to investigate, not a guarantee that a model is safe or al
 
 [**Download Dyno for Apple Silicon (.dmg)**](https://github.com/canivel/mlx-dyno/releases/latest)
 
-![Dyno Research Lab: measured intervention comparisons](docs/screenshots/window-lab-dark.png)
+![Dyno research walkthrough: activations, interventions, probes and SAE results](docs/assets/research-walkthrough.gif)
+
+*Recorded native app views of real Qwen 0.5B experiments. This walkthrough cycles through saved results; it is not a live generation recording.*
 
 *Explore activations, train probes, and compare interventions with an unchanged baseline.*
 
@@ -29,19 +31,27 @@ readouts are evidence to investigate, not a guarantee that a model is safe or al
 | **`dyno serve`** | The lab’s inference foundation: OpenAI-compatible MLX serving with throughput metrics. |
 | **`dyno top`** | Hardware telemetry for understanding your experiments’ resource use. |
 
+## What’s new in 0.2.0
+
+Resident activation capture, readable predictions, automatic research history, Thinking controls, and detected-server Stop controls. See the [release notes](docs/release-notes.md).
+
 ## Research Lab
 
-Lab is the default workspace. **Experiments** provides isolated activation,
-probe, intervention and SAE jobs. **Token analysis** uses an existing serving
+Lab is the default workspace. **Experiments → Activations** can inspect an
+already-serving model without another weight copy, or run an isolated experiment.
+Probes, interventions and SAE training use isolated jobs. **Token analysis** uses an existing serving
 endpoint to inspect token probabilities and compare outputs, without loading a
 second model. It still consumes inference capacity. Token probabilities do not
 measure correctness or safety.
 
-Open **Lab → Start lab**, choose a local model and a method, then run an editable
-experiment template. Activation heatmaps show layer/token structure; intervention
+Open **Lab → Experiments** and choose a method. For Activations, choose
+**Inspect serving model** to reuse loaded weights, or **Isolated experiment**
+to load a separate copy. Isolated jobs require **Start lab**. Updated serving
+endpoints expose resident capture after a one-time restart; Dyno never restarts
+your inference server automatically. Activation heatmaps show layer/token structure; intervention
 charts compare target-token probabilities and generated answers; probes report
 held-out metrics and control baselines; the SAE sandbox displays training curves
-and feature examples. Export each experiment with its parameters and provenance.
+and feature examples. Activation captures and token analyses save automatically on this Mac. Reopen history to restore results and settings; rerunning creates a new record. Export to share parameters and provenance.
 
 The current scope is block-output analysis with raw-text prompts. Pretrained SAE
 imports, full circuit tracing and automated safety certification are not included.

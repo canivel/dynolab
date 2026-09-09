@@ -9,6 +9,7 @@
 <li><a href="#dyno-research-lab-api-and-sdk">Dyno Research Lab — API and SDK</a><ul>
 <li><a href="#start">Start</a></li>
 <li><a href="#app-navigation">App navigation</a></li>
+<li><a href="#inspect-an-already-serving-model">Inspect an already-serving model</a></li>
 <li><a href="#python-sdk">Python SDK</a><ul>
 <li><a href="#probe-and-sae-examples">Probe and SAE examples</a></li>
 </ul>
@@ -20,6 +21,8 @@
 </ul>
 </li>
 <li><a href="#mcp-integration">MCP integration</a></li>
+<li><a href="#thinking-and-saved-runs-in-the-mac-app">Thinking and saved runs in the Mac app</a></li>
+<li><a href="#install-the-versioned-sdk">Install the versioned SDK</a></li>
 </ul>
 </li>
 <li><a href="#local-mcp-server">Local MCP server</a><ul>
@@ -47,11 +50,51 @@ pip install -e '.[serve,mcp]'
 <p>The service binds loopback. HTTP clients on the same Mac can use <code>/lab/v1</code>; browser-origin requests and LAN clients are rejected. It uses the same Python package as the dependency-free SDK, <code>dyno.sdk</code>. This is separate from the OpenAI-compatible inference API.</p>
 <h2 id="app-navigation">App navigation</h2>
 <p>The main tabs are <strong>Lab, Execution, Models, Discover, Router, Performance</strong>.
-Lab opens first. <strong>Experiments</strong> runs isolated activation, intervention, probe
-and SAE jobs. <strong>Token analysis</strong> is the former Inspect tab: it sends prompts to
+Lab opens first. <strong>Experiments</strong> offers resident or isolated activation capture,
+plus isolated intervention, probe and SAE jobs. <strong>Token analysis</strong> is the former Inspect tab: it sends prompts to
 an already-running endpoint and displays token probabilities and alternative
 tokens without loading another model copy. It does consume serving capacity.
 Execution shows captured API requests; it is separate from either experiment mode.</p>
+<h2 id="inspect-an-already-serving-model">Inspect an already-serving model</h2>
+<p>In <strong>Lab → Experiments → Activations</strong>, choose <strong>Inspect serving model</strong> and its
+endpoint. This mode reuses resident weights. It counts only temporary capture
+workspace when checking memory; it does not require starting the separate Lab
+service. <strong>Isolated experiment</strong> remains available for full activation artifacts,
+interventions, probes and SAE training, and loads its own model copy.</p>
+<p>An existing serving process needs a one-time restart with the updated <code>dyno serve</code>
+to expose these endpoints. No activation-capture flag is required. In the app, use
+<strong>Open Models</strong> from the Lab warning, then <strong>Stop</strong> the old Dyno endpoint when
+ready and <strong>Start</strong> it on the same port. Models shows detected Dyno servers as well
+as app-launched servers; stopping interrupts active requests. Review Launch Options
+before starting, since external command-line options are not imported. Other
+runtimes must be managed in their own apps. Dyno does not restart it automatically. After restarting
+when traffic is quiet, click <strong>Refresh endpoint</strong> in Lab. External OpenAI-compatible
+servers without this extension cannot supply internal activations.</p>
+<pre><code class="language-python">from dyno.sdk import ServingModel
+
+server = ServingModel(port=8971)
+print(server.capabilities())
+result = server.inspect(&quot;The capital of France is&quot;, layers=[4, 8])
+print(result[&quot;layers&quot;])  # token-by-layer activation norms
+</code></pre>
+<ul>
+<li><code>GET /lab/capabilities</code> reports the resident model and capture limits.</li>
+<li><code>POST /lab/activations</code> accepts <code>model</code> (the exact capability value), <code>prompt</code>,
+  <code>layers</code> and <code>max_input_tokens</code>. Returns measurements directly, not a job ID.</li>
+<li>Up to four distinct layers and 256 input tokens; raw text without a chat template.</li>
+<li>Only one capture can be pending/running. Capture runs on the generation thread
+  between scheduler iterations and may wait for a single-request generation to finish.
+  It uses fresh forward-pass state, never serving KV caches. Temporary hooks are
+  removed even if capture fails. No weights, RNG seed or server configuration change.</li>
+<li>A model-identity mismatch fails instead of loading a different model. Distributed
+  inference is unsupported. Queued capture expires after 60 seconds; if a forward
+  pass has already begun, it completes before serving resumes.</li>
+<li>Even without another weight copy, workspace and GPU time are required. Capture can
+  briefly delay inference. It is a dedicated prompt, not a trace of an unrelated request.</li>
+<li>Results contain norms and final next-token probabilities, not intermediate logit-lens
+  predictions or raw tensor files. App results are session-only; <strong>Export experiment</strong>
+  saves them. Both endpoints reject LAN and browser-origin access.</li>
+</ul>
 <h2 id="python-sdk">Python SDK</h2>
 <pre><code class="language-python">from dyno.sdk import Lab
 
@@ -163,10 +206,10 @@ print(lab.wait(sae[&quot;id&quot;])[&quot;result&quot;][&quot;reports&quot;])
 <p>Record exact model revisions; <code>revision</code> can pin a Hugging Face revision. Results include model configuration, runtime versions, requested revision, resolved tokenizer/model path where available, and a weight-file size/time manifest. This manifest is <strong>not a cryptographic checksum of weights</strong>. Configurations receive their own SHA-256 hash.</p>
 <p>Limits: 8 selected layers, 1,024 input tokens, 128 generated tokens, 512 dataset examples, 9 intervention strengths, and a 30-minute worker deadline. A research worker loads a separate model copy and shares the Mac's memory/GPU budget. Start small; there is no universal memory-fit guarantee. SAE training is limited to 8–512 features and 500 steps in this first version.</p>
 <h3 id="running-beside-an-inference-server">Running beside an inference server</h3>
-<p>The native Lab selects a matching serving model when available on disk and labels
-it <strong>Serving now</strong>. Experiments still load their own copy; they do not hook,
+<p>In <strong>Isolated experiment</strong> mode, the native Lab selects a matching downloaded model.
+These experiments still load their own copy; they do not hook,
 replace, or unload a serving model. You can select another downloaded model.</p>
-<p>Before enabling <strong>Run experiment</strong>, the app checks fresh hardware telemetry,
+<p>For isolated jobs, before enabling <strong>Run experiment</strong>, the app checks fresh hardware telemetry,
 active serving requests, and GPU utilization. It estimates additional memory as
 1.35 × weights + 2 GiB workspace + an input-length margin, and keeps the larger
 of 4 GiB or 5% of physical RAM in reserve. Available memory is the smaller of
@@ -180,6 +223,35 @@ For latency-sensitive serving, run experiments during a quiet period or on anoth
 Mac. Dyno never automatically stops a serving model to make room.</p>
 <h2 id="mcp-integration">MCP integration</h2>
 <p>See the <a href="#local-mcp-server">local MCP setup and tool reference</a>. The same research jobs are available through stdio MCP, HTTP and Python.</p>
+<h2 id="thinking-and-saved-runs-in-the-mac-app">Thinking and saved runs in the Mac app</h2>
+<p>Models offers <strong>Thinking: Model default / On / Off</strong> beside Start. This sets
+<code>--chat-template-args '{"enable_thinking":false}'</code> (or <code>true</code>) for the next
+server start. It requires a model template that supports this option. Per-request
+<code>chat_template_kwargs.enable_thinking</code> takes precedence; Chat and Token analysis
+can choose their own setting. Raw-text activation captures do not use a chat
+template and do not require thinking. Enable thinking when investigating emitted
+reasoning with a compatible model, allowing enough output tokens for it.</p>
+<p>Activation captures and token analyses now save inputs, settings, results and
+model identity automatically under <code>~/.mlx-dyno/research-history/</code>. Each run gets
+its own file. Use saved history to reopen a result, adjust the restored settings,
+and run again. Token analyses include returned reasoning text, answers and token
+probabilities. Failed captures and analysis errors are retained too. Saved results
+can be read without loading a model; a new run still needs the appropriate endpoint.
+Previous session-only results cannot be recovered after the old app has quit.
+Isolated experiments remain under <code>~/.mlx-dyno/lab/</code>; opening their history also
+restores the experiment configuration. These are saved results and configurations,
+not paused model execution or optimizer checkpoints.</p>
+<h2 id="install-the-versioned-sdk">Install the versioned SDK</h2>
+<p>The <a href="https://github.com/canivel/mlx-dyno/releases/tag/v0.2.0">0.2.0 GitHub release</a>
+includes a Python wheel, source distribution and checksums alongside the Mac DMG.
+Install the downloaded wheel with <code>python -m pip install mlx_dyno-0.2.0-py3-none-any.whl</code>.
+For a pinned source install including the serving runtime and MCP tools:</p>
+<pre><code class="language-bash">python -m pip install 'mlx-dyno[serve,mcp] @ git+https://github.com/canivel/mlx-dyno.git@v0.2.0'
+</code></pre>
+<p>This release is distributed through GitHub; these instructions do not assume a
+matching PyPI release. The HTTP API remains <code>/lab/v1</code>; the package version is 0.2.0.
+The downloadable OpenAPI document includes per-path server URLs for the resident
+capture endpoints, which run on your inference server rather than port 8980.</p>
 <hr />
 <h1 id="local-mcp-server">Local MCP server</h1>
 <p>Dyno includes a <strong>stdio MCP bridge</strong> for assistants and agent tools on your Mac.
@@ -223,6 +295,16 @@ An older DMG may not contain this launcher; build the current source with
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><code>serving_capabilities</code></td>
+<td>Discover resident capture support on an inference port</td>
+<td>Read only</td>
+</tr>
+<tr>
+<td><code>serving_inspect</code></td>
+<td>Capture norms using loaded weights</td>
+<td>Brief extra GPU/workspace use, no weight copy</td>
+</tr>
 <tr>
 <td><code>lab_health</code></td>
 <td>Check service availability</td>
@@ -288,4 +370,5 @@ arbitrary file reader, or automatic connection to an assistant in this release.<
 <li><strong>A job is already running:</strong> poll its status or cancel that Lab job.</li>
 <li><strong>Older Lab service:</strong> quit the instance that owns the old Lab process and reopen the updated build.</li>
 <li><strong>Model error:</strong> inspect the job error and verify its architecture, layers and input limits. Hybrid Qwen layers are covered by regression tests; support is not universal across every MLX model.</li>
-</ul><footer>Generated from <a href="https://github.com/canivel/mlx-dyno/blob/main/docs/research-api.md">the GitHub documentation</a>. Research features are experimental.</footer></main></div></body></html>
+</ul>
+<p><code>serving_inspect</code> connects directly to an updated Dyno inference endpoint and does not require the Lab job service. Use it for read-only norms; use <code>lab_submit</code> for isolated jobs.</p><footer>Generated from <a href="https://github.com/canivel/mlx-dyno/blob/main/docs/research-api.md">the GitHub documentation</a>. Research features are experimental.</footer></main></div></body></html>

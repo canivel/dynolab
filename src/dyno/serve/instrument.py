@@ -19,6 +19,8 @@ from .exporters import PROMETHEUS_CONTENT_TYPE, prometheus_text, stats_json
 from .metrics import MetricsRegistry
 from ..execution import ExecutionHTTPMixin, ExecutionStore, current_execution
 
+from .activations import CaptureBroker
+
 registry = MetricsRegistry()
 
 
@@ -29,6 +31,17 @@ class InstrumentedResponseGenerator(ResponseGenerator):
     non-streaming requests are measured identically: both pull from this same
     generator, so time to first token is real in both cases.
     """
+
+    def __init__(self, *args, **kwargs):
+        self.activation_captures = CaptureBroker()
+        super().__init__(*args, **kwargs)
+
+    def _next_request(self, timeout=None):
+        # This seam runs on mlx_lm's single generation thread, between scheduler
+        # iterations. No HTTP thread touches layers; active batch caches are not used.
+        if not self._is_distributed:
+            self.activation_captures.service(self.model_provider)
+        return super()._next_request(timeout)
 
     def generate(self, request, generation_args, progress_callback=None):
         model = _model_name(generation_args, request)
@@ -114,12 +127,38 @@ class InstrumentedAPIHandler(ExecutionHTTPMixin, APIHandler):
 
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
-        if path == "/metrics":
+        if path == "/lab/capabilities":
+            if not self._execution_local(): return
+            provider = self.response_generator.model_provider
+            key = provider.model_key
+            self._execution_send(dict(serving_activations=not self.response_generator._is_distributed,
+                model=str(key[0]) if key else None, max_input_tokens=256, max_layers=4))
+        elif path == "/metrics":
             self._send(prometheus_text(registry), PROMETHEUS_CONTENT_TYPE)
         elif path in ("/stats", "/v1/stats"):
             self._send(stats_json(registry, model_path=self._model_path()), "application/json")
         else:
             super().do_GET()
+
+    def do_POST(self):
+        if self.path.split("?", 1)[0] != "/lab/activations":
+            return super().do_POST()
+        if not self._execution_local(): return
+        try:
+            if self.response_generator._is_distributed:
+                raise ValueError("Serving activation capture is unavailable for distributed servers")
+            size = int(self.headers.get("Content-Length", "0"))
+            if not 0 < size <= 65536:
+                raise ValueError("Capture body must be 1–65536 bytes")
+            config = json.loads(self.rfile.read(size))
+            result = self.response_generator.activation_captures.submit(config)
+            self._execution_send(result)
+        except TimeoutError as error:
+            self._execution_send({"error": str(error)}, 408)
+        except RuntimeError as error:
+            self._execution_send({"error": str(error)}, 409)
+        except Exception as error:
+            self._execution_send({"error": str(error)}, 400)
 
     def _model_path(self) -> str | None:
         try:

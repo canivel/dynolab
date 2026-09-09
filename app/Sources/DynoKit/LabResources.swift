@@ -9,10 +9,10 @@ public struct LabResources {
     public var canRun: Bool { blockedReason == nil }
 
     public init(weightBytes: Int64?, memory: MemorySample, gpuBusy: Double,
-                activeRequests: Int, fresh: Bool, maxInputTokens: Int = 256) {
+                activeRequests: Int, fresh: Bool, maxInputTokens: Int = 256, reuseServingModel: Bool = false) {
         // Weight overhead, framework workspace, and a quadratic sequence margin.
         let tokens = Double(max(1, min(maxInputTokens, 1024)))
-        estimatedBytes = Int64(Double(weightBytes ?? 0) * 1.35 + 2 * GB +
+        estimatedBytes = Int64(Double(reuseServingModel ? 0 : (weightBytes ?? 0)) * 1.35 + 2 * GB +
             pow(tokens / 256, 2) * 0.125 * GB)
         reserveBytes = max(Int64(4 * GB), Int64(Double(memory.total) * 0.05))
         if memory.total > 0, let gpuHeadroom = memory.gpuHeadroom {
@@ -20,15 +20,15 @@ public struct LabResources {
         } else { availableBytes = nil }
         if !fresh {
             blockedReason = "Waiting for fresh hardware measurements. Keep Dyno open while telemetry refreshes."
-        } else if weightBytes == nil || weightBytes! <= 0 {
+        } else if !reuseServingModel && (weightBytes == nil || weightBytes! <= 0) {
             blockedReason = "Choose a downloaded MLX model so Dyno can estimate its additional memory."
         } else if let availableBytes, estimatedBytes > availableBytes {
-            blockedReason = "Not enough estimated headroom for a separate copy. Choose a smaller or more heavily quantized model, or free memory in other apps. Stopping a serving model is a manual option in Models."
+            blockedReason = "Not enough estimated headroom for this experiment. Choose a smaller or more heavily quantized model, or free memory in other apps. Stopping a serving model is a manual option in Models."
         } else if availableBytes == nil {
             blockedReason = "Memory or Metal headroom is unavailable. Wait for telemetry before starting an experiment."
-        } else if activeRequests > 0 {
+        } else if !reuseServingModel && activeRequests > 0 {
             blockedReason = "Inference requests are active. Wait for them to finish, or schedule the experiment when serving traffic is quiet."
-        } else if gpuBusy >= 50 {
+        } else if !reuseServingModel && gpuBusy >= 50 {
             blockedReason = "The GPU is busy. Wait for a quieter period before adding an experiment."
         } else {
             blockedReason = nil

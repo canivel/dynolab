@@ -3,7 +3,7 @@ import argparse
 import json
 from typing import Literal
 from urllib.parse import quote
-from .sdk import Lab
+from .sdk import Lab, ServingModel
 
 
 def create_server(port=8980):
@@ -58,6 +58,20 @@ def create_server(port=8980):
         job = lab.job(job_id)
         names = job.get('result', {}).get('artifacts', [])
         return {'artifacts': [dict(name=name, url=f'{lab.base_url}/lab/v1/jobs/{quote(job_id, safe="")}/artifacts/{quote(name, safe="")}') for name in names]}
+
+    @server.tool(annotations=read)
+    def serving_capabilities(port: int = 8971) -> dict:
+        """Check whether a local inference endpoint can inspect its resident model."""
+        return ServingModel(port).capabilities()
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
+    def serving_inspect(prompt: str, layers: list[int], port: int = 8971, max_input_tokens: int = 128) -> dict:
+        """Capture activation norms without another weight copy. Can delay serving.
+
+        No interventions, training, chat template, raw tensor files or extra model
+        load. The endpoint must have been started with the updated dyno serve.
+        """
+        return ServingModel(port).inspect(prompt, layers, max_input_tokens)
 
     @server.resource('dyno://lab/openapi')
     def openapi() -> str:

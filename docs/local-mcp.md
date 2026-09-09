@@ -45,6 +45,8 @@ An older DMG may not contain this launcher; build the current source with
 
 | Tool | Purpose | Effect |
 |---|---|---|
+| `serving_capabilities` | Discover resident capture support on an inference port | Read only |
+| `serving_inspect` | Capture norms using loaded weights | Brief extra GPU/workspace use, no weight copy |
 | `lab_health` | Check service availability | Read only |
 | `lab_jobs` | List recent experiment metadata | Read only |
 | `lab_job` | Read configuration, status, results or errors | Read only |
@@ -93,3 +95,5 @@ arbitrary file reader, or automatic connection to an assistant in this release.
 - **A job is already running:** poll its status or cancel that Lab job.
 - **Older Lab service:** quit the instance that owns the old Lab process and reopen the updated build.
 - **Model error:** inspect the job error and verify its architecture, layers and input limits. Hybrid Qwen layers are covered by regression tests; support is not universal across every MLX model.
+
+`serving_inspect` connects directly to an updated Dyno inference endpoint and does not require the Lab job service. Use it for read-only norms; use `lab_submit` for isolated jobs.

@@ -15,6 +15,9 @@ struct TokenAnalysisView: View {
     @State private var comparePort: UInt16?
     @State private var maxTokens = 120
     @State private var seed = 0
+    @State private var thinkingMode = "default"
+    @State private var savedRuns: [[String: Any]] = []
+    @State private var saveError: String?
     @State private var running = false
     @State private var reference: TokenTrace?
     @State private var other: TokenTrace?
@@ -38,10 +41,35 @@ struct TokenAnalysisView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 controls
+                if let saveError { Text(saveError).foregroundStyle(.orange) }
+                DisclosureGroup("Saved token analyses (\(savedRuns.count))") {
+                    ForEach(savedRuns.indices, id: \.self) { i in
+                        let saved = savedRuns[i]
+                        Button {
+                            prompt = saved["prompt"] as? String ?? ""
+                            maxTokens = saved["max_tokens"] as? Int ?? 120
+                            seed = saved["seed"] as? Int ?? 0
+                            thinkingMode = saved["thinking"] as? String ?? "default"
+                            reference = (saved["reference"] as? [String: Any]).map { TokenTrace(archiveValue: $0) }
+                            other = (saved["other"] as? [String: Any]).map { TokenTrace(archiveValue: $0) }
+                            referencePort = servers.first { $0.id == reference?.model }?.port
+                            comparePort = servers.first { $0.id == other?.model }?.port
+                            selected = nil
+                        } label: {
+                            VStack(alignment: .leading) {
+                                Text(saved["prompt"] as? String ?? "Analysis").lineLimit(1)
+                                Text(Date(timeIntervalSince1970: saved["saved_at"] as? Double ?? 0).formatted()).font(.caption)
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                        }.disabled(running)
+                    }
+                }
+                Text("Runs are saved automatically on this Mac. Open one to restore results and settings; Analyze tokens creates a new run. Select the matching running model before rerunning.")
+                    .font(.caption).foregroundStyle(.secondary)
                 if servers.isEmpty {
                     Text("Start a model on the Models tab first.")
                         .font(.system(size: 12)).foregroundStyle(.secondary)
-                } else if let reference {
+                }
+                if let reference {
                     traceView(reference, title: reference.model, isReference: true)
                     if let other {
                         traceView(other, title: other.model, isReference: false)
@@ -50,7 +78,12 @@ struct TokenAnalysisView: View {
                 }
             }
             .padding(20)
-        }
+        }.onAppear { reloadHistory() }
+    }
+
+    private func reloadHistory() {
+        do { savedRuns = try ResearchArchive().load(kind: "tokens") }
+        catch { saveError = error.localizedDescription }
     }
 
     // MARK: - Controls
@@ -66,6 +99,13 @@ struct TokenAnalysisView: View {
                 .background(RoundedRectangle(cornerRadius: 8)
                     .fill(Color.primary.opacity(0.05)))
 
+            Picker("Thinking", selection: $thinkingMode) {
+                Text("Server default").tag("default")
+                Text("On").tag("on")
+                Text("Off").tag("off")
+            }.frame(width: 300)
+            Text("Use On to study emitted reasoning with a compatible model. Off may finish faster. Thinking tokens share the generation budget; the model’s template determines whether this setting is supported.")
+                .font(.caption).foregroundStyle(.secondary)
             HStack(spacing: 12) {
                 labelled("Model") {
                     Picker("", selection: $referencePort) {
@@ -92,10 +132,11 @@ struct TokenAnalysisView: View {
                 Button(running ? "Running…" : "Analyze tokens") { run() }
                     .controlSize(.large)
                     .buttonStyle(.borderedProminent)
-                    .disabled(running || servers.isEmpty
+                    .disabled(running || referencePort == nil || servers.isEmpty
                               || prompt.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
+        .disabled(running)
         .onAppear { if referencePort == nil { referencePort = servers.first?.port } }
         .onChange(of: model.snapshot.models) { _, _ in
             if !servers.contains(where: { $0.port == referencePort }) { referencePort = servers.first?.port }
@@ -121,18 +162,28 @@ struct TokenAnalysisView: View {
         other = nil
         selected = nil
 
+        let runPrompt = prompt, runMax = maxTokens, runSeed = seed, runThinking = thinkingMode
+        let compareModel = servers.first(where: { $0.port == comparePort })
+        let requestedThinking: Bool? = runThinking == "default" ? nil : runThinking == "on"
         Task { @MainActor in
             reference = await Inspection.capture(
-                port: referencePort, model: referenceModel, prompt: prompt,
-                maxTokens: maxTokens, seed: seed
+                port: referencePort, model: referenceModel, prompt: runPrompt,
+                maxTokens: runMax, seed: runSeed, thinking: requestedThinking
             )
-            if let comparePort,
-               let compareModel = servers.first(where: { $0.port == comparePort })?.id {
+            if let compareModel {
                 other = await Inspection.capture(
-                    port: comparePort, model: compareModel, prompt: prompt,
-                    maxTokens: maxTokens, seed: seed
+                    port: compareModel.port, model: compareModel.id, prompt: runPrompt,
+                    maxTokens: runMax, seed: runSeed, thinking: requestedThinking
                 )
             }
+            var record: [String: Any] = ["prompt": runPrompt, "max_tokens": runMax,
+                "seed": runSeed, "thinking": runThinking, "reference_port": Int(referencePort)]
+            if let reference { record["reference"] = reference.archiveValue }
+            if let other { record["other"] = other.archiveValue }
+            do {
+                try ResearchArchive().save(record, kind: "tokens")
+                saveError = nil; reloadHistory()
+            } catch { saveError = "Could not save analysis: \(error.localizedDescription)" }
             running = false
         }
     }
@@ -150,6 +201,12 @@ struct TokenAnalysisView: View {
             if let error = trace.error {
                 Text(error).font(.system(size: 11)).foregroundStyle(.orange)
             } else {
+                if !trace.reasoning.isEmpty {
+                    DisclosureGroup("Model-emitted thinking") { Text(trace.reasoning).textSelection(.enabled) }
+                }
+                if !trace.text.isEmpty {
+                    DisclosureGroup("Generated answer") { Text(trace.text).textSelection(.enabled) }
+                }
                 TokenFlow(tokens: trace.tokens, selected: $selected)
                 if let selected, trace.tokens.contains(where: { $0.id == selected.id }) {
                     alternativesView(selected)

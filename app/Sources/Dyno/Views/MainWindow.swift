@@ -262,18 +262,48 @@ private struct RunPanel: View {
     @State private var showingOptions = false
 
     private var snapshot: Snapshot { model.snapshot }
-    /// The served model matching what we started, if the server is up.
     private var served: LLMModel? {
-        guard let running = model.serverState.runningModel else {
-            return snapshot.models.first
-        }
-        return snapshot.models.first { $0.name == running } ?? snapshot.models.first
+        guard let selected = model.selectedModel else { return nil }
+        return snapshot.models.first { $0.identifier == selected.path || $0.identifier == selected.name }
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 controls
+                Text("Thinking applies to the next start and only to compatible chat templates. Off may reduce latency. Chat and API requests can override this default; raw-text Lab captures do not use it.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if let error = model.serverActionError { Text(error).foregroundStyle(.orange).font(.caption) }
+                Text("Activation capture is included automatically when you start a model with this version of Dyno. No capture flag is needed. Older running servers need to be stopped and started again.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if !snapshot.models.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("RUNNING ENDPOINTS").font(.caption).foregroundStyle(.secondary)
+                        ForEach(snapshot.models) { endpoint in
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(endpoint.name).lineLimit(1)
+                                    Text(":\(endpoint.port.map(String.init) ?? "—") · \(endpoint.stats?.activeRequests ?? 0) active requests")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if model.canStopEndpoint(endpoint) {
+                                    Button("Stop") { model.stopEndpoint(endpoint) }
+                                        .help("Stop this endpoint. Active requests will be interrupted.")
+                                } else {
+                                    Text("Manage in \(endpoint.runtime)").font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        Text("Stopping an endpoint interrupts its active requests. Start uses the port and launch options below.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }.padding(12).background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 9))
+                }
+                HStack {
+                    Text("Start on port").font(.caption)
+                    TextField("Port", value: Binding(get: { model.launchPort }, set: { model.launchPort = $0 }), format: .number.grouping(.never))
+                        .frame(width: 90)
+                }
                 launchOptions
                 if let served, served.stats != nil || served.tokensPerSecond != nil {
                     throughput(served)
@@ -299,7 +329,17 @@ private struct RunPanel: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            switch model.serverState {
+            Picker("Thinking", selection: Binding(get: { model.thinkingMode }, set: { model.thinkingMode = $0 })) {
+                Text("Model default").tag("default")
+                Text("On").tag("on")
+                Text("Off").tag("off")
+            }.frame(width: 205)
+                .help("Default for the next server start. Requires a compatible model template. Individual chat/API requests can override it; restart for changes to apply.")
+            if let served, model.canStopEndpoint(served) {
+                Button("Stop") { model.stopEndpoint(served) }.controlSize(.large)
+            } else if served != nil {
+                Text("Already serving").foregroundStyle(.secondary)
+            } else { switch model.serverState {
             case .running:
                 Button("Stop") { model.stopServer() }
                     .controlSize(.large)
@@ -314,6 +354,7 @@ private struct RunPanel: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(model.selectedModel == nil || model.runtime == nil)
             }
+            }
         }
     }
 
@@ -326,6 +367,7 @@ private struct RunPanel: View {
     }
 
     private var subline: String {
+        if let served { return "Serving · port \(served.port.map(String.init) ?? "—")" }
         switch model.serverState {
         case let .running(_, port):
             return "Running · OpenAI API on 127.0.0.1:\(port)"

@@ -165,7 +165,7 @@ public final class ProcessScanner {
 
     /// Full argv via `KERN_PROCARGS2`. Fails for processes owned by other
     /// users, in which case the caller falls back to the executable path.
-    private func commandLine(for pid: Int32) -> String? {
+    public func commandLine(for pid: Int32) -> String? {
         var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
         var size = argumentMax
         var buffer = [UInt8](repeating: 0, count: size)
