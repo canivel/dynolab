@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330" role="img" aria-labelledby="title desc">
+<title id="title">Dyno Lab</title><desc id="desc">Your AI safety and alignment research lab. Inspect. Experiment. Understand.</desc>
+<defs><radialGradient id="glow"><stop stop-color="#ccff7a" stop-opacity=".13"/><stop offset="1" stop-color="#080a09" stop-opacity="0"/></radialGradient></defs>
+<rect width="1200" height="330" rx="24" fill="#080a09"/>
+<ellipse cx="990" cy="165" rx="360" ry="260" fill="url(#glow)"/>
+<g stroke="#ccff7a" stroke-opacity=".18" fill="none"><path d="M810 75L915 125L1035 65L1115 150L990 220L855 245L915 125L990 220L1035 65M810 75L855 245M915 125L1115 150M990 220L1130 280"/><circle cx="980" cy="165" r="110"/><circle cx="980" cy="165" r="155"/></g>
+<g fill="#ccff7a"><circle cx="810" cy="75" r="4"/><circle cx="915" cy="125" r="6"/><circle cx="1035" cy="65" r="4"/><circle cx="1115" cy="150" r="5"/><circle cx="990" cy="220" r="7"/><circle cx="855" cy="245" r="4"/><circle cx="1130" cy="280" r="4"/>
+<rect x="60" y="70" width="10" height="32" rx="5"/><rect x="77" y="53" width="10" height="49" rx="5"/><rect x="94" y="40" width="10" height="62" rx="5"/><rect x="111" y="63" width="10" height="39" rx="5"/></g>
+<g font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif"><text x="145" y="91" fill="#f5f6f2" font-size="54" font-weight="650" letter-spacing="-2">dyno lab</text><text x="60" y="170" fill="#f5f6f2" font-size="34" font-weight="500">Your AI safety &amp; alignment lab.</text><text x="60" y="213" fill="#a5aca2" font-size="21">Inspect. Experiment. Understand.</text><text x="60" y="279" fill="#ccff7a" font-size="13" letter-spacing="3">APPLE SILICON  /  OPEN SOURCE  /  LOCAL RESEARCH</text></g></svg>
