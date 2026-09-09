@@ -31,7 +31,10 @@ docs = ["markdown>=3.7,<4"]
 dyno = "dyno.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/canivel/mlx-dyno"
+Homepage = "https://dynolab.dev"
+Documentation = "https://dynolab.dev/guide.html"
+Repository = "https://github.com/canivel/mlx-dyno"
+Issues = "https://github.com/canivel/mlx-dyno/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dyno"]

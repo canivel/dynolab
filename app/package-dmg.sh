@@ -32,7 +32,9 @@ This build is ad-hoc signed, not Apple-notarized. macOS may block its first
 launch. See Apple's guidance for opening apps from an unidentified developer:
 https://support.apple.com/guide/mac-help/mh40616/mac
 
-Source and documentation: https://github.com/canivel/mlx-dyno
+Website: https://dynolab.dev
+Documentation: https://dynolab.dev/guide.html
+Source: https://github.com/canivel/mlx-dyno
 TXT
 DMG="build/Dyno-${VERSION}-arm64.dmg"
 hdiutil create -volname "Dyno ${VERSION}" -srcfolder "$STAGING" -format UDZO -ov "$DMG"

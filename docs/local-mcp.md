@@ -1,5 +1,7 @@
 # Local MCP server
 
+Published guide: [dynolab.dev/guide.html](https://dynolab.dev/guide.html)
+
 Dyno includes a **stdio MCP bridge** for assistants and agent tools on your Mac.
 It exposes the Research Lab through the [official MCP Python SDK](https://py.sdk.modelcontextprotocol.io/v1/).
 It is not an inference server, and it does not listen on a network port.

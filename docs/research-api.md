@@ -1,5 +1,7 @@
 # Dyno Research Lab — API and SDK
 
+Published guide: [dynolab.dev/guide.html](https://dynolab.dev/guide.html)
+
 An experimental local workbench for AI safety and alignment research. Its results are measurements and hypotheses, not safety certifications. Current jobs inspect residual block outputs, compare interventions, train binary probes, and train small sparse autoencoders. Pretrained SAE imports and circuit tracing are not yet implemented.
 
 ## Start
