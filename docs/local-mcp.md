@@ -1,6 +1,6 @@
 # Local MCP server
 
-Published guide: [dynolab.dev/guide.html](https://dynolab.dev/guide.html)
+Published guide: [dynolab.dev/guide.html](https://dynolab.dev/mcp.html)
 
 Dyno includes a **stdio MCP bridge** for assistants and agent tools on your Mac.
 It exposes the Research Lab through the [official MCP Python SDK](https://py.sdk.modelcontextprotocol.io/v1/).
@@ -40,8 +40,8 @@ launcher bundled in an updated Dyno app:
 The launcher resolves its own runtime after relocation. Adjust the app path if
 Dyno is installed elsewhere. The `mcpServers` envelope is a common client format;
 use your client's equivalent command and argument fields when its format differs.
-An older DMG may not contain this launcher; build the current source with
-`./app/build.sh` until a release containing these features is available.
+The 0.2.0 release contains this launcher. Upgrade older installations from
+[GitHub Releases](https://github.com/canivel/dynolab/releases/latest).
 
 ## Tools
 
@@ -55,6 +55,18 @@ An older DMG may not contain this launcher; build the current source with
 | `lab_submit` | Submit `inspect`, `compare`, `probe` or `sae` | Loads a separate model and runs an experiment |
 | `lab_cancel` | Cancel the selected experiment worker | Stops that worker only |
 | `lab_artifacts` | List HTTP download links for saved artifacts | Read only |
+
+### Tool arguments
+
+| Tool | Arguments |
+|---|---|
+| `lab_health`, `lab_jobs` | None |
+| `lab_job`, `lab_cancel`, `lab_artifacts` | `job_id`: returned job identifier |
+| `lab_submit` | `operation`, `model`, `settings` object; keep model/operation out of settings |
+| `serving_capabilities` | `port` (default 8971) |
+| `serving_inspect` | Required `prompt`, `layers`; optional `port` (8971), `max_input_tokens` (128) |
+
+For a first resident capture, ask your connected assistant: “Check the Dyno serving capabilities on port 8971, then capture layers 4 and 8 for the raw prompt ‘The capital of France is’ using the loaded model.” Choose layers that exist in your model. This returns measurements directly; there is no job ID to poll.
 
 The resource `dyno://lab/openapi` returns the service's OpenAPI schema.
 Large arrays stay in artifact files; use the SDK or HTTP URLs to download them.

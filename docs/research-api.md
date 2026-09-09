@@ -4,6 +4,9 @@ Published guide: [dynolab.dev/guide.html](https://dynolab.dev/guide.html)
 
 An experimental local workbench for AI safety and alignment research. Its results are measurements and hypotheses, not safety certifications. Current jobs inspect residual block outputs, compare interventions, train binary probes, and train small sparse autoencoders. Pretrained SAE imports and circuit tracing are not yet implemented.
 
+For the reorganized documentation, start with the [app handbook](app-guide.md),
+[Python SDK](sdk-guide.md), [HTTP API](http-api.md) or [local MCP](local-mcp.md).
+
 ## Start
 
 In an updated app, select **Lab → Experiments → Start lab**. From a checkout of
@@ -73,8 +76,8 @@ print(result["layers"])  # token-by-layer activation norms
 - Even without another weight copy, workspace and GPU time are required. Capture can
   briefly delay inference. It is a dedicated prompt, not a trace of an unrelated request.
 - Results contain norms and final next-token probabilities, not intermediate logit-lens
-  predictions or raw tensor files. App results are session-only; **Export experiment**
-  saves them. Both endpoints reject LAN and browser-origin access.
+  predictions or raw tensor files. The native app saves captures automatically; SDK/HTTP clients must save their
+  direct results themselves. **Export experiment** also saves a portable copy. Both endpoints reject LAN and browser-origin access.
 
 ## Python SDK
 
@@ -213,13 +216,13 @@ not paused model execution or optimizer checkpoints.
 
 ## Install the versioned SDK
 
-The [0.2.0 GitHub release](https://github.com/canivel/mlx-dyno/releases/tag/v0.2.0)
+The [0.2.0 GitHub release](https://github.com/canivel/dynolab/releases/tag/v0.2.0)
 includes a Python wheel, source distribution and checksums alongside the Mac DMG.
 Install the downloaded wheel with `python -m pip install mlx_dyno-0.2.0-py3-none-any.whl`.
 For a pinned source install including the serving runtime and MCP tools:
 
 ```bash
-python -m pip install 'mlx-dyno[serve,mcp] @ git+https://github.com/canivel/mlx-dyno.git@v0.2.0'
+python -m pip install 'mlx-dyno[serve,mcp] @ git+https://github.com/canivel/dynolab.git@v0.2.0'
 ```
 
 This release is distributed through GitHub; these instructions do not assume a

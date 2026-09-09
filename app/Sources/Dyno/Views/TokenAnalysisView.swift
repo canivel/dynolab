@@ -78,7 +78,21 @@ struct TokenAnalysisView: View {
                 }
             }
             .padding(20)
-        }.onAppear { reloadHistory() }
+        }.onAppear {
+            reloadHistory()
+            // Documentation snapshots can replay a recorded response without
+            // generating traffic or adding a run to the user's saved history.
+            if CommandLine.arguments.contains("--snapshot"),
+               let path = ProcessInfo.processInfo.environment["DYNO_TOKEN_RESULT_FIXTURE"],
+               let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+               let saved = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                prompt = saved["prompt"] as? String ?? prompt
+                thinkingMode = saved["thinking"] as? String ?? "default"
+                reference = (saved["reference"] as? [String: Any]).map { TokenTrace(archiveValue: $0) }
+                referencePort = (saved["reference_port"] as? Int).flatMap(UInt16.init(exactly:))
+                selected = reference?.tokens.min(by: { $0.probability < $1.probability })
+            }
+        }
     }
 
     private func reloadHistory() {

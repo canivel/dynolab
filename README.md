@@ -16,7 +16,7 @@ readouts are evidence to investigate, not a guarantee that a model is safe or al
 
 📖 **[dynolab.dev](https://dynolab.dev/)**
 
-[**Download Dyno for Apple Silicon (.dmg)**](https://github.com/canivel/mlx-dyno/releases/latest)
+[**Download Dyno for Apple Silicon (.dmg)**](https://github.com/canivel/dynolab/releases/latest)
 
 ![Dyno research walkthrough: activations, interventions, probes and SAE results](https://dynolab.dev/assets/research-walkthrough.gif)
 
@@ -56,8 +56,10 @@ and feature examples. Activation captures and token analyses save automatically 
 The current scope is block-output analysis with raw-text prompts. Pretrained SAE
 imports, full circuit tracing and automated safety certification are not included.
 
-**[Website documentation](https://dynolab.dev/guide.html)** ·
-[Python SDK & HTTP API](docs/research-api.md) · [Local MCP setup](docs/local-mcp.md)
+**[App handbook: install and use every feature](https://dynolab.dev/guide.html)** ·
+[Python SDK](https://dynolab.dev/sdk.html) · [HTTP API](https://dynolab.dev/api.html) · [Local MCP](https://dynolab.dev/mcp.html)
+
+Prefer reading on GitHub? [App guide](docs/app-guide.md) · [SDK guide](docs/sdk-guide.md) · [API reference](docs/http-api.md) · [MCP setup](docs/local-mcp.md).
 
 Use `dyno mcp` to expose research tools to a local MCP client over stdio.
 The updated app bundles a `Contents/MacOS/dyno-cli` launcher; source installs
@@ -104,7 +106,7 @@ token stream, where it is simply a fact rather than an inference.
 
 ## Install
 
-Download the **Apple Silicon DMG** from [GitHub Releases](https://github.com/canivel/mlx-dyno/releases/latest), open it, and drag **Dyno** into **Applications**.
+Download the **Apple Silicon DMG** from [GitHub Releases](https://github.com/canivel/dynolab/releases/latest), open it, and drag **Dyno** into **Applications**.
 Requires **macOS 14+ on Apple Silicon**. Python and MLX are included; model weights are downloaded separately in Discover.
 
 The release is ad-hoc signed and **not Apple-notarized**. macOS may block its first launch; see [Apple's instructions](https://support.apple.com/guide/mac-help/mh40616/mac) before deciding whether to open it. Releases include a SHA-256 checksum.
@@ -116,8 +118,8 @@ The release is ad-hoc signed and **not Apple-notarized**. macOS may block its fi
 the Python that gets bundled. *The finished app needs none of these.*
 
 ```sh
-git clone https://github.com/canivel/mlx-dyno
-cd mlx-dyno/app
+git clone https://github.com/canivel/dynolab
+cd dynolab/app
 ./build.sh                          # ~12 seconds, produces a 390 MB bundle
 cp -r build/Dyno.app /Applications/
 open /Applications/Dyno.app

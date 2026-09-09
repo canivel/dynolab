@@ -64,7 +64,7 @@ enum ViewSnapshot {
                 model.researchLab.tokenAnalysis = true
                 return AnyView(MainWindow(model: model, initialTab: .lab))
             },
-             CGSize(width: 980, height: 620)),
+             CGSize(width: 1100, height: 1050)),
             ("window-observe", { AnyView(MainWindow(model: model, initialTab: .observe)) },
              CGSize(width: 980, height: 960)),
             ("window-discover", { AnyView(MainWindow(model: model, initialTab: .discover)) },

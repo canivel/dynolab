@@ -34,7 +34,7 @@ https://support.apple.com/guide/mac-help/mh40616/mac
 
 Website: https://dynolab.dev
 Documentation: https://dynolab.dev/guide.html
-Source: https://github.com/canivel/mlx-dyno
+Source: https://github.com/canivel/dynolab
 TXT
 DMG="build/Dyno-${VERSION}-arm64.dmg"
 hdiutil create -volname "Dyno ${VERSION}" -srcfolder "$STAGING" -format UDZO -ov "$DMG"

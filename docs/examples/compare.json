@@ -1,0 +1,12 @@
+{
+  "prompt": "The capital of France is",
+  "layers": [
+    8
+  ],
+  "strengths": [
+    0,
+    1,
+    1.5
+  ],
+  "max_tokens": 12
+}

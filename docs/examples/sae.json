@@ -1,0 +1,69 @@
+{
+  "examples": [
+    {
+      "text": "This is terrible",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "This is great",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "I hate it",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "I love it",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "An awful day",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "A lovely day",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "That was disappointing",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "That was wonderful",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "Bad service here",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "Excellent meal today",
+      "label": 1,
+      "split": "test"
+    },
+    {
+      "text": "A dreadful experience",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "A joyful experience",
+      "label": 1,
+      "split": "test"
+    }
+  ],
+  "layers": [
+    8
+  ],
+  "features": 16,
+  "steps": 20
+}
