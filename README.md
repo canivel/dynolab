@@ -14,11 +14,11 @@ experiments within its memory and GPU budget.
 Research features are experimental: model-emitted thinking and interpretability
 readouts are evidence to investigate, not a guarantee that a model is safe or aligned.
 
-📖 **[canivel.github.io/mlx-dyno](https://canivel.github.io/mlx-dyno/)**
+📖 **[dynolab.dev](https://dynolab.dev/)**
 
 [**Download Dyno for Apple Silicon (.dmg)**](https://github.com/canivel/mlx-dyno/releases/latest)
 
-![Dyno research walkthrough: activations, interventions, probes and SAE results](docs/assets/research-walkthrough.gif)
+![Dyno research walkthrough: activations, interventions, probes and SAE results](https://dynolab.dev/assets/research-walkthrough.gif)
 
 *Recorded native app views of real Qwen 0.5B experiments. This walkthrough cycles through saved results; it is not a live generation recording.*
 
@@ -56,7 +56,7 @@ and feature examples. Activation captures and token analyses save automatically 
 The current scope is block-output analysis with raw-text prompts. Pretrained SAE
 imports, full circuit tracing and automated safety certification are not included.
 
-**[Website documentation](https://canivel.github.io/mlx-dyno/guide.html)** ·
+**[Website documentation](https://dynolab.dev/guide.html)** ·
 [Python SDK & HTTP API](docs/research-api.md) · [Local MCP setup](docs/local-mcp.md)
 
 Use `dyno mcp` to expose research tools to a local MCP client over stdio.
@@ -169,11 +169,11 @@ token a quantisation changed. See below.
 
 **Discover** — search the Hugging Face hub and download in one click.
 
-![Performance view with live model metrics and hardware charts](docs/screenshots/window-observe-dark.png)
+![Performance view with live model metrics and hardware charts](https://dynolab.dev/screenshots/window-observe-dark.png)
 
 *Performance keeps inference throughput and machine telemetry together.*
 
-![Discover showing downloadable models and their sizes](docs/screenshots/window-discover-light.png)
+![Discover showing downloadable models and their sizes](https://dynolab.dev/screenshots/window-discover-light.png)
 
 ## Sharing models on your local network
 
@@ -529,7 +529,7 @@ and publishes the DMG and checksum to GitHub Releases. Update
 `docs/release-notes.md` before tagging a new version.
 
 To refresh the public app pictures with real running-model telemetry, use
-`app/build/Dyno.app/Contents/MacOS/Dyno --snapshot docs/screenshots --public`.
+`app/build/Dyno.app/Contents/MacOS/Dyno --snapshot ../dynolab-website/public/screenshots --public`.
 This captures Models, Performance, Discover, and Dyno's own menu bar controls;
 it omits conversation history, router traces, network addresses, and inspection
 views. Review images for private model names before publishing them.
@@ -541,7 +541,7 @@ from animated neural connections through a silicon die, chip package, circuit
 board, and laptop display into a Mac workspace. Nested camera transforms keep
 each layer anchored to the next; reverse scrolling retraces the same path.
 Hardware and workspace images are conceptual AI-generated artwork; the Dyno
-screen is an actual app capture. Asset prompts are in `docs/assets/README.md`.
+screen is an actual app capture. Asset prompts are maintained in the website repository’s `public/assets/README.md`.
 No animation library or external font service is required. The page supports
 reduced motion and has an explicit motion toggle; the canvas stops rendering
 when offscreen or the tab is hidden. App screenshots and setup instructions
@@ -549,3 +549,7 @@ remain available without animation.
 
 Preview with `python3 -m http.server 8766 --directory docs`, then open
 `http://localhost:8766`. Changes pushed to `main` are published by GitHub Pages.
+
+## Website development
+
+The website is maintained separately in `canivel/dynolab-website` and deployed by Vercel at [dynolab.dev](https://dynolab.dev). API documentation remains in this repository. To regenerate the site guide from a sibling website checkout, run `uv run --with markdown python scripts/build-docs.py --website-root ../dynolab-website`.
