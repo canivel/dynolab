@@ -15,6 +15,7 @@ struct LabArtifactView: View {
     @State private var selectedNode: String?
     @State private var history: [[String: Any]] = []
     private let archive = ResearchArchive()
+    init(initialArtifact: LabArtifact? = nil) { _artifact = State(initialValue: initialArtifact) }
     var body: some View {
         HSplitView {
             VStack(alignment: .leading, spacing: 14) {
@@ -64,7 +65,7 @@ struct LabArtifactView: View {
                             Canvas { context, size in
                                 func point(_ index: Int) -> CGPoint {
                                     let angle = Double(index) / Double(nodes.count) * 2 * Double.pi
-                                    return CGPoint(x: size.width/2 + cos(angle)*(size.width/2-35), y: size.height/2 + sin(angle)*(size.height/2-35))
+                                    return CGPoint(x: size.width/2 + CGFloat(Darwin.cos(angle))*(size.width/2-35), y: size.height/2 + CGFloat(Darwin.sin(angle))*(size.height/2-35))
                                 }
                                 let lookup = Dictionary(uniqueKeysWithValues: nodes.enumerated().map { ($0.element.id, $0.offset) })
                                 for edge in edges {
