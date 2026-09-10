@@ -39,7 +39,11 @@ Local MLX inference is the foundation. Run models on Apple Silicon, inspect requ
 
 Requires **Apple Silicon and macOS 14+**. Python and MLX are bundled; model weights are downloaded separately. The product is **Dyno Lab**; the installed bundle is still `Dyno.app`, the command is `dyno`, and the Python distribution is `mlx-dyno`.
 
-**New in 0.2.1:** Developer ID signing, Apple notarization and protected release builds. Each release includes checksums. Older 0.2.0 downloads remain ad-hoc signed. [Release notes →](docs/release-notes.md)
+**New in 0.2.2:** Causal patching, TopK SAE experiments, Neuronpedia feature lookup and saved research artifacts. Developer ID signed and Apple notarized, with release checksums. [Release notes →](docs/release-notes.md)
+
+## Research tools
+
+Version 0.2.2 adds causal patch sweeps, TopK SAE experiments, a Neuronpedia feature lookup and saved attention/feature/graph artifacts. See the [evaluations, supported adapters and prioritized roadmap](docs/research-tools.md).
 
 ## From observations to experiments
 

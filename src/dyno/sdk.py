@@ -42,6 +42,8 @@ class Lab:
     def compare(self, model, prompt, **settings): return self.submit('compare',model,prompt=prompt,**settings)
     def probe(self, model, examples, **settings): return self.submit('probe',model,examples=examples,**settings)
     def sae(self, model, examples, **settings): return self.submit('sae',model,examples=examples,**settings)
+    def patch_sweep(self, model, prompt, clean_prompt, target_token, foil_token, **settings):
+        return self.submit('patch_sweep', model, prompt=prompt, clean_prompt=clean_prompt, target_token=target_token, foil_token=foil_token, **settings)
     def job(self, identifier): return self._request('/jobs/'+identifier)
     def cancel(self, identifier): return self._request('/jobs/'+identifier+'/cancel',{})
     def wait(self, identifier, timeout=1800, interval=.5):

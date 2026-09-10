@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Dyno Research Lab API",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "description": "Local native clients only. Isolated jobs persist on disk. Resident capture runs on the serving endpoint at a separate port; it returns results directly. Native app history is not a Lab jobs API."
   },
   "servers": [
@@ -46,7 +46,8 @@
                       "inspect",
                       "compare",
                       "probe",
-                      "sae"
+                      "sae",
+                      "patch_sweep"
                     ]
                   },
                   "model": {
@@ -156,6 +157,34 @@
                         }
                       }
                     }
+                  },
+                  "clean_prompt": {
+                    "type": "string"
+                  },
+                  "foil_token": {
+                    "type": "string"
+                  },
+                  "positions": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "sae_architecture": {
+                    "type": "string",
+                    "enum": [
+                      "relu",
+                      "topk"
+                    ],
+                    "default": "relu"
+                  },
+                  "top_k": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 512
                   }
                 }
               }

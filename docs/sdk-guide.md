@@ -6,12 +6,12 @@ The SDK has two clients: **ServingModel** captures an already-loaded model; **La
 
 ## Install
 
-Create a Python 3.10+ environment. Download the Python wheel from the [0.2.1 release assets](https://github.com/canivel/dynolab/releases/tag/v0.2.1), then install it:
+Create a Python 3.10+ environment. Download the Python wheel from the [0.2.2 release assets](https://github.com/canivel/dynolab/releases/tag/v0.2.2), then install it:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install ./mlx_dyno-0.2.1-py3-none-any.whl
+python -m pip install ./mlx_dyno-0.2.2-py3-none-any.whl
 python -c 'from dyno.sdk import Lab, ServingModel; print("SDK ready")'
 ```
 
@@ -20,7 +20,7 @@ On Windows, activate with `.venv\Scripts\activate`; in WSL, use the Bash command
 The client uses Python's standard library. Installing the client alone does not install the MLX inference runtime. For a source installation that can also serve models, run this on an Apple Silicon Mac:
 
 ```bash
-python -m pip install 'mlx-dyno[serve,mcp] @ git+https://github.com/canivel/dynolab.git@v0.2.1'
+python -m pip install 'mlx-dyno[serve,mcp] @ git+https://github.com/canivel/dynolab.git@v0.2.2'
 ```
 
 The repository is named `dynolab`, the distribution remains `mlx-dyno`, and the import namespace is `dyno`. These instructions use the GitHub release rather than assuming a matching PyPI release. The Mac DMG bundles the server runtime; you can use it without installing a second serving environment.
@@ -196,3 +196,7 @@ except (URLError, OSError) as error:
 HTTP errors from JSON requests become `DynoError`; failed, cancelled or interrupted jobs also cause `wait()` to raise it. Network failures and artifact-download errors can retain their underlying urllib exceptions. A wait timeout **does not cancel the job**. Call `lab.cancel(identifier)` when you intend to stop it, then inspect `lab.job(identifier)`.
 
 To continue a study after restarting your script, keep the job ID and call `lab.job(id)` or `lab.wait(id)` again. To rerun its configuration, use `lab.submit(**saved_job["config"])`. This creates a new job; it does not resume optimizer state. If the Lab service itself was interrupted, previously active jobs are marked interrupted on startup.
+
+## Research interoperability
+
+Version 0.2.2 exposes `Lab.patch_sweep` and the data-only `dyno.interop` exporters for external attention, SAELens feature activations and Circuit Tracer subgraphs. See [research tools](https://github.com/canivel/dynolab/blob/main/docs/research-tools.md) for examples. These adapters do not install or run the upstream model backends.

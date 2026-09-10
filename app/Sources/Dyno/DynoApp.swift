@@ -52,12 +52,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.setActivationPolicy(.accessory)
             statusItem = StatusItemController(model: MonitorModel.shared)
 
-            // A menu bar app with no window is easy to install and then fail to
-            // find, so show it once on the very first launch.
-            let defaults = UserDefaults.standard
-            guard !defaults.bool(forKey: Defaults.hasLaunchedBefore) else { return }
-            defaults.set(true, forKey: Defaults.hasLaunchedBefore)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            // Every normal launch should behave like opening an application.
+            // Snapshot/diagnostic modes exit in DynoApp.init before this runs.
+            DispatchQueue.main.async {
                 MainActor.assumeIsolated { AppDelegate.shared?.showMainWindow() }
             }
         }

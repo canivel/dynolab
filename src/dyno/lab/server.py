@@ -13,18 +13,27 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from ..execution import ExecutionHTTPMixin
 
-OPERATIONS = ('inspect', 'compare', 'probe', 'sae')
+OPERATIONS = ('inspect', 'compare', 'probe', 'sae', 'patch_sweep')
 
 
 def validate(body):
     if not isinstance(body, dict) or body.get('operation') not in OPERATIONS:
-        raise ValueError('operation must be inspect, compare, probe or sae')
+        raise ValueError('operation must be inspect, compare, probe, sae or patch_sweep')
     if not isinstance(body.get('model'), str) or not body['model'].strip():
         raise ValueError('Choose a local model directory or Hugging Face model ID')
     if not isinstance(body.get('layers', [0]), list) or not 1 <= len(body.get('layers', [0])) <= 8:
         raise ValueError('Select between 1 and 8 layers')
     if any(type(i) is not int or not 0 <= i < 256 for i in body.get('layers', [0])):
         raise ValueError('Layer indices must be integers between 0 and 255')
+    if len(set(body.get('layers', [0]))) != len(body.get('layers', [0])):
+        raise ValueError('Layer indices must be unique')
+    if body['operation'] == 'patch_sweep':
+        if any(not isinstance(body.get(key), str) or not body[key].strip() for key in ('prompt', 'clean_prompt', 'target_token', 'foil_token')):
+            raise ValueError('Causal patching requires prompt, clean_prompt, target_token and foil_token')
+        if 'positions' in body:
+            positions = body['positions']
+            if not isinstance(positions, list) or not positions or any(type(p) is not int or p < 0 for p in positions) or len(set(positions)) != len(positions) or len(positions)*len(body.get('layers', [0])) > 128:
+                raise ValueError('Select unique nonnegative positions; at most 128 layer/token sites')
     for key, default, maximum in [('max_tokens', 32, 128), ('max_input_tokens', 256, 1024), ('seed', 0, 2147483647)]:
         value = body.get(key, default)
         if type(value) is not int or not (0 if key == 'seed' else 1) <= value <= maximum:

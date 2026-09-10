@@ -73,6 +73,12 @@ enum ViewSnapshot {
              CGSize(width: 320, height: 240)),
         ]
 
+        if arguments.contains("--artifacts-only") {
+            guard let path = ProcessInfo.processInfo.environment["DYNO_ARTIFACT_FIXTURE"],
+                  let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                  let artifact = try? LabArtifact.read(data) else { return 1 }
+            targets = [("lab-artifacts", { AnyView(LabArtifactView(initialArtifact: artifact)) }, CGSize(width: 1100, height: 850))]
+        }
         if publication {
             // Omit conversations, traces, connection addresses and filesystem views.
             let allowed = ["window-run", "window-observe", "window-discover", "menu-panel"]
