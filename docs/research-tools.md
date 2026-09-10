@@ -68,6 +68,12 @@ Limits: 8 MB per artifact; 128 attention tokens; 128 graph nodes/1024 edges; 256
 
 For Neuronpedia, expand **Fetch a public Neuronpedia feature**, enter its model/source/index and click Fetch. No network request happens merely by opening this workspace. The example `gpt2-small / 0-res-jb / 0` is public; its examples do not describe your currently served model.
 
+## Neuronpedia example in the app
+
+This native app view shows public GPT-2 feature examples fetched from Neuronpedia, with activation plots and saved artifact history. These are source examples, not activations from your currently served model.
+
+![Neuronpedia feature examples in Dyno Lab](https://dynolab.dev/screenshots/neuronpedia-features-022.png)
+
 ## Prioritized research roadmap
 
 | Priority | Feature to add | Research motivation | Acceptance criterion |

@@ -267,4 +267,4 @@ For an upgrade, download the new DMG, replace the application in Applications an
 
 ## Additional research tools
 
-Development builds add **Causal patching**, a **TopK** SAE option and **Research artifacts** for attention, feature examples and attribution graphs. See the [tool evaluation and usage guide](https://github.com/canivel/dynolab/blob/main/docs/research-tools.md) for supported formats, limits, examples and the research roadmap.
+Version 0.2.2 adds **Causal patching**, a **TopK** SAE option and **Research artifacts** for attention, feature examples and attribution graphs. See the [tool evaluation and usage guide](https://github.com/canivel/dynolab/blob/main/docs/research-tools.md) for supported formats, limits, examples and the research roadmap.

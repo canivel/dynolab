@@ -15,6 +15,7 @@ root = Path(__file__).resolve().parents[1]
 target = args.website_root / 'public'
 assert (target / 'index.html').is_file(), 'Expected website checkout with public/index.html'
 pages = [
+    ('research-tools.md', 'research-tools.html', 'Research tools', 'Causal patching, TopK SAEs, Neuronpedia and research artifact interoperability.'),
     ('app-guide.md', 'guide.html', 'App handbook', 'Download, install and use every Dyno Lab feature with real app examples.'),
     ('sdk-guide.md', 'sdk.html', 'Python SDK', 'Install the Dyno SDK, capture activations, run experiments and manage saved artifacts.'),
     ('http-api.md', 'api.html', 'HTTP API', 'Inference, research jobs, resident activations and execution endpoint reference.'),
