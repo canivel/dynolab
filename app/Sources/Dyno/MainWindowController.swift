@@ -38,7 +38,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Dyno"
+        window.title = "Dyno Lab"
         window.contentView = hosting
         window.setFrameAutosaveName("DynoMainWindow")
         window.isReleasedWhenClosed = false

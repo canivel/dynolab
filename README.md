@@ -41,6 +41,10 @@ Requires **Apple Silicon and macOS 14+**. Python and MLX are bundled; model weig
 
 **New in 0.2.1:** Developer ID signing, Apple notarization and protected release builds. Each release includes checksums. Older 0.2.0 downloads remain ad-hoc signed. [Release notes →](docs/release-notes.md)
 
+## Research tools in development
+
+The next Lab update adds causal patch sweeps, TopK SAE experiments, a Neuronpedia feature lookup and saved attention/feature/graph artifacts. See the [evaluations, supported adapters and prioritized roadmap](docs/research-tools.md). These additions are not included in the published v0.2.1 DMG.
+
 ## From observations to experiments
 
 | Research workflow | What you can do |

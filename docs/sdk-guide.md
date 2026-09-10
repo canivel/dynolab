@@ -196,3 +196,7 @@ except (URLError, OSError) as error:
 HTTP errors from JSON requests become `DynoError`; failed, cancelled or interrupted jobs also cause `wait()` to raise it. Network failures and artifact-download errors can retain their underlying urllib exceptions. A wait timeout **does not cancel the job**. Call `lab.cancel(identifier)` when you intend to stop it, then inspect `lab.job(identifier)`.
 
 To continue a study after restarting your script, keep the job ID and call `lab.job(id)` or `lab.wait(id)` again. To rerun its configuration, use `lab.submit(**saved_job["config"])`. This creates a new job; it does not resume optimizer state. If the Lab service itself was interrupted, previously active jobs are marked interrupted on startup.
+
+## Research interoperability
+
+Development builds expose `Lab.patch_sweep` and the data-only `dyno.interop` exporters for external attention, SAELens feature activations and Circuit Tracer subgraphs. See [research tools](https://github.com/canivel/dynolab/blob/main/docs/research-tools.md) for examples. These adapters do not install or run the upstream model backends.

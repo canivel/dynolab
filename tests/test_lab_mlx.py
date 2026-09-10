@@ -73,6 +73,9 @@ class HybridTapTests(unittest.TestCase):
         configs = [
             dict(operation='inspect', prompt='A small example', layers=[0, 3]),
             dict(operation='compare', prompt='A small example', layers=[0], strengths=[1], max_tokens=2),
+            dict(operation='patch_sweep', prompt='B small example', clean_prompt='A small example', target_token='yes', foil_token='no', layers=[3], positions=[2]),
+            dict(operation='patch_sweep', prompt='A small example', clean_prompt='A small example', target_token='yes', foil_token='no', layers=[0,3], positions=[0,2]),
+            dict(operation='sae', examples=examples, layers=[0], features=8, steps=2, sae_architecture='topk', top_k=2),
             dict(operation='probe', examples=examples, layers=[0]),
             dict(operation='sae', examples=examples, layers=[0], features=8, steps=2),
         ]
@@ -87,6 +90,15 @@ class HybridTapTests(unittest.TestCase):
                 elif config['operation'] == 'compare':
                     self.assertEqual(result['trials'][0]['delta'], 0)
                     self.assertEqual(result['trials'][0]['baseline'], result['trials'][0]['output'])
+                elif config['operation'] == 'patch_sweep':
+                    if config['prompt'] == config['clean_prompt']:
+                        self.assertEqual(len(result['patches']), 4)
+                        self.assertTrue(all(abs(p['delta']) < 1e-6 and p['recovery'] is None for p in result['patches']))
+                    else:
+                        self.assertAlmostEqual(result['patches'][0]['patched_logit_difference'], result['clean_logit_difference'], places=5)
+                    self.assertAlmostEqual(result['restored_control_logit_difference'], result['corrupted_logit_difference'])
                 else:
+                    if config.get('sae_architecture') == 'topk':
+                        self.assertLessEqual(result['reports'][0]['mean_active'], 2)
                     self.assertTrue(result['reports'])
                     self.assertTrue(result['artifacts'])

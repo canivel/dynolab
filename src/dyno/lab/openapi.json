@@ -46,7 +46,8 @@
                       "inspect",
                       "compare",
                       "probe",
-                      "sae"
+                      "sae",
+                      "patch_sweep"
                     ]
                   },
                   "model": {
@@ -156,6 +157,34 @@
                         }
                       }
                     }
+                  },
+                  "clean_prompt": {
+                    "type": "string"
+                  },
+                  "foil_token": {
+                    "type": "string"
+                  },
+                  "positions": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "sae_architecture": {
+                    "type": "string",
+                    "enum": [
+                      "relu",
+                      "topk"
+                    ],
+                    "default": "relu"
+                  },
+                  "top_k": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 512
                   }
                 }
               }

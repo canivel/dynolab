@@ -264,3 +264,7 @@ If Lab reports insufficient memory, choose a smaller model, lower the input budg
 | LAN client cannot connect | Test Windows/Mac connectivity, copied LAN address, server binding and firewall before the API payload |
 
 For an upgrade, download the new DMG, replace the application in Applications and reopen it. Plan endpoint restarts when traffic is quiet. Existing external processes do not acquire new Python code merely because the app was replaced. Keep exported experiments and their exact model/settings when comparing results across versions.
+
+## Additional research tools
+
+Development builds add **Causal patching**, a **TopK** SAE option and **Research artifacts** for attention, feature examples and attribution graphs. See the [tool evaluation and usage guide](https://github.com/canivel/dynolab/blob/main/docs/research-tools.md) for supported formats, limits, examples and the research roadmap.

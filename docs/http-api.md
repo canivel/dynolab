@@ -225,3 +225,7 @@ Research JSON errors have an `error` message. Inspect the HTTP status and, for a
 | Job `failed` after 202 | Worker rejected data or model execution failed | Read `error`; check architecture, layer indices and dataset |
 
 Results include provenance such as configuration hash, runtime versions, requested revision and resolved model information. A weight-file size/time manifest is not a cryptographic checksum of weights. Keep the configuration, artifact files and exact model revision when sharing an experiment.
+
+## Causal patching (development)
+
+`POST /lab/v1/jobs` additionally accepts `operation: "patch_sweep"`, `prompt` (corrupted), `clean_prompt`, distinct single-token `target_token` and `foil_token`, `layers`, and optional `positions`. Prompts must have equal token counts; at most 128 layer/position pairs are tested. Results include `patches`, clean/corrupted logit differences and a restored control. SAE jobs accept `sae_architecture: "relu"` or `"topk"`, with `top_k` between 1 and `features`.

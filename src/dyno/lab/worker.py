@@ -104,7 +104,10 @@ def run(config, folder):
 
     operation = config['operation']
     result = {}
-    if operation in ('inspect', 'compare'):
+    if operation == 'patch_sweep':
+        from .patching import sweep
+        result = sweep(config, selected, encode, forward, captured, active, tokenizer)
+    elif operation in ('inspect', 'compare'):
         ids = encode(config.get('prompt', ''))
         baseline = forward(ids)
         baseline_captures = {i: captured[i] for i in selected}
@@ -238,6 +241,10 @@ def run(config, folder):
                 steps = config.get('steps', 100)
                 if type(width) is not int or not 8 <= width <= 512 or type(steps) is not int or not 1 <= steps <= 500:
                     raise ValueError('SAE features: 8–512; steps: 1–500')
+                architecture = config.get('sae_architecture', 'relu')
+                k = config.get('top_k', min(8, width))
+                if architecture not in ('relu', 'topk') or type(k) is not int or not 1 <= k <= width:
+                    raise ValueError('SAE architecture must be relu/topk; top_k must be between 1 and features')
                 mean = x[train_mask].mean(0)
                 scale = max(float(np.sqrt(np.mean((x[train_mask]-mean)**2))), 1e-6)
                 train = mx.array((x[train_mask]-mean)/scale)
@@ -249,11 +256,14 @@ def run(config, folder):
                         self.decoder=nn.Linear(width,x.shape[1])
                     def __call__(self,h):
                         f=nn.relu(self.encoder(h))
+                        if architecture == 'topk':
+                            rank = mx.argsort(mx.argsort(f, axis=-1), axis=-1)
+                            f = mx.where(rank >= width-k, f, 0)
                         return self.decoder(f),f
                 sae=SAE(); optimizer=optim.Adam(learning_rate=.001)
                 def loss(net,h):
                     recovered,f=net(h)
-                    return mx.mean((recovered-h)**2)+.001*mx.mean(f)
+                    return mx.mean((recovered-h)**2)+(0 if architecture == 'topk' else .001*mx.mean(f))
                 grad=nn.value_and_grad(sae,loss)
                 losses=[]
                 for step in range(steps):
@@ -267,10 +277,10 @@ def run(config, folder):
                 f=np.array(features)
                 ranked=np.argsort(f.mean(0))[-min(width,16):][::-1]
                 test_examples=[e for e in examples if e['split']=='test']
-                reports.append(dict(layer=layer, held_out_mse=error, mean_active=float((f>0).sum(1).mean()),
+                reports.append(dict(layer=layer, architecture=architecture, top_k=k if architecture == "topk" else None, held_out_mse=error, mean_active=float((f>0).sum(1).mean()),
                                     dead_fraction=float(np.mean(np.all(f==0,axis=0))), losses=losses,
                                     features=[dict(feature=int(i), mean=float(f[:,i].mean()), examples=[dict(text=test_examples[j]['text'], activation=float(f[j,i])) for j in np.argsort(f[:,i])[-3:][::-1]]) for i in ranked]))
-        result=dict(reports=reports, pooling='last input token', note=('Logistic probe; held-out labels never used for fitting. A score is not evidence of causal use.' if operation=='probe' else 'Small ReLU/L1 autoencoder experiment on last-token activations. Features have no verified semantic labels; this is not a pretrained Gemma Scope SAE.'))
+        result=dict(reports=reports, pooling='last input token', note=('Logistic probe; held-out labels never used for fitting. A score is not evidence of causal use.' if operation=='probe' else 'Small ReLU/L1 or TopK autoencoder experiment on last-token activations. Features have no verified semantic labels; this is not a pretrained Gemma Scope SAE.'))
     provenance=dict(model=config['model'], model_type=getattr(model,'model_type','unknown'), layers=selected,
                     hook='block output', seed=seed, input_mode='raw text (no implicit chat template)', requested_revision=config.get('revision'),
                     resolved_model_path=str(model_path), model_config=model_config, weight_file_manifest=manifest,

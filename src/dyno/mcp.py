@@ -34,7 +34,7 @@ def create_server(port=8980):
         return lab.job(job_id)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True))
-    def lab_submit(operation: Literal['inspect', 'compare', 'probe', 'sae'], model: str, settings: dict) -> dict:
+    def lab_submit(operation: Literal['inspect', 'compare', 'probe', 'sae', 'patch_sweep'], model: str, settings: dict) -> dict:
         """Start one isolated experiment. Returns a job ID immediately; poll lab_job.
 
         model is a downloaded MLX directory or HF ID (may download weights).
