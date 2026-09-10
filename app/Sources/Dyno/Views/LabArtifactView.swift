@@ -54,7 +54,7 @@ struct LabArtifactView: View {
                             Text("Attention · query row × key column").font(.headline)
                             Chart(values.indices, id: \.self) { q in
                                 ForEach(values[q].indices, id: \.self) { k in
-                                    RectangleMark(x: .value("Key token", k), y: .value("Query token", q))
+                                    RectangleMark(x: .value("Key token", String(k)), y: .value("Query token", String(q)), width: .ratio(0.98), height: .ratio(0.98))
                                         .foregroundStyle(by: .value("Attention", values[q][k]))
                                 }
                             }.chartForegroundStyleScale(domain: 0...1).frame(height: 380)

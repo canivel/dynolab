@@ -377,7 +377,7 @@ private struct ResearchExperimentView: View {
             Text("Causal patching · target minus foil logit change").font(.headline)
             Chart(patches.indices, id: \.self) { i in
                 let row = patches[i]
-                RectangleMark(x: .value("Token", row["position"] as? Int ?? 0), y: .value("Layer", row["layer"] as? Int ?? 0))
+                RectangleMark(x: .value("Token", String(row["position"] as? Int ?? 0)), y: .value("Layer", String(row["layer"] as? Int ?? 0)), width: .ratio(0.98), height: .ratio(0.98))
                     .foregroundStyle(by: .value("Logit change", row["delta"] as? Double ?? 0))
             }.frame(height: 220)
             Text("Clean: \(result["clean_logit_difference"] as? Double ?? 0) · Corrupted: \(result["corrupted_logit_difference"] as? Double ?? 0)").font(.caption)
