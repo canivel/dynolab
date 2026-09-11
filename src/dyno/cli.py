@@ -20,6 +20,8 @@ MLX Dyno {__version__} — local AI research, inference and observability on App
 usage: dyno <command> [options]
 
 commands:
+  node     loopback-only RPC worker for a trusted LAN pool
+  pool     experimental LAN-only distributed model pool
   mcp      local stdio MCP bridge for research tools
   lab      local AI safety and alignment research API
   serve    run an MLX model and expose its generation metrics
@@ -67,6 +69,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     command, rest = argv[0], argv[1:]
+
+    if command == "node":
+        from .pool.node import main as node_main
+        return node_main(rest)
+
+    if command == "pool":
+        from .pool.cli import main as pool_main
+        return pool_main(rest)
 
     if command == "mcp":
         from .mcp import main as mcp_main

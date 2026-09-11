@@ -73,6 +73,9 @@ enum ViewSnapshot {
              CGSize(width: 320, height: 240)),
         ]
 
+        if arguments.contains("--pools-only") {
+            targets = [("window-pools", { AnyView(MainWindow(model: model, initialTab: .pools)) }, CGSize(width: 1100, height: 820))]
+        }
         if arguments.contains("--artifacts-only") {
             guard let path = ProcessInfo.processInfo.environment["DYNO_ARTIFACT_FIXTURE"],
                   let data = try? Data(contentsOf: URL(fileURLWithPath: path)),

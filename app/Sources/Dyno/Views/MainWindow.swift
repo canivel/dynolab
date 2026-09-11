@@ -13,6 +13,7 @@ struct MainWindow: View {
     /// Chat is a mode rather than a tab: it is reached from its own button and
     /// leaves the tab you were on selected, so going back lands where you were.
     @State private var showingChat = false
+    @State private var poolSession = PoolSession()
 
     init(model: MonitorModel, initialTab: Tab = .lab, chat: Bool = false) {
         self.model = model
@@ -26,6 +27,7 @@ struct MainWindow: View {
         case run = "Models"
         case discover = "Discover"
         case router = "Router"
+        case pools = "Pools"
         case observe = "Performance"
         var id: String { rawValue }
     }
@@ -46,7 +48,7 @@ struct MainWindow: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 485)
+                .frame(width: 550)
                 .opacity(showingChat ? 0.55 : 1)
                 Spacer()
                 if case let .running(name, port) = model.serverState {
@@ -128,6 +130,8 @@ struct MainWindow: View {
                 ExecutionView(model: model)
             case .router:
                 RouterView(model: model)
+            case .pools:
+                PoolsView(session: poolSession)
             case .observe:
                 ObservabilityView(model: model)
             case .run:
