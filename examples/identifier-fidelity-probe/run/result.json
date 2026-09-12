@@ -1,0 +1,1035 @@
+{
+  "id": "65a8795a83e14de190466d07fb89ad10",
+  "created": 1789243505.9850292,
+  "status": "completed",
+  "operation": "probe",
+  "model": "lmstudio-community/Qwen3.8-27B-MLX-4bit",
+  "config": {
+    "examples": [
+      {
+        "label": 1,
+        "split": "train",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: Purtro<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "train",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: Purtro<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "train",
+        "text": "<|im_start|>user\nThe shipment label reads Purtro. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-700<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-700<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nThe shipment label reads REF-700. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "test",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: Kinhted<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "test",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: Kinhted<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "test",
+        "text": "<|im_start|>user\nThe shipment label reads Kinhted. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-701<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-701<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nThe shipment label reads REF-701. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "train",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: ForCanBeConverted<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "train",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: ForCanBeConverted<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "train",
+        "text": "<|im_start|>user\nThe shipment label reads ForCanBeConverted. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-702<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-702<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nThe shipment label reads REF-702. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "train",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: ForCanBeConvertedToF<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "train",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: ForCanBeConvertedToF<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "train",
+        "text": "<|im_start|>user\nThe shipment label reads ForCanBeConvertedToF. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-703<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-703<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nThe shipment label reads REF-703. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "train",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: ForCanBeConvertedToForeach<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "train",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: ForCanBeConvertedToForeach<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "train",
+        "text": "<|im_start|>user\nThe shipment label reads ForCanBeConvertedToForeach. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-704<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-704<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nThe shipment label reads REF-704. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "train",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: tarsker<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "train",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: tarsker<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "train",
+        "text": "<|im_start|>user\nThe shipment label reads tarsker. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-705<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-705<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nThe shipment label reads REF-705. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "test",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: tarskereso<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "test",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: tarskereso<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "test",
+        "text": "<|im_start|>user\nThe shipment label reads tarskereso. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-706<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-706<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nThe shipment label reads REF-706. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: szexf<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: szexf<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nThe shipment label reads szexf. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-707<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-707<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nThe shipment label reads REF-707. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: PostalCodesNL<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: PostalCodesNL<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 1,
+        "split": "test",
+        "text": "<|im_start|>user\nThe shipment label reads PostalCodesNL. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-708<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-708<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nThe shipment label reads REF-708. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: useRalative<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: useRalative<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nThe shipment label reads useRalative. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-709<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-709<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nThe shipment label reads REF-709. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: webElementX<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: webElementX<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nThe shipment label reads webElementX. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-710<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-710<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "test",
+        "text": "<|im_start|>user\nThe shipment label reads REF-710. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: ejahter<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: ejahter<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nThe shipment label reads ejahter. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-711<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-711<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      {
+        "label": 0,
+        "split": "train",
+        "text": "<|im_start|>user\nThe shipment label reads REF-711. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    ],
+    "max_input_tokens": 256,
+    "operation": "probe",
+    "layers": [
+      32
+    ],
+    "seed": 20260917,
+    "model": "lmstudio-community/Qwen3.8-27B-MLX-4bit",
+    "revision": "6067b15cf581666a4aecf6af3afaba4bb5efc20c"
+  },
+  "result": {
+    "reports": [
+      {
+        "layer": 32,
+        "accuracy": 0.9166666666666666,
+        "auc": 0.9747899159663865,
+        "brier": 0.10116827551328578,
+        "shuffled_label_accuracy": 0.4166666666666667,
+        "majority_accuracy": 0.7083333333333334,
+        "scores": [
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: Purtro<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 1,
+            "score": 0.6055700477982099
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: Purtro<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 1,
+            "score": 0.6110876305476992
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads Purtro. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 1,
+            "score": 0.8907172320225681
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-700<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.20693127739682873
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-700<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.23036234157664826
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads REF-700. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.15583678223704883
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: Kinhted<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 1,
+            "score": 0.8777715842881104
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: Kinhted<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 1,
+            "score": 0.7083322429106268
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads Kinhted. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 1,
+            "score": 0.9704356095743811
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-701<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.21672466755016945
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-701<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.23546357184077796
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads REF-701. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.13827854064609377
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: ForCanBeConverted<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 1,
+            "score": 0.9836579528249889
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: ForCanBeConverted<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 1,
+            "score": 0.9137157115156611
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads ForCanBeConverted. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 1,
+            "score": 0.9769098056870715
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-702<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.1988998523483574
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-702<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.23225108213686893
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads REF-702. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.1559363477273992
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: ForCanBeConvertedToF<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 1,
+            "score": 0.9474058556841185
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: ForCanBeConvertedToF<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 1,
+            "score": 0.8686550870362818
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads ForCanBeConvertedToF. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 1,
+            "score": 0.9622920036237194
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-703<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.19210306352776768
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-703<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.22229883364692687
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads REF-703. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.1521639845594803
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: ForCanBeConvertedToForeach<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 1,
+            "score": 0.6843066100165286
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: ForCanBeConvertedToForeach<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 1,
+            "score": 0.6205255672136993
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads ForCanBeConvertedToForeach. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 1,
+            "score": 0.7020108663259436
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-704<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.19691592062470945
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-704<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.2399637441436628
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads REF-704. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.1861378055758939
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: tarsker<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 1,
+            "score": 0.9843282471540225
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: tarsker<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 1,
+            "score": 0.9293671769174736
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads tarsker. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 1,
+            "score": 0.9760165839344325
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-705<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.1958810697339504
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-705<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.2393660498550364
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads REF-705. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.16308340161126494
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: tarskereso<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 1,
+            "score": 0.785792646688175
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: tarskereso<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 1,
+            "score": 0.5359667804943524
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads tarskereso. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 1,
+            "score": 0.9557622486223113
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-706<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.20120822827149606
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-706<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.23959784928507463
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads REF-706. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.1720151892509301
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: szexf<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.34910413569217685
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: szexf<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.3778584527692611
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads szexf. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.41841833198633915
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-707<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.1990163234835469
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-707<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.24340342983700133
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads REF-707. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.16475441683502295
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: PostalCodesNL<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.4197614856260916
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: PostalCodesNL<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.48344724777619313
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads PostalCodesNL. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 1,
+            "score": 0.7902026540157521
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-708<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.1974412617850461
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-708<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.24756178127115636
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads REF-708. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.16678321386222575
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: useRalative<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.6445980926473558
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: useRalative<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.5280273833719719
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads useRalative. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.6776928849975173
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-709<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.20748784188344455
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-709<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.24879876765839704
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads REF-709. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.16974710983965322
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: webElementX<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.5671387286766091
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: webElementX<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.4905036651860301
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads webElementX. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.7336151525916423
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-710<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.2003212514223035
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-710<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.24299116726825037
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads REF-710. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "test",
+            "label": 0,
+            "score": 0.1826041421274639
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: ejahter<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.31097861328239207
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: ejahter<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.3965535558477228
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads ejahter. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.6157686082224515
+          },
+          {
+            "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-711<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.21217831448605234
+          },
+          {
+            "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-711<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.2611324765575647
+          },
+          {
+            "text": "<|im_start|>user\nThe shipment label reads REF-711. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+            "split": "train",
+            "label": 0,
+            "score": 0.19045605619560851
+          }
+        ]
+      }
+    ],
+    "pooling": "last input token",
+    "note": "Logistic probe; held-out labels never used for fitting. A score is not evidence of causal use.",
+    "provenance": {
+      "model": "lmstudio-community/Qwen3.8-27B-MLX-4bit",
+      "model_type": "qwen3_5",
+      "layers": [
+        32
+      ],
+      "hook": "block output",
+      "seed": 20260917,
+      "input_mode": "raw text (no implicit chat template)",
+      "requested_revision": "6067b15cf581666a4aecf6af3afaba4bb5efc20c",
+      "resolved_model_path": "lmstudio-community/Qwen3.8-27B-MLX-4bit",
+      "model_config": {
+        "architectures": [
+          "Qwen3_5ForConditionalGeneration"
+        ],
+        "do_sample": true,
+        "eos_token_id": [
+          248046,
+          248044
+        ],
+        "generation_config": {
+          "bos_token_id": 248044,
+          "do_sample": true,
+          "eos_token_id": [
+            248046,
+            248044
+          ],
+          "pad_token_id": 248044,
+          "temperature": 1.0,
+          "top_k": 20,
+          "top_p": 0.95
+        },
+        "image_token_id": 248056,
+        "language_model_only": false,
+        "model_type": "qwen3_5",
+        "quantization": {
+          "group_size": 64,
+          "bits": 4,
+          "mode": "affine"
+        },
+        "quantization_config": {
+          "group_size": 64,
+          "bits": 4,
+          "mode": "affine"
+        },
+        "temperature": 1.0,
+        "text_config": {
+          "attention_bias": false,
+          "attention_dropout": 0.0,
+          "attn_output_gate": true,
+          "bos_token_id": 248044,
+          "dtype": "bfloat16",
+          "eos_token_id": 248044,
+          "full_attention_interval": 4,
+          "head_dim": 256,
+          "hidden_act": "silu",
+          "hidden_size": 5120,
+          "initializer_range": 0.02,
+          "intermediate_size": 17408,
+          "layer_types": [
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention"
+          ],
+          "linear_conv_kernel_dim": 4,
+          "linear_key_head_dim": 128,
+          "linear_num_key_heads": 16,
+          "linear_num_value_heads": 48,
+          "linear_value_head_dim": 128,
+          "mamba_ssm_dtype": "float32",
+          "max_position_embeddings": 262144,
+          "model_type": "qwen3_5_text",
+          "mtp_num_hidden_layers": 1,
+          "mtp_use_dedicated_embeddings": false,
+          "num_attention_heads": 24,
+          "num_hidden_layers": 64,
+          "num_key_value_heads": 4,
+          "output_gate_type": "swish",
+          "pad_token_id": null,
+          "partial_rotary_factor": 0.25,
+          "rms_norm_eps": 1e-06,
+          "rope_parameters": {
+            "mrope_interleaved": true,
+            "mrope_section": [
+              11,
+              11,
+              10
+            ],
+            "partial_rotary_factor": 0.25,
+            "rope_theta": 10000000,
+            "type": "default"
+          },
+          "tie_word_embeddings": false,
+          "use_cache": true,
+          "vocab_size": 248320
+        },
+        "tie_word_embeddings": false,
+        "top_k": 20,
+        "top_p": 0.95,
+        "transformers_version": "5.8.0.dev0",
+        "video_token_id": 248057,
+        "vision_config": {
+          "deepstack_visual_indexes": [],
+          "depth": 27,
+          "hidden_act": "gelu_pytorch_tanh",
+          "hidden_size": 1152,
+          "in_channels": 3,
+          "initializer_range": 0.02,
+          "intermediate_size": 4304,
+          "model_type": "qwen3_5",
+          "num_heads": 16,
+          "num_position_embeddings": 2304,
+          "out_hidden_size": 5120,
+          "patch_size": 16,
+          "spatial_merge_size": 2,
+          "temporal_patch_size": 2
+        },
+        "vision_end_token_id": 248054,
+        "vision_start_token_id": 248053
+      },
+      "weight_file_manifest": [
+        {
+          "name": "model-00001-of-00003.safetensors",
+          "bytes": 5343268752,
+          "modified_ns": 1788898972792301267
+        },
+        {
+          "name": "model-00002-of-00003.safetensors",
+          "bytes": 5354185100,
+          "modified_ns": 1788898972855371846
+        },
+        {
+          "name": "model-00003-of-00003.safetensors",
+          "bytes": 5357087747,
+          "modified_ns": 1788898972771779480
+        }
+      ],
+      "mlx_version": "0.32.2",
+      "mlx_lm_version": "0.31.3",
+      "config_sha256": "71fd4a4c6245b4b579aece94716247d0c3fa434e5de2b2f540a8353aff6252dc",
+      "seconds": 8.97268795967102
+    },
+    "artifacts": [
+      "probe-layer-32.npz"
+    ]
+  },
+  "ended": 1789243516.1780999,
+  "export_note": "Local model cache path replaced by public model ID. Numeric measurements unchanged."
+}

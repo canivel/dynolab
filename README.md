@@ -32,7 +32,15 @@ A real 142.2 GB model running across a 128 GiB Mac and a 32 GiB NVIDIA worker. C
 
 ![Saved probe results from the pooled 235B model](https://dynolab.dev/assets/pool-probe-235b-live.png)
 
-*Recorded native app views of real Qwen 0.5B experiments. This walkthrough cycles through saved results; it is not a live generation recording.*
+*Saved results from the pooled Qwen3-235B run. See the pool guide for runtime and measurement limits.*
+
+## A reproducible interpretability example
+
+Why does a model change a harmless reference, sometimes with a safety explanation? [Run the Qwen3.8 identifier-fidelity experiment](examples/identifier-fidelity-probe/README.md): 72 actual responses, held-out identifiers, a saved layer-32 probe and input-only controls. [Watch the native Lab walkthrough](https://dynolab.dev/probe-example.html).
+
+![Qwen3.8 identifier-fidelity probe in Dyno Lab](docs/assets/identifier-probe-results.png)
+
+The small held-out test caught 7 missing-reference outcomes with 2 false alarms. A token-count baseline also performed well. This is an exploratory robustness experiment, not a validated safety monitor.
 
 ## Start your lab
 
