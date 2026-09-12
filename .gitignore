@@ -12,3 +12,6 @@ app/build/
 
 # macOS
 .DS_Store
+
+# Side-by-side coordinator development bundle
+app/build-pairing/

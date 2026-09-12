@@ -36,11 +36,16 @@ struct ResearchLabView: View {
 private struct ResearchExperimentView: View {
     var model: MonitorModel
     @State private var restoringSettings = false
+    @State private var submitting = false
     @State private var captureSource = "serving"
     @State private var servingPort: UInt16?
     @State private var capability: [String: Any] = [:]
     @State private var capabilityError: String?
     private var usingServing: Bool { operation == "inspect" && captureSource == "serving" }
+    private var usingPoolExperiment: Bool { operation != "inspect" && captureSource == "pool" }
+    private var poolResearchAvailable: Bool { (capability["capture_version"] as? Int ?? 0) >= 2 }
+    private var poolCapture: Bool { capability["backend"] as? String == "llama.cpp" }
+    private var captureAvailable: Bool { capability["serving_activations"] as? Bool == true }
     private var displayJob: [String: Any] { usingServing ? lab.servingResult : lab.job }
     private var servingModels: [LLMModel] { model.snapshot.models.filter { $0.port != nil } }
     @State private var operation = "inspect"
@@ -49,6 +54,20 @@ private struct ResearchExperimentView: View {
     @State private var raw = false
     @State private var advanced = false
     private var lab: ResearchLab { model.researchLab }
+    private var runBlockedReason: String? {
+        if submitting || lab.capturing { return "An experiment is being submitted or captured." }
+        if !usingServing && lab.busy { return "Wait for the current isolated experiment to finish, or cancel it." }
+        if !usingServing && !usingPoolExperiment && modelPath.isEmpty {
+            return "Select a downloaded MLX model. Or select Pool as the execution backend."
+        }
+        if usingServing && (!captureAvailable || capability["model"] == nil) {
+            return capabilityError ?? "Select a capture-capable endpoint and wait for its capabilities."
+        }
+        if usingPoolExperiment && (!poolResearchAvailable || capability["model"] == nil) {
+            return capabilityError ?? "Select a running pool with research runtime v2 and refresh its capabilities."
+        }
+        return resources.blockedReason
+    }
     private let operations = ["inspect", "compare", "patch_sweep", "probe", "sae"]
     private func name(_ value: String) -> String {
         ["inspect": "Activations", "compare": "Interventions", "patch_sweep": "Causal patching", "probe": "Probes", "sae": "SAE sandbox"][value] ?? value
@@ -56,14 +75,14 @@ private struct ResearchExperimentView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Image(systemName: "flask").foregroundStyle(.purple)
+                Image(systemName: "flask").foregroundStyle(DynoBrand.violet)
                 Text("Research Lab").font(.headline)
-                Text(usingServing ? "Resident model · no extra copy" : (lab.connected ? "Local API :\(String(lab.port))" : "Service stopped")).font(.caption).foregroundStyle(.secondary)
+                Text(usingServing ? (captureAvailable ? "Resident model · no extra copy" : (capabilityError == nil ? "Checking capture support" : "Capture unavailable")) : (lab.connected ? "Local API :\(String(lab.port))" : "Service stopped")).font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 if !usingServing && !lab.connected { Button("Start lab") { Task { await lab.start(); await lab.refresh() } } }
                 Button("Export experiment") { lab.export(displayJob) }.disabled(displayJob.isEmpty)
             }.padding(14)
-            Text(usingServing ? "Read-only serving capture · raw text · automatically saved on this Mac" : "Isolated experiments · raw text inputs · results saved locally · measurements, not safety certifications")
+            Text(usingPoolExperiment ? "Pool research · resident LLM weights · local training and saved artifacts" : usingServing ? "Read-only serving capture · raw text · automatically saved on this Mac" : "Isolated experiments · raw text inputs · results saved locally · measurements, not safety certifications")
                 .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14).padding(.bottom, 10)
             if let error = lab.error { Text(error).foregroundStyle(.red).font(.caption).padding(8) }
@@ -79,7 +98,13 @@ private struct ResearchExperimentView: View {
                                 Text("Isolated experiment").tag("isolated")
                             }.disabled(lab.capturing)
                         }
-                        if usingServing {
+                        if operation != "inspect" {
+                            Picker("Execution backend", selection: $captureSource) {
+                                Text("Local MLX model").tag("isolated")
+                                Text("Running GPU pool").tag("pool")
+                            }
+                        }
+                        if usingServing || usingPoolExperiment {
                             Picker("Serving endpoint", selection: $servingPort) {
                                 Text("Choose endpoint").tag(Optional<UInt16>.none)
                                 ForEach(servingModels) { item in Text("\(item.name) · :\(String(item.port!))").tag(item.port) }
@@ -87,19 +112,19 @@ private struct ResearchExperimentView: View {
                             Button("Refresh endpoint") { Task { await loadCapability() } }.font(.caption).disabled(lab.capturing)
                             if let capabilityError {
                                 Text(capabilityError).font(.caption).foregroundStyle(.orange)
-                                Text("No capture flag is required. Start the endpoint with the updated Dyno app. In Models, stop the old endpoint when you are ready, then start it again on the same port.")
+                                Text("GGUF activation capture requires the Dyno capture runtime. Ordinary llama.cpp endpoints support inference only. Thinking is unrelated to capture support.")
                                     .font(.caption).foregroundStyle(.secondary)
                                 Button("Open Models") { model.openModels(for: servingModels.first { $0.port == servingPort }) }
                             }
                         } else {
-                            Text("This method runs in an isolated worker with a separate model copy. It does not reuse the serving model’s loaded weights.")
+                            Text("Local mode loads a separate MLX language model. Select Running GPU pool to reuse a distributed GGUF model instead.")
                                 .font(.callout).foregroundStyle(.secondary)
                             Picker("Local model", selection: $modelPath) {
                                 Text("Choose model").tag("")
                                 ForEach(model.localModels) { item in Text(item.shortName).tag(item.path) }
                             }
                         }
-                        if !usingServing {
+                        if !usingServing && !usingPoolExperiment {
                             Button("Manage running models") { model.openModels(for: servingModels.first { $0.port == servingPort }) }
                                 .font(.caption)
                             Text("Choose a downloaded model above or use Models to stop serving when ready. Dyno will not stop an endpoint automatically.")
@@ -144,20 +169,37 @@ private struct ResearchExperimentView: View {
                                 .frame(height: 260).border(Color.secondary.opacity(0.2))
                         }
                         HStack {
-                            Button("Run experiment") {
+                            Button(submitting ? "Starting…" : (!usingServing && !lab.connected ? "Start lab & run experiment" : "Run experiment")) {
                                 // Re-evaluate live conditions at the moment of submission.
                                 let check = resources
                                 guard check.canRun else { lab.error = check.blockedReason; return }
                                 if usingServing, let port = servingPort, let resident = capability["model"] as? String {
                                     Task { await lab.captureServing(port: port, model: resident, parameters: parameters) }
                                 } else {
-                                    Task { await lab.submit(model: modelPath, operation: operation, configuration: configuration) }
+                                    var settings = parameters
+                                    settings.removeValue(forKey: "backend"); settings.removeValue(forKey: "pool_port")
+                                    if usingPoolExperiment, let port = servingPort {
+                                        settings["backend"] = "pool"; settings["pool_port"] = Int(port)
+                                    }
+                                    let submittedSettings = ResearchLab.pretty(settings)
+                                    let submittedModel = usingPoolExperiment ? (capability["model"] as? String ?? "") : modelPath
+                                    let submittedOperation = operation
+                                    submitting = true
+                                    Task {
+                                        defer { submitting = false }
+                                        if !lab.connected { await lab.start() }
+                                        guard lab.connected else { return }
+                                        await lab.submit(model: submittedModel, operation: submittedOperation, configuration: submittedSettings)
+                                    }
                                 }
                             }
-                                .buttonStyle(.borderedProminent).disabled(lab.capturing || !resources.canRun || (usingServing ? (capability["serving_activations"] as? Bool != true || capability["model"] as? String == nil) : (!lab.connected || lab.busy || modelPath.isEmpty)))
+                                .buttonStyle(.dynoPrimary).disabled(runBlockedReason != nil)
                             if lab.busy { Button("Cancel") { Task { await lab.cancel() } }.disabled(!["queued", "running"].contains(lab.job["status"] as? String ?? "")) }
                         }
-                        Text(usingServing ? "Reuses loaded weights. Capture waits for a generation scheduling boundary, then runs a fresh bounded forward pass. It can delay inference. No weights or serving caches are changed. Results and settings are saved automatically on this Mac." : "Loads a separate model copy. Serving stays running, but experiments share GPU and memory bandwidth.").font(.caption).foregroundStyle(.secondary)
+                        if let reason = runBlockedReason {
+                            Text(reason).font(.caption).foregroundStyle(.orange)
+                        }
+                        Text(usingPoolExperiment ? "Uses the resident pool without reloading LLM weights. Captures and interventions run as bounded requests; probe/SAE fitting runs on the coordinator. Research requests clear their slot cache and may delay inference. Results and artifacts are saved locally." : usingServing && poolCapture ? "Reuses pool weights. Runs one uncached raw-text request and one greedy output token through the serving slot; this replaces its prompt cache and can delay other requests. No weights are changed. Results are saved automatically." : usingServing ? "Reuses loaded weights. Capture waits for a generation scheduling boundary, then runs a fresh bounded forward pass. It can delay inference. No weights or serving caches are changed. Results and settings are saved automatically on this Mac." : "Loads a separate model copy. Serving stays running, but experiments share GPU and memory bandwidth.").font(.caption).foregroundStyle(.secondary)
                         Divider()
                         Text("Thinking is useful when studying model-emitted reasoning in chat or token analysis. Activation captures, probes and SAEs do not require thinking mode; raw-text experiments bypass the chat template.")
                             .font(.caption).foregroundStyle(.secondary)
@@ -179,7 +221,7 @@ private struct ResearchExperimentView: View {
                             }.buttonStyle(.plain).disabled(lab.capturing)
                         }
                         Text("Open a saved capture to restore its settings and results. Rerunning creates a new saved run.").font(.caption).foregroundStyle(.secondary)
-                        Text("ISOLATED EXPERIMENT HISTORY").font(.caption).foregroundStyle(.secondary)
+                        Text("EXPERIMENT HISTORY").font(.caption).foregroundStyle(.secondary)
                         ForEach(lab.jobs.compactMap { $0["id"] as? String }, id: \.self) { id in
                             if let item = lab.jobs.first(where: { $0["id"] as? String == id }) {
                                 Button {
@@ -191,6 +233,8 @@ private struct ResearchExperimentView: View {
                                         restoringSettings = operation != method
                                         operation = method
                                         modelPath = config["model"] as? String ?? ""
+                                        captureSource = config["backend"] as? String == "pool" ? "pool" : "isolated"
+                                        if let port = config["pool_port"] as? Int { servingPort = UInt16(exactly: port) }
                                         configuration = ResearchLab.pretty(config)
                                     }
                                 } label: {
@@ -230,7 +274,7 @@ private struct ResearchExperimentView: View {
                                 }
                             }
                             if ["running", "queued"].contains(displayJob["status"] as? String ?? "") {
-                                ProgressView(usingServing ? "Waiting for scheduler / capturing activations…" : "Loading model / running experiment…")
+                                ProgressView(usingServing ? "Waiting for scheduler / capturing activations…" : (usingPoolExperiment ? "Capturing from pool / running experiment…" : "Loading model / running experiment…"))
                             }
                             if raw { Text(ResearchLab.pretty(displayJob)).font(.caption.monospaced()).textSelection(.enabled) }
                             else if let result = displayJob["result"] as? [String: Any] { resultView(result) }
@@ -268,6 +312,8 @@ private struct ResearchExperimentView: View {
         }
         .task(id: servingPort) { await loadCapability() }
         .onChange(of: operation) { _, value in
+            if value != "inspect" && captureSource == "serving" { captureSource = poolResearchAvailable ? "pool" : "isolated" }
+            if value == "inspect" && captureSource == "pool" { captureSource = "serving" }
             if restoringSettings { restoringSettings = false; return }
             configuration = Self.template(value); advanced = value == "probe" || value == "sae" }
         .task {
@@ -320,7 +366,7 @@ private struct ResearchExperimentView: View {
             memory: model.snapshot.memory, gpuBusy: model.snapshot.gpu.busyPercent,
             activeRequests: model.snapshot.models.reduce(0) { $0 + ($1.stats?.activeRequests ?? 0) },
             fresh: model.snapshot.interval > 0 && Date().timeIntervalSince(model.snapshot.date) < 10,
-            maxInputTokens: parameters["max_input_tokens"] as? Int ?? 256, reuseServingModel: usingServing)
+            maxInputTokens: parameters["max_input_tokens"] as? Int ?? 256, reuseServingModel: usingServing || usingPoolExperiment)
     }
     @ViewBuilder private var resourceStatus: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -336,17 +382,22 @@ private struct ResearchExperimentView: View {
             }
             Divider()
             Text("EXPERIMENT READINESS").font(.caption2).foregroundStyle(.secondary)
-            if !usingServing && model.localModels.first(where: { $0.path == modelPath }) == nil {
+            if usingServing && !captureAvailable {
+                Text("Capture unavailable · memory readiness cannot be evaluated until the endpoint supports Lab capture.").foregroundStyle(.orange)
+            } else {
+            if !usingServing && !usingPoolExperiment && model.localModels.first(where: { $0.path == modelPath }) == nil {
                 Text("Additional memory estimate: select a model first")
             } else {
                 Text("Additional memory estimate: \(Format.bytes(resources.estimatedBytes))")
             }
             Text("Available after reserve: \(Format.bytes(resources.availableBytes))")
-            Text("GPU: \(Int(model.snapshot.gpu.busyPercent))% · Reserve: \(Format.bytes(resources.reserveBytes)) · Swap: \(Format.bytes(model.snapshot.memory.swapUsed))")
-            Text(resources.blockedReason ?? (usingServing ? "Workspace headroom available. Capture is scheduled on the serving thread and can briefly delay requests." : "Headroom available; no busy GPU or active requests detected."))
+            Text("GPU active time: \(Int(model.snapshot.gpu.busyPercent))% · Reserve: \(Format.bytes(resources.reserveBytes)) · Swap: \(Format.bytes(model.snapshot.memory.swapUsed))")
+            Text(resources.blockedReason ?? (usingServing ? "Workspace headroom available. Capture is scheduled on the serving thread and can briefly delay requests." : "Memory headroom available; no measured active inference requests."))
                 .foregroundStyle(resources.canRun ? Color.secondary : Color.orange)
-            Text(usingServing ? "Workspace estimate only: already-loaded weights are not counted again. Maximum 256 input tokens and 4 layers. Peak allocation varies." : "Estimate includes 35% weight overhead, workspace and an input-length margin. This is not a resource reservation.")
+            Text("GPU active time includes the desktop and browser. It is not GPU saturation and does not block an experiment.").font(.caption2).foregroundStyle(.secondary)
+            Text(usingServing || usingPoolExperiment ? "Workspace estimate only: already-loaded weights are not counted again. Maximum 256 input tokens and 4 layers. Peak allocation varies." : "Estimate includes 35% weight overhead, workspace and an input-length margin. This is not a resource reservation.")
                 .font(.caption2).foregroundStyle(.secondary)
+            }
         }.font(.caption).padding(10)
             .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
     }
@@ -364,7 +415,7 @@ private struct ResearchExperimentView: View {
         case "probe": return "Train a regularized linear classifier on last-token activations. Supply explicit train/test labels. The example is a small sentiment demo, not a validated safety detector."
         case "sae": return "Train a small ReLU sparse autoencoder. Explore feature activations and held-out reconstruction; semantic feature labels are not inferred."
         case "compare": return "Scale, ablate, patch or steer a block's final-token activation. Compare identical-prefix probabilities and greedy continuations."
-        default: return usingServing ? "Capture token-by-layer activation norms from the loaded model. Up to 4 layers and 256 input tokens; zero-indexed layers. Raw text, no chat template." : "Inspect token-by-layer activation norms and raw logit-lens predictions. Layer indices start at zero."
+        default: return usingServing && poolCapture ? "Experimental pool capture: 1–4 non-final block outputs, up to 256 input tokens. The final layer is excluded because llama.cpp prunes its token outputs. For probes, SAEs and interventions select Running GPU pool with research runtime v2." : usingServing ? "Capture token-by-layer activation norms from the loaded model. Up to 4 layers and 256 input tokens; zero-indexed layers. Raw text, no chat template." : "Inspect token-by-layer activation norms and raw logit-lens predictions. Layer indices start at zero."
         }
     }
     @ViewBuilder private func resultView(_ result: [String: Any]) -> some View {
@@ -389,7 +440,7 @@ private struct ResearchExperimentView: View {
         if let trials = result["trials"] as? [[String: Any]] {
             Text("Change in target-token probability").font(.headline)
             Chart(trials.indices, id: \.self) { i in
-                BarMark(x: .value("Trial", String(i+1)), y: .value("Probability change", trials[i]["delta"] as? Double ?? 0)).foregroundStyle(.purple)
+                BarMark(x: .value("Trial", String(i+1)), y: .value("Probability change", trials[i]["delta"] as? Double ?? 0)).foregroundStyle(DynoBrand.violet)
             }.frame(height: 180)
             ForEach(trials.indices, id: \.self) { i in
                 let row = trials[i]
@@ -420,7 +471,7 @@ private struct ResearchExperimentView: View {
                 }
                 if let losses = report["losses"] as? [[String: Any]] {
                     Chart(losses.indices, id: \.self) { j in
-                        LineMark(x: .value("Step", losses[j]["step"] as? Int ?? 0), y: .value("Loss", losses[j]["loss"] as? Double ?? 0)).foregroundStyle(.purple)
+                        LineMark(x: .value("Step", losses[j]["step"] as? Int ?? 0), y: .value("Loss", losses[j]["loss"] as? Double ?? 0)).foregroundStyle(DynoBrand.violet)
                     }.frame(height: 180)
                     Text(String(format: "Held-out MSE %.3f · mean active %.1f · dead feature fraction %.2f", report["held_out_mse"] as? Double ?? 0, report["mean_active"] as? Double ?? 0, report["dead_fraction"] as? Double ?? 0)).font(.caption)
                     if let features = report["features"] as? [[String: Any]] {
@@ -445,7 +496,7 @@ private struct ResearchExperimentView: View {
 
     @ViewBuilder private func activationResult(_ result: [String: Any], layers: [[String: Any]], tokens: [String]) -> some View {
         let peak = layers.flatMap { $0["norms"] as? [Double] ?? [] }.max() ?? 1
-        Text("What does the model predict next?").font(.headline)
+        Text(result["next_tokens"] == nil ? "Captured input" : "What does the model predict next?").font(.headline)
         Text(tokens.joined()).font(.body.monospaced()).textSelection(.enabled)
             .padding(12).frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
@@ -464,7 +515,16 @@ private struct ResearchExperimentView: View {
             Text("These are candidate next tokens, not a generated answer. · marks a space; ↵ marks a newline. The displayed candidates may not sum to 100%.")
                 .font(.caption).foregroundStyle(.secondary)
         } else {
-            Text("This saved result has no next-token probabilities. Run a new capture to see the prediction.").font(.caption).foregroundStyle(.secondary)
+            if let continuation = result["continuation"] as? String {
+                Text("Greedy next token: " + visibleToken(continuation)).font(.body.monospaced())
+            }
+            Text("Next-token probabilities are not included in this capture.").font(.caption).foregroundStyle(.secondary)
+        }
+        ForEach(layers.indices, id: \.self) { i in
+            if let backend = layers[i]["backend"] as? String {
+                Text("Layer \(layers[i]["layer"] as? Int ?? 0) · captured on \(backend.hasPrefix("RPC") ? "worker GPU" : backend)")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         Divider()
         Text("How strong are the internal representations?").font(.headline)

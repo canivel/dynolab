@@ -263,7 +263,7 @@ struct RouterView: View {
     private var startButton: some View {
         Button("Start the router") { model.startRouter() }
             .controlSize(.large)
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.dynoPrimary)
             .disabled(Runtime.current == nil)
             .padding(.top, 6)
     }

@@ -41,6 +41,8 @@ For your first session, follow **Discover → Models → Chat → Lab**. Lab ope
 
 ## 3. Discover and download a model
 
+In the Pools development preview, **Discover** has an **MLX / GGUF** format filter and **Search Hub / Downloaded** views. Search results identify locally downloaded models. Select **Downloaded** to filter your local library by name and format. **Use in Models** selects MLX weights in the serving controls; **Use in Pools** selects a GGUF and opens the pool configuration. Neither action starts inference. For GGUF search results, **Choose GGUF file** opens a quantization picker so you download the intended file rather than every variant in the repository. Split GGUF downloads remain unsupported in this preview UI.
+
 Start with a small MLX model so you can complete the workflow quickly. The examples below use `mlx-community/Qwen1.5-0.5B-Chat-4bit`; it is a demonstration model, not a recommendation for safety-critical work.
 
 1. Open **Discover** and search for the model or repository name.
@@ -55,6 +57,22 @@ Start with a small MLX model so you can complete the workflow quickly. The examp
 If the model does not appear in Models, refresh the library and confirm that the selected folder contains both configuration and weight files. A model being advertised by another server is not necessarily a downloaded model in Dyno's library.
 
 ## 4. Start, configure and stop a model
+
+### Model formats in the Pools development preview
+
+The **Models → Format** selector separates **MLX** and **GGUF** models. MLX weights support Dyno's native Apple Silicon serving and Lab experiments. GGUF files support the experimental llama.cpp pool; they cannot be started with the MLX server or used for MLX Lab capture. Selecting a format does not convert weights or reuse an already loaded model.
+
+To download a pool model directly in the app:
+
+1. Select **Models → GGUF**. Enter a Hugging Face repository and click **Find files**.
+2. Choose one file under **File / quantization**, checking its download size. Split GGUF files are not supported in this preview.
+3. Click **Download selected GGUF**. You can cancel or retry; wait for the completed model to appear under **Downloaded GGUF models**.
+4. Click **Use in Pools**. This selects the model and opens Pools while preserving the saved worker connection. It does not start inference.
+5. Follow the [pool setup and device checks](pools-preview.md) before starting the pool.
+
+Downloads are stored under `~/.mlx-dyno/gguf/`. Existing complete GGUF files in the default model search folders also appear in the library; use **Choose GGUF** in Pools for a file elsewhere. These controls are included in Dyno Lab 0.3.0.
+
+### Start an MLX endpoint
 
 1. In **Models**, select the weights in the left sidebar.
 2. Choose an unused **Start on port**, such as `8971`.
@@ -128,7 +146,7 @@ To save raw activation artifacts or inspect intermediate logit-lens candidates, 
 **Question:** does changing a layer's representation change the model's next-token prediction and continuation?
 
 1. Choose **Interventions**. Select a downloaded model; this method uses an isolated worker, not the resident serving copy.
-2. Start the Lab service with **Start lab**. Wait for idle GPU capacity and sufficient memory. If you stop serving to make room, do it explicitly in Models.
+2. Start the Lab service with **Start lab**. Wait for sufficient memory and a quiet inference period. If you stop serving to make room, do it explicitly in Models.
 3. Use the same France prompt. Open the JSON settings and select layer `[8]`, intervention `scale`, and strengths `[0, 1, 1.5]` for the example model. Keep the token budget at `12` for a short comparison.
 4. Click **Run experiment**. Compare the probability-change chart and each trial's baseline/intervention output.
 
@@ -200,7 +218,7 @@ Activation captures and token analyses save automatically under `~/.mlx-dyno/res
 
 *Isolated experiments have their own job history. Select a saved job to inspect its result and restore its configuration.*
 
-Isolated jobs persist under `~/.mlx-dyno/lab/` and expose their artifacts through the Lab API. Use **Export experiment** to save a portable JSON copy of a selected experiment. Native app histories are not returned by `Lab.jobs()`; that method lists isolated jobs. Reopening restores evidence and configuration, not paused inference or optimizer state. Old results that were only in memory before automatic saving existed cannot be recovered after quitting that app version.
+Isolated and pooled research jobs persist under `~/.mlx-dyno/lab/` and expose their artifacts through the Lab API. Use **Export experiment** to save a portable JSON copy of a selected experiment. Native app histories are not returned by `Lab.jobs()`; that method lists research service jobs, including pooled experiments. Reopening restores evidence and configuration, not paused inference or optimizer state. Old results that were only in memory before automatic saving existed cannot be recovered after quitting that app version.
 
 ## 12. Inspect live Execution
 
@@ -239,6 +257,8 @@ Under **Point a tool at this endpoint**, **Configure** writes the listed client 
 
 ## 14. Read Performance and resource readiness
 
+Performance defaults to **Automatic**: while a pool started in this app is running, it shows the coordinator and worker GPU charts, worker VRAM, per-device model allocations, completed requests, generation speed and runtime activity. Select **This device** for coordinator metrics or **Pool** to inspect the last session after stopping. **Open Pools** returns to setup and generation controls. GPU load and power are device-wide, including other apps. The headroom card is a pre-load measurement, not live free memory or a guaranteed maximum model size. Missing or stale worker telemetry is labeled rather than reported as zero.
+
 Open **Performance** during a generation. Compare decode tokens/second, time to first token, prompt throughput and cache hits with GPU utilization, unified memory, swap, bandwidth and power.
 
 ![Performance measurements during a running local model workload](https://dynolab.dev/screenshots/window-observe-dark.png)
@@ -247,7 +267,7 @@ Open **Performance** during a generation. Compare decode tokens/second, time to 
 
 Measured throughput comes from server instrumentation where available; estimated figures must not be treated as equivalent. The process list helps identify other workloads using resources. A Lab memory estimate includes workspace and reserve; it is not a reservation or guarantee against allocation failure. Isolated jobs count another weight copy; resident activation capture counts additional workspace only.
 
-If Lab reports insufficient memory, choose a smaller model, lower the input budget, close competing workloads, or explicitly stop serving before the isolated job. If it reports active requests or a busy GPU, wait for a quiet period. Training alongside a continuously busy server is not currently supported by the app's admission checks.
+If Lab reports insufficient memory, choose a smaller model, lower the input budget, close competing workloads, or explicitly stop serving before the isolated job. If it reports measured active requests, wait for a quiet period. GPU active time alone does not block experiments. Training alongside a continuously busy server is not currently supported by the app's admission checks.
 
 ## Troubleshooting and upgrades
 
@@ -268,3 +288,21 @@ For an upgrade, download the new DMG, replace the application in Applications an
 ## Additional research tools
 
 Version 0.2.2 adds **Causal patching**, a **TopK** SAE option and **Research artifacts** for attention, feature examples and attribution graphs. See the [tool evaluation and usage guide](https://github.com/canivel/dynolab/blob/main/docs/research-tools.md) for supported formats, limits, examples and the research roadmap.
+
+### Following downloads
+
+Discover shows a Downloads panel above both Search Hub and Downloaded. Transfers remain visible when you change the model format or search query. Each entry shows status, a progress bar, and downloaded/total bytes. Active app-managed transfers offer Pause, Continue and Cancel; completed entries can be dismissed. Cancel stops the transfer but keeps partial files so downloading the same model again can resume.
+
+Background manifest-based transfers can report progress with `python -m dyno.download_watch --root <download-folder> --pid <downloader-pid> --id <unique-name>`. The folder must contain `download-manifest.json` with `repository` and a `files` list of relative `name` and expected `bytes`. By default this observer is read-only. Add `--control` to enable Pause, Continue and Cancel for the original process; commands are checked against its identity and a per-observer token. Cancel keeps partial files. Its progress survives closing Dyno; stale reports are labeled unavailable. Partial progress estimates allocated bytes on disk, not exact network traffic. Downloaded shards may still require preparation before appearing as a usable model in the library.
+
+## GPU pools (development preview)
+
+Use the [GPU pool handbook](pool-guide.md) to set up a Windows worker, pair it, download a GGUF, test devices and interpret the dashboard. The experimental research runtime also captures pooled activations and supports interventions, causal patching, probes and SAE experiments. Probe/SAE fitting runs on the coordinator; LLM weights stay pooled. See [pool research](pool-lab-capture.md) for setup and limits. [Pool API and Python examples](pool-api.md).
+
+### Interface colors
+
+Lime buttons identify primary actions; outlined buttons are secondary actions. Violet accents identify research surfaces. Warnings and failures retain their semantic colors. The app follows macOS light/dark appearance with a darker green accent for readable light-mode text. Disabled actions remain visibly subdued.
+
+### Experiment readiness
+
+Isolated Lab experiments require a downloaded MLX language model and sufficient memory. **Start lab & run experiment** starts the local research service automatically before submitting. When Run is disabled, the reason appears beneath it. GPU active time includes desktop/browser rendering and is not a saturation measure, so it does not block experiments. Measured active inference requests, missing/stale memory information and insufficient headroom still prevent admission. For a running GGUF pool with research runtime v2, choose **Running GPU pool** under Execution backend. Interventions, causal patching, probes and SAE experiments reuse its resident weights. Probe/SAE fitting runs on the coordinator; see [pool research](pool-lab-capture.md) for limits.

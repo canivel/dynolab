@@ -20,6 +20,7 @@ MLX Dyno {__version__} — local AI research, inference and observability on App
 usage: dyno <command> [options]
 
 commands:
+  worker   Windows desktop GPU worker (development preview)
   node     loopback-only RPC worker for a trusted LAN pool
   pool     experimental LAN-only distributed model pool
   mcp      local stdio MCP bridge for research tools
@@ -69,6 +70,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     command, rest = argv[0], argv[1:]
+
+    if command == "worker":
+        from .pool.worker_app import main as worker_main
+        return worker_main()
 
     if command == "node":
         from .pool.node import main as node_main

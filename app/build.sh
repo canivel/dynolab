@@ -10,7 +10,7 @@ BUNDLE_ID="com.canivel.dyno"
 VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' ../pyproject.toml | head -1)"
 [ -n "$VERSION" ] || { echo "error: missing project version" >&2; exit 1; }
 PYTHON_VERSION="3.12"
-BUILD_DIR="build"
+BUILD_DIR="${DYNO_BUILD_DIR:-build}"
 APP="$BUILD_DIR/$APP_NAME.app"
 RESOURCES="$APP/Contents/Resources"
 
@@ -54,13 +54,13 @@ if [ "$SLIM" -eq 0 ]; then
          "$RESOURCES/python/lib/python$PYTHON_VERSION/lib2to3" \
          "$RESOURCES/python/share" "$RESOURCES/python/include" 2>/dev/null || true
 
-  echo "==> Installing mlx-dyno[serve,mcp] into the bundle"
+  echo "==> Installing mlx-dyno[serve,mcp,pool] into the bundle"
   rm -rf "$RESOURCES/pylib"
   # The shipped runtime must match the reviewed lockfile, not whatever versions
   # happen to be newest when the release is built.
   LOCKED_REQUIREMENTS=$(mktemp "$PWD/$BUILD_DIR/runtime-requirements.XXXXXX")
   trap 'rm -f "$LOCKED_REQUIREMENTS"' EXIT
-  ( cd .. && uv export --locked --extra serve --extra mcp --no-dev \
+  ( cd .. && uv export --locked --extra serve --extra mcp --extra pool --no-dev \
       --no-emit-project --output-file "$LOCKED_REQUIREMENTS" >/dev/null )
   uv pip install --quiet --require-hashes \
       --python "$PWD/$RESOURCES/python/bin/python$PYTHON_VERSION" \
@@ -70,6 +70,14 @@ if [ "$SLIM" -eq 0 ]; then
       --target "$PWD/$RESOURCES/pylib" ..
   rm -f "$LOCKED_REQUIREMENTS"
   find "$RESOURCES/pylib" -name "__pycache__" -type d -prune -exec rm -rf {} + 2>/dev/null || true
+fi
+
+# Release CI supplies a reviewed, pinned research runtime, including its dylibs.
+if [ -n "${DYNO_POOL_RUNTIME_DIR:-}" ]; then
+  test -x "$DYNO_POOL_RUNTIME_DIR/llama-server"
+  "$DYNO_POOL_RUNTIME_DIR/llama-server" --version 2>&1 | grep -q '5bda51b'
+  mkdir -p "$RESOURCES/pool-runtime"
+  ditto "$DYNO_POOL_RUNTIME_DIR" "$RESOURCES/pool-runtime"
 fi
 
 # Shell entry point for MCP clients; resolves paths after the app is relocated.

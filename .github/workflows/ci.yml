@@ -24,7 +24,7 @@ jobs:
           version: '0.12.9'
           enable-cache: false
       - name: Install locked client, MCP and documentation dependencies
-        run: uv sync --locked --extra mcp --extra docs --python 3.12
+        run: uv sync --locked --extra mcp --extra docs --extra pool --python 3.12
       - name: Test Python, HTTP, SDK and MCP contracts
         run: PYTHONPATH=src uv run --frozen python -m unittest discover -s tests -v
       - name: Check documentation and examples
@@ -50,3 +50,41 @@ jobs:
           ./app/build.sh --slim
           plutil -lint app/build/Dyno.app/Contents/Info.plist
           codesign --verify --deep --strict app/build/Dyno.app
+  windows-worker:
+    name: Windows worker lifecycle
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: '0.12.9'
+          enable-cache: false
+      - name: Test worker lifecycle without GPU hardware
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = 'src'
+          uv run --no-project --python 3.12 --with cryptography==50.0.1 --with zeroconf==0.151.3 python -m unittest discover -s tests -p test_worker.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate Windows setup and packaging scripts
+        shell: pwsh
+        run: |
+          foreach ($file in Get-ChildItem worker/windows/*.ps1) {
+            $parseErrors = $null
+            $tokens = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          }
+      - name: Regression test worker source preparation and retry
+        shell: pwsh
+        run: |
+          $work = Join-Path $env:RUNNER_TEMP 'dw'
+          $output = Join-Path $env:RUNNER_TEMP 'dw-out'
+          ./worker/windows/build.ps1 -PrepareOnly -WorkDirectory $work -OutputDirectory $output
+          ./worker/windows/build.ps1 -PrepareOnly -WorkDirectory $work -OutputDirectory $output
+          if (Test-Path "$work/llama.cpp/tools/ui") { throw 'Unused UI was checked out' }
+          if (-not (Test-Path "$work/llama.cpp/tools/rpc/CMakeLists.txt")) { throw 'RPC sources are missing' }
+          $revision = git -C "$work/llama.cpp" rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $revision -ne '5bda51bfbc62e64193221e639f6ad4e08767d760') { throw 'Wrong worker source revision' }

@@ -38,6 +38,11 @@ class Lab:
     def jobs(self): return self._request('/jobs')['jobs']
     def submit(self, operation, model, **settings):
         return self._request('/jobs',dict(settings,operation=operation,model=model))
+    def submit_pool(self, operation, model, pool_port=8978, **settings):
+        """Run research against resident GGUF weights; the Lab service stays at base_url."""
+        if type(pool_port) is not int or not 1024 <= pool_port <= 65535:
+            raise ValueError('pool_port must be 1024–65535')
+        return self.submit(operation, model, **dict(settings, backend='pool', pool_port=pool_port))
     def inspect(self, model, prompt, **settings): return self.submit('inspect',model,prompt=prompt,**settings)
     def compare(self, model, prompt, **settings): return self.submit('compare',model,prompt=prompt,**settings)
     def probe(self, model, examples, **settings): return self.submit('probe',model,examples=examples,**settings)

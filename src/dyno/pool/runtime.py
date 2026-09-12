@@ -1,6 +1,6 @@
 """Mac coordinator with loopback RPC carried over a strict LAN SSH tunnel.
 
-No discovery, remote shell execution, automatic credentials or process eviction.
+Discovery pairing is handled separately; this runtime retains strict SSH trust.
 """
 from __future__ import annotations
 import ipaddress
@@ -13,6 +13,7 @@ import socket
 import subprocess
 import sys
 import time
+import threading
 import urllib.request
 
 LLAMA_REVISION = '5bda51bfbc62e64193221e639f6ad4e08767d760'
@@ -51,7 +52,7 @@ def lan_interfaces():
 
 def validate(config, inventory):
     if not isinstance(config,dict): raise ValueError('Configuration must be a JSON object')
-    allowed={'binary','model','local_address','peer','user','ssh_port','rpc_port','port','context','alias'}
+    allowed={'binary','model','local_address','peer','user','ssh_port','rpc_port','port','context','alias','pairing_id','load_timeout_seconds'}
     if set(config)-allowed: raise ValueError('Unknown configuration fields: '+', '.join(sorted(set(config)-allowed)))
     c=dict(config)
     for key in ('binary','model','local_address','peer','user'):
@@ -67,6 +68,9 @@ def validate(config, inventory):
         c.setdefault(key,default)
         limit=32768 if key=='context' else 65535
         if type(c[key]) is not int or not 1<=c[key]<=limit: raise ValueError(f'Invalid {key}')
+    c.setdefault('load_timeout_seconds', 600)
+    if type(c['load_timeout_seconds']) is not int or not 60 <= c['load_timeout_seconds'] <= 7200:
+        raise ValueError('load_timeout_seconds must be an integer between 60 and 7200')
     c.setdefault('alias','dyno-pool')
     if not isinstance(c['alias'],str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,63}',c['alias']): raise ValueError('Invalid model alias')
     for key in ('binary','model'):
@@ -75,6 +79,7 @@ def validate(config, inventory):
     if not os.access(c['binary'],os.X_OK): raise ValueError('llama-server is not executable')
     with open(c['model'],'rb') as f:
         if f.read(4)!=b'GGUF': raise ValueError('Pool requires GGUF weights; an MLX model folder cannot be reused')
+    if 'pairing_id' in c: paired_directory(c)
     c['interface']=interface['interface']
     return c
 
@@ -113,8 +118,47 @@ def plan(config):
         'recommended_revision':LLAMA_REVISION}
 
 
+def pairing_record(ident, root=None):
+    if not isinstance(ident, str) or not re.fullmatch('[0-9a-f]{32}', ident):
+        raise ValueError('Invalid saved pairing identifier')
+    directory = (Path(root) if root is not None else Path.home() / '.dyno' / 'pairs') / ident
+    if directory.is_symlink():
+        raise ValueError('Saved pairing must not be a symbolic link')
+    for filename in ('identity', 'known_hosts', 'connection.json'):
+        path = directory / filename
+        if not path.is_file() or path.is_symlink():
+            raise ValueError('Saved pairing files are missing or invalid; pair again')
+    if (directory / 'connection.json').stat().st_size > 16384:
+        raise ValueError('Saved pairing record is too large')
+    record = json.loads((directory / 'connection.json').read_text())
+    if not isinstance(record, dict) or record.get('pairing_id') != ident:
+        raise ValueError('Saved pairing identifier does not match its record')
+    for field in ('peer', 'local_address'):
+        private_ip(record.get(field, ''))
+    if not isinstance(record.get('user'), str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_.-]{0,63}', record['user']):
+        raise ValueError('Saved pairing has an invalid SSH username')
+    if type(record.get('ssh_port')) is not int or not 1 <= record['ssh_port'] <= 65535 or type(record.get('rpc_port')) is not int or record['rpc_port'] != 50052:
+        raise ValueError('Saved pairing ports changed; pair again')
+    return record
+
+
+def paired_directory(c):
+    ident = c.get('pairing_id')
+    record = pairing_record(ident)
+    if any(record[k] != c.get(k) for k in ('peer', 'local_address', 'user', 'ssh_port', 'rpc_port')):
+        raise ValueError('Saved pairing does not match this connection; select its network or pair again')
+    return Path.home() / '.dyno' / 'pairs' / ident
+
+
 def ssh_args(c, port):
-    return ['/usr/bin/ssh','-F','/dev/null','-N','-T','-o','BatchMode=yes',
+    trust = []
+    if 'pairing_id' in c:
+        directory = paired_directory(c)
+        trust = ['-i', str(directory / 'identity'), '-o', 'IdentitiesOnly=yes',
+                 '-o', 'IdentityAgent=none', '-o', 'HostKeyAlgorithms=ssh-ed25519',
+                 '-o', 'UserKnownHostsFile="' + str(directory / 'known_hosts') + '"',
+                 '-o', 'GlobalKnownHostsFile=/dev/null']
+    return ['/usr/bin/ssh','-F','/dev/null',*trust,'-N','-T','-o','BatchMode=yes',
         '-o','StrictHostKeyChecking=yes','-o','ExitOnForwardFailure=yes',
         '-o','ServerAliveInterval=5','-o','ServerAliveCountMax=2',
         '-o','ConnectTimeout=10','-o','ForwardAgent=no',
@@ -122,10 +166,40 @@ def ssh_args(c, port):
         '-L',f"127.0.0.1:{port}:127.0.0.1:{c['rpc_port']}", f"{c['user']}@{c['peer']}"]
 
 
+def resolved_ssh_args(c, port):
+    """Recover legacy port-22 pairings only with the already-pinned identity.
+
+    A short authenticated check on Dyno's dedicated port is allowed to select a
+    different endpoint, but never to replace a host key or edit trust files.
+    """
+    original = ssh_args(c, port)
+    if not c.get('pairing_id') or c['ssh_port'] != 22:
+        return original
+    candidate = list(original)
+    candidate[candidate.index('-p') + 1] = '50054'
+    candidate[-1:-1] = ['-o', 'HostKeyAlias=' + c['peer'], '-o', 'HostKeyAlgorithms=ssh-ed25519']
+    check = list(candidate)
+    check.remove('-N')
+    index = check.index('-L')
+    del check[index:index + 2]
+    # The worker's authorized key forces a harmless echo command and permits
+    # only forwarding to the loopback RPC destination.
+    check.append('exit')
+    try:
+        result = subprocess.run(check, capture_output=True, text=True, timeout=12)
+        if result.returncode == 0:
+            return candidate
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return original
+
+
 def server_args(c, port):
+    # Output tensors can precede the worker layers in the GGUF. Keeping these
+    # small tensors on CPU prevents Metal's mapped range spanning worker weights.
     return [c['binary'],'--model',c['model'],'--host','127.0.0.1','--port',str(c['port']),
         '--alias',c['alias'],'--rpc',f'127.0.0.1:{port}','--split-mode','layer',
-        '--n-gpu-layers','999','--ctx-size',str(c['context']),'--parallel','1']
+        '--load-mode','mmap','--override-tensor','^output.*=CPU','--verbosity','4','--n-gpu-layers','999','--ctx-size',str(c['context']),'--parallel','1']
 
 
 def discovered_memory(output):
@@ -151,6 +225,8 @@ def run(config, probe=False):
     # Refuse to replace or adopt an unrelated endpoint.
     with socket.socket() as s: s.bind(('127.0.0.1',c['port']))
     tunnel=server=None
+    telemetry_stop=threading.Event()
+    telemetry_thread=None
     stopped=False
     parent=os.getppid()
     def stop(*_):
@@ -159,7 +235,18 @@ def run(config, probe=False):
     old={sig:signal.signal(sig,stop) for sig in (signal.SIGINT,signal.SIGTERM)}
     def emit(**event): print(json.dumps(event),flush=True)
     try:
-        port=free_port(); tunnel=subprocess.Popen(ssh_args(c,port))
+        emit(status='checking_connection', message='Checking the saved worker identity and SSH endpoint')
+        port=free_port(); args=resolved_ssh_args(c,port)
+        if stopped or os.getppid()!=parent: return
+        check_route(c)
+        telemetry_port = None
+        if c.get('pairing_id') and not probe:
+            telemetry_port = free_port()
+            while telemetry_port == port: telemetry_port = free_port()
+            args[-1:-1] = ['-L', f'127.0.0.1:{telemetry_port}:127.0.0.1:50055']
+        emit(status='ssh_endpoint_verified' if args[args.index('-p')+1] != str(c['ssh_port']) else 'connecting',
+             ssh_port=int(args[args.index('-p')+1]), message='Strict host checking remains enabled')
+        tunnel=subprocess.Popen(args)
         deadline=time.monotonic()+15
         while not stopped:
             if os.getppid()!=parent:
@@ -172,6 +259,10 @@ def run(config, probe=False):
                 time.sleep(.1)
         if stopped: return
         emit(status='tunnel_ready',interface=c['interface'],peer=c['peer'])
+        if telemetry_port is not None:
+            from .telemetry import poll
+            telemetry_thread=threading.Thread(target=poll,args=(telemetry_port,telemetry_stop,emit),daemon=True)
+            telemetry_thread.start()
         # Discover both accelerators before allowing weights to load.
         server=subprocess.Popen([c['binary'],'--rpc',f'127.0.0.1:{port}','--list-devices'],
             env=clean_env(),stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
@@ -190,12 +281,14 @@ def run(config, probe=False):
         memory=discovered_memory(output)
         emit(status='devices_discovered',free_memory_mib=memory,
              notice='Snapshot only; no reservation, context or workspace guarantee')
+        if any(value == 0 for name, value in memory.items() if name.startswith('RPC')):
+            raise ValueError('Worker RPC reports 0 MiB free GPU memory. This is the runtime capacity reading, not GPU utilization. If telemetry shows free VRAM, stop and start RPC in the worker app, then Check devices again. Re-pairing is not needed.')
         if probe: return
         if Path(c['model']).stat().st_size > sum(memory.values())*1024*1024:
             raise ValueError('GGUF file alone exceeds reported free accelerator memory; choose a smaller model')
         server=subprocess.Popen(server_args(c,port),env=clean_env())
         emit(status='loading',endpoint=f"http://127.0.0.1:{c['port']}/v1",model=c['alias'])
-        deadline=time.monotonic()+600
+        deadline=time.monotonic()+c['load_timeout_seconds']
         ready=False; next_route=0
         while not stopped:
             if os.getppid()!=parent:
@@ -210,9 +303,11 @@ def run(config, probe=False):
                         ready=r.status==200
                 except OSError: pass
                 if ready: emit(status='ready',endpoint=f"http://127.0.0.1:{c['port']}/v1")
-                elif time.monotonic()>deadline: raise ValueError('Model loading exceeded ten minutes; stopping pool')
+                elif time.monotonic()>deadline: raise ValueError(f"Model loading exceeded {c['load_timeout_seconds']} seconds; stopping pool. Check worker transfer progress and the configured loading deadline.")
             time.sleep(.25)
     finally:
+        telemetry_stop.set()
+        if telemetry_thread is not None: telemetry_thread.join(timeout=3)
         try:
             terminate(server)
         finally:

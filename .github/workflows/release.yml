@@ -40,7 +40,7 @@ jobs:
           VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml | head -1)
           test "$RELEASE_TAG" = "v$VERSION"
       - name: Install locked test dependencies
-        run: uv sync --locked --extra mcp --extra docs --python 3.12
+        run: uv sync --locked --extra mcp --extra docs --extra pool --python 3.12
       - name: Test API, SDK, MCP and documentation
         run: |
           PYTHONPATH=src uv run --frozen python -m unittest discover -s tests -v
@@ -50,9 +50,18 @@ jobs:
       - name: Build distributions and dependency inventory
         run: |
           uv build
-          uv export --frozen --extra serve --extra mcp --no-dev --no-emit-project --format cyclonedx1.5 -o dist/runtime-sbom.json
+          uv export --frozen --extra serve --extra mcp --extra pool --no-dev --no-emit-project --format cyclonedx1.5 -o dist/runtime-sbom.json
           cp docs/release-notes.md dist/release-notes.md
           cp uv.lock dist/uv.lock
+      - name: Build pinned pool research runtime
+        run: |
+          git init "$RUNNER_TEMP/dyno-llama"
+          git -C "$RUNNER_TEMP/dyno-llama" remote add origin https://github.com/ggml-org/llama.cpp.git
+          git -C "$RUNNER_TEMP/dyno-llama" fetch --depth 1 origin 5bda51bfbc62e64193221e639f6ad4e08767d760
+          git -C "$RUNNER_TEMP/dyno-llama" checkout --detach FETCH_HEAD
+          uv run --frozen python scripts/llama/build-capture.py "$RUNNER_TEMP/dyno-llama"
+          cp "$RUNNER_TEMP/dyno-llama/LICENSE" "$RUNNER_TEMP/dyno-llama/build-dyno/bin/llama-LICENSE"
+          echo "DYNO_POOL_RUNTIME_DIR=$RUNNER_TEMP/dyno-llama/build-dyno/bin" >> "$GITHUB_ENV"
       - name: Import release signing credentials
         env:
           CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}

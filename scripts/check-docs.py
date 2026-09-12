@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 from dyno.lab.server import validate
 
-PAGES = ['research-tools.html', 'guide.html', 'sdk.html', 'api.html', 'mcp.html']
+PAGES = ['pool-lab.html', 'pools.html', 'pool-api.html', 'research-tools.html', 'guide.html', 'sdk.html', 'api.html', 'mcp.html']
 class Page(HTMLParser):
     def __init__(self, source):
         super().__init__()
@@ -26,7 +26,7 @@ class Page(HTMLParser):
         self.references.extend(attributes[key] for key in ('src', 'href') if key in attributes)
 
 def main():
-    for name in ('research-tools.md', 'app-guide.md', 'sdk-guide.md', 'http-api.md', 'local-mcp.md'):
+    for name in ('pool-guide.md', 'pool-api.md', 'research-tools.md', 'app-guide.md', 'sdk-guide.md', 'http-api.md', 'local-mcp.md'):
         source = (ROOT / 'docs' / name).read_text()
         for language, code in re.findall(r'```(\w+)\n(.*?)```', source, re.S):
             if language == 'python':

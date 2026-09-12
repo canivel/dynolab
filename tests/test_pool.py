@@ -29,6 +29,13 @@ class PoolTests(unittest.TestCase):
     def test_unknown_and_invalid_settings_fail(self):
         for extra in [dict(ssh_port=True),dict(context=0),dict(context=999999),dict(user='-oProxyCommand=bad'),dict(alias='../model'),dict(host='0.0.0.0')]:
             with self.subTest(extra=extra),self.assertRaises(ValueError): p.validate(dict(self.config,**extra),self.inventory)
+    def test_loading_deadline_is_bounded(self):
+        self.assertEqual(self.valid()['load_timeout_seconds'],600)
+        self.assertEqual(p.validate(dict(self.config,load_timeout_seconds=3600),self.inventory)['load_timeout_seconds'],3600)
+        for value in (True,0,59,7201,'3600'):
+            with self.subTest(value=value),self.assertRaises(ValueError):
+                p.validate(dict(self.config,load_timeout_seconds=value),self.inventory)
+
     def test_mlx_weights_not_accepted(self):
         self.model.write_bytes(b'OTHER')
         with self.assertRaises(ValueError): self.valid()
@@ -39,6 +46,8 @@ class PoolTests(unittest.TestCase):
         self.assertEqual(a[-1],'researcher@192.168.40.20'); self.assertIn('-N',a)
     def test_coordinator_loopback_and_worker_loopback(self):
         a=p.server_args(self.valid(),50001)
+        self.assertEqual(a[a.index('--load-mode')+1], 'mmap')
+        self.assertEqual(a[a.index('--override-tensor')+1], '^output.*=CPU')
         self.assertEqual(a[a.index('--host')+1],'127.0.0.1')
         self.assertEqual(a[a.index('--rpc')+1],'127.0.0.1:50001')
         n=command(self.binary,'CUDA0',50052)
@@ -55,6 +64,7 @@ class PoolTests(unittest.TestCase):
         process=Mock(); process.poll.return_value=None
         p.terminate(process); process.terminate.assert_called_once(); process.wait.assert_called_once(); process.kill.assert_not_called()
     def test_failed_tunnel_is_reaped(self):
+        self.config["port"] = p.free_port()
         process=Mock(); process.poll.return_value=1
         with patch.object(p,'lan_interfaces',return_value=self.inventory),patch.object(p,'check_route'),patch.object(p,'check_binary'),patch.object(p.subprocess,'Popen',return_value=process),patch.object(p,'terminate') as reap:
             with self.assertRaisesRegex(ValueError,'SSH failed'): p.run(self.config)

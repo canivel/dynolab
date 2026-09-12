@@ -229,3 +229,7 @@ Results include provenance such as configuration hash, runtime versions, request
 ## Causal patching
 
 `POST /lab/v1/jobs` additionally accepts `operation: "patch_sweep"`, `prompt` (corrupted), `clean_prompt`, distinct single-token `target_token` and `foil_token`, `layers`, and optional `positions`. Prompts must have equal token counts; at most 128 layer/position pairs are tested. Results include `patches`, clean/corrupted logit differences and a restored control. SAE jobs accept `sae_architecture: "relu"` or `"topk"`, with `top_k` between 1 and `features`.
+
+## GPU pool inference (development preview)
+
+Pools use a separate loopback llama.cpp endpoint, normally `http://127.0.0.1:8978/v1`. See the [Pool API](pool-api.md) for raw completions, Python examples, lifecycle CLI and telemetry. The research OpenAPI schema does not describe this endpoint.

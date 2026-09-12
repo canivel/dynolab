@@ -140,12 +140,12 @@ struct ChatView: View {
                     Image(systemName: "square.and.pencil").font(.system(size: 12, weight: .semibold))
                     Text("New chat").font(.system(size: 12.5, weight: .semibold))
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(DynoBrand.ink)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.accentColor)
+                        .fill(DynoBrand.lime)
                         .shadow(color: Color.accentColor.opacity(0.35), radius: 5, y: 1)
                 )
                 .contentShape(RoundedRectangle(cornerRadius: 8))
@@ -236,7 +236,7 @@ struct ChatView: View {
             } else {
                 Button(action: send) { Image(systemName: "arrow.up") }
                     .controlSize(.large)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.dynoPrimary)
                     .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                               || target == nil)
                     .keyboardShortcut(.return, modifiers: [])

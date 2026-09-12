@@ -50,20 +50,25 @@ def run(config, folder):
     mx.random.seed(seed)
     rng = np.random.default_rng(seed)
     started = time.time()
-    model, tokenizer, model_config = load(config['model'], tokenizer_config={'trust_remote_code': False}, return_config=True, revision=config.get('revision'))
-    model_path = Path(getattr(tokenizer, 'name_or_path', config['model']))
-    manifest = [dict(name=p.name, bytes=p.stat().st_size, modified_ns=p.stat().st_mtime_ns) for p in sorted(model_path.glob('*.safetensors'))] if model_path.is_dir() else []
-    layers = model.layers
     selected = config.get('layers', [0])
-    if any(i >= len(layers) for i in selected):
-        raise ValueError(f'Model has {len(layers)} layers; requested {selected}')
     limit = config.get('max_input_tokens', 256)
-    captured = {}
-    active = {}
-    collecting = [True]
-
-    for index in selected:
-        layers[index] = tap_layer(layers[index], index, captured, active, collecting)
+    captured, active, collecting = {}, {}, [True]
+    if config.get('backend') == 'pool':
+        from .pool_model import PoolModel
+        model = PoolModel(config, captured, active, collecting)
+        tokenizer = model
+        model_config = dict(backend='pool', capture_version=2)
+        model_path = Path(config['model'])
+        manifest = []
+    else:
+        model, tokenizer, model_config = load(config['model'], tokenizer_config={'trust_remote_code': False}, return_config=True, revision=config.get('revision'))
+        model_path = Path(getattr(tokenizer, 'name_or_path', config['model']))
+        manifest = [dict(name=p.name, bytes=p.stat().st_size, modified_ns=p.stat().st_mtime_ns) for p in sorted(model_path.glob('*.safetensors'))] if model_path.is_dir() else []
+        layers = model.layers
+        if any(i >= len(layers) for i in selected):
+            raise ValueError(f'Model has {len(layers)} layers; requested {selected}')
+        for index in selected:
+            layers[index] = tap_layer(layers[index], index, captured, active, collecting)
 
     def encode(text):
         if not isinstance(text, str) or not text.strip():
@@ -206,6 +211,8 @@ def run(config, folder):
         reports = []
         for layer in selected:
             x = np.stack([vector(e['text'], layer) for e in examples])
+            if config.get('backend') == 'pool':
+                np.savez(folder / f'pool-activations-layer-{layer}.npz', vectors=x, train_mask=train_mask)
             if operation == 'probe':
                 if any(type(e.get('label')) is not int or e['label'] not in (0, 1) for e in examples):
                     raise ValueError('Probe labels must be 0 or 1')
@@ -287,6 +294,10 @@ def run(config, folder):
                     mlx_version=importlib.metadata.version('mlx'), mlx_lm_version=importlib.metadata.version('mlx-lm'),
                     config_sha256=hashlib.sha256(json.dumps(config,sort_keys=True).encode()).hexdigest(),
                     seconds=time.time()-started)
+    if config.get('backend') == 'pool':
+        provenance.update(backend='gguf-pool', capture_version=2, captured_backends=model.backends,
+                          forward_passes=model.calls, weights_reloaded=False,
+                          training_device='coordinator MLX', patch_scope='one block/token per fresh request')
     result.update(provenance=provenance, artifacts=[p.name for p in folder.iterdir() if p.suffix in ('.npz','.safetensors')])
     (folder/'result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
 
