@@ -236,4 +236,4 @@ Pools use a separate loopback llama.cpp endpoint, normally `http://127.0.0.1:897
 
 ## Worked example: reference corruption
 
-The [Qwen3.8 identifier-fidelity experiment](../examples/identifier-fidelity-probe/README.md) includes importable Lab JSON, exact prompts, generated outputs, saved weights, SDK submission and HTTP commands. It uses the existing jobs and artifacts APIs. The probe predicts literal reference absence, not harmfulness or deceptive intent.
+The [Qwen3.8 identifier-fidelity experiment](https://dynolab.dev/probe-example.html) includes importable Lab JSON, exact prompts, generated outputs, saved weights, SDK submission and HTTP commands. It uses the existing jobs and artifacts APIs. The probe predicts literal reference absence, not harmfulness or deceptive intent.
