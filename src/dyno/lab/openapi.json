@@ -185,6 +185,21 @@
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 512
+                  },
+                  "backend": {
+                    "type": "string",
+                    "enum": [
+                      "mlx",
+                      "pool"
+                    ],
+                    "default": "mlx",
+                    "description": "Pool reuses resident GGUF weights; probe/SAE fitting runs on coordinator."
+                  },
+                  "pool_port": {
+                    "type": "integer",
+                    "minimum": 1024,
+                    "maximum": 65535,
+                    "description": "Required with backend=pool. Loopback pool with research runtime v2."
                   }
                 }
               }

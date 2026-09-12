@@ -16,7 +16,9 @@ public struct LabResources {
             pow(tokens / 256, 2) * 0.125 * GB)
         reserveBytes = max(Int64(4 * GB), Int64(Double(memory.total) * 0.05))
         if memory.total > 0, let gpuHeadroom = memory.gpuHeadroom {
-            availableBytes = max(0, min(memory.total - memory.used, gpuHeadroom) - reserveBytes)
+            // Reserve RAM for the OS before comparing with Metal's remaining
+            // working-set budget. That budget already excludes OS headroom.
+            availableBytes = max(0, min(memory.total - memory.used - reserveBytes, gpuHeadroom))
         } else { availableBytes = nil }
         if !fresh {
             blockedReason = "Waiting for fresh hardware measurements. Keep Dyno open while telemetry refreshes."
@@ -28,9 +30,9 @@ public struct LabResources {
             blockedReason = "Memory or Metal headroom is unavailable. Wait for telemetry before starting an experiment."
         } else if !reuseServingModel && activeRequests > 0 {
             blockedReason = "Inference requests are active. Wait for them to finish, or schedule the experiment when serving traffic is quiet."
-        } else if !reuseServingModel && gpuBusy >= 50 {
-            blockedReason = "The GPU is busy. Wait for a quieter period before adding an experiment."
         } else {
+            // GPU active time includes compositor/browser work and does not measure
+            // saturation. Admission uses memory and measured inference requests.
             blockedReason = nil
         }
     }

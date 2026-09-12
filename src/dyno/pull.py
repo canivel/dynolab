@@ -175,11 +175,72 @@ def main(argv: list[str]) -> int:
         prog="dyno pull", description="Download an MLX model from the Hugging Face hub."
     )
     parser.add_argument("repo", help="repository id, e.g. mlx-community/Qwen3-8B-4bit")
+    parser.add_argument("--filename", help="Download one GGUF file for Pools instead of an MLX snapshot")
     parser.add_argument("--revision", help="branch, tag or commit (default: main)")
     parser.add_argument("--json", action="store_true",
                         help="emit newline-delimited JSON progress")
     args = parser.parse_args(argv)
     try:
+        if args.filename:
+            return pull_gguf(args.repo, args.filename, as_json=args.json, revision=args.revision)
         return pull(args.repo, as_json=args.json, revision=args.revision)
     except KeyboardInterrupt:
         return 130
+    except Exception as exc:
+        if args.json: _emit(dict(type="error", message=str(exc)))
+        else: print(str(exc), file=sys.stderr)
+        return 1
+
+
+def pull_gguf(repo_id: str, filename: str, *, as_json=False, revision=None) -> int:
+    """Download exactly one GGUF variant, preserving resumable Hub transfers."""
+    import hashlib
+    import re
+    from pathlib import PurePosixPath
+    from huggingface_hub import HfApi, hf_hub_download
+    file = PurePosixPath(filename)
+    if (file.is_absolute() or '..' in file.parts or '\\' in filename or
+            not filename.lower().endswith('.gguf') or
+            re.search(r'-\d{5}-of-\d{5}\.gguf$', filename, re.I)):
+        raise ValueError('Choose a single, non-sharded GGUF file from the repository')
+    info = HfApi().model_info(repo_id, revision=revision, files_metadata=True)
+    sibling = next((s for s in info.siblings or [] if s.rfilename == filename), None)
+    if sibling is None:
+        raise ValueError('Selected GGUF file is no longer in this repository')
+    expected = sibling.size
+    ident = hashlib.sha256((repo_id + '/' + filename).encode()).hexdigest()[:24]
+    directory = Path.home() / '.mlx-dyno' / 'gguf' / ident
+    directory.mkdir(parents=True, exist_ok=True)
+    result = {}
+    if as_json:
+        _quieten_hub()
+        _emit(dict(type='start', repo=repo_id, total_bytes=expected, existing_bytes=0))
+    def transfer():
+        try:
+            result['path'] = hf_hub_download(repo_id, filename, revision=info.sha, local_dir=directory)
+        except Exception as exc:
+            result['error'] = str(exc)
+    thread = threading.Thread(target=transfer, daemon=True)
+    thread.start()
+    try:
+        while thread.is_alive():
+            thread.join(_POLL_SECONDS)
+            size = _directory_bytes(directory)
+            if as_json:
+                _emit(dict(type='progress', downloaded_bytes=min(size, expected) if expected else size, total_bytes=expected))
+        if 'error' in result:
+            raise ValueError(result['error'])
+        path = Path(result['path'])
+        with path.open('rb') as stream:
+            if stream.read(4) != b'GGUF':
+                raise ValueError('Downloaded file is not a GGUF model')
+        if expected and path.stat().st_size != expected:
+            raise ValueError('Downloaded model size does not match repository metadata')
+        (directory / 'model.json').write_text(json.dumps(dict(repository=repo_id, filename=filename, revision=info.sha)))
+        if as_json:
+            _emit(dict(type='done', repo=repo_id, path=str(path), downloaded_bytes=path.stat().st_size))
+        else:
+            print(str(path), file=_REAL_STDOUT)
+        return 0
+    finally:
+        sys.stdout = _REAL_STDOUT

@@ -24,11 +24,12 @@ cat > "$STAGING/Read Me.txt" <<'TXT'
 Dyno for Apple Silicon — macOS 14 or later
 
 Drag Dyno into Applications, then open it. Python and MLX are included.
-Click Dyno in the menu bar to open the app; right-click for a quick summary.
+The full app opens on launch; the menu bar also provides a quick summary.
 Download a model in Discover, start it in Models, then open Lab.
 Inspect activations, explore token probabilities, train probes and small SAEs,
 or compare interventions. Saved history lets you reopen results and settings.
-Isolated research methods need a separate model copy and idle GPU capacity.
+Isolated research needs a separate model copy. Pooled research reuses the
+resident GGUF model; start in Pools and follow https://dynolab.dev/pools.html.
 
 To share inference: Router > Share on local network > Start the router.
 Copy the displayed URL into another computer's OpenAI-compatible client.

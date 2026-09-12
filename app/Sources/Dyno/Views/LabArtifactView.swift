@@ -21,7 +21,7 @@ struct LabArtifactView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Research artifacts").font(.title2.bold())
                 Text("Explore attention, feature examples and attribution graphs exported from your research tools.").foregroundStyle(.secondary)
-                Button("Import artifact JSON") { importArtifact() }.buttonStyle(.borderedProminent)
+                Button("Import artifact JSON") { importArtifact() }.buttonStyle(.dynoPrimary)
                 Link("Neuronpedia feature atlas ↗", destination: URL(string: "https://www.neuronpedia.org/")!)
                 Text("Neuronpedia opens in your browser. Imported descriptions are source annotations, not locally verified explanations. No prompts are uploaded by this viewer.").font(.caption).foregroundStyle(.secondary)
                 DisclosureGroup("Fetch a public Neuronpedia feature") {
@@ -93,7 +93,7 @@ struct LabArtifactView: View {
                                 GroupBox("Feature \(feature.id) · \(feature.label)") {
                                     VStack(alignment: .leading) {
                                         Chart(feature.activations.indices, id: \.self) { i in
-                                            BarMark(x: .value("Token", i), y: .value("Activation", feature.activations[i])).foregroundStyle(.purple)
+                                            BarMark(x: .value("Token", i), y: .value("Activation", feature.activations[i])).foregroundStyle(DynoBrand.violet)
                                         }.frame(height: 130)
                                         Text(feature.tokens.joined()).font(.callout).textSelection(.enabled)
                                     }

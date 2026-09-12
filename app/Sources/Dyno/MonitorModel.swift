@@ -23,6 +23,7 @@ final class MonitorModel {
 
     // -- local model serving -------------------------------------------------
     private(set) var localModels: [LocalModel] = []
+    private(set) var ggufModels: [LocalGGUF] = []
     private(set) var serverState: ServerController.State = .stopped
     private(set) var runtime: Runtime.Kind?
     var selectedModel: LocalModel?
@@ -78,6 +79,10 @@ final class MonitorModel {
     /// Set to ask the window to switch tabs; the window clears it once handled.
     /// Chat needs to send you to Run when nothing is loaded.
     var requestedTab: MainWindow.Tab?
+    var catalogFormat: ModelCatalog.ModelFormat = .mlx {
+        didSet { if catalogFormat != oldValue { runSearch(query: searchText) } }
+    }
+    @ObservationIgnored private var catalogGeneration = UUID()
     var catalogSort: ModelCatalog.Sort = .popular {
         didSet { runSearch(query: searchText) }
     }
@@ -161,11 +166,12 @@ final class MonitorModel {
         }
         downloader.onChange = { [weak self] progress in
             Task { @MainActor in
-                self?.downloads = progress
-                // A finished download is a new model in the library.
-                if progress.values.contains(where: { $0.isFinished && $0.error == nil }) {
-                    self?.rescanModels()
+                guard let self else { return }
+                let completed = progress.values.contains { item in
+                    item.isFinished && item.error == nil && self.downloads[item.repository]?.isFinished != true
                 }
+                self.downloads = progress
+                if completed { self.rescanModels() }
             }
         }
         routerController.onStateChange = { [weak self] state in
@@ -206,13 +212,18 @@ final class MonitorModel {
     private func runSearch(query: String) {
         isSearching = true
         catalogError = nil
+        let generation = UUID(); catalogGeneration = generation
+        let format = catalogFormat
+        catalog = []
         Task { @MainActor in
             do {
-                let results = try await ModelCatalog.search(query, sort: self.catalogSort)
+                let results = try await ModelCatalog.search(query, sort: self.catalogSort, format: format)
+                guard self.catalogGeneration == generation else { return }
                 self.catalog = results
                 self.isSearching = false
-                await self.fillSizes(for: results)
+                if format == .mlx { await self.fillSizes(for: results, generation: generation) }
             } catch {
+                guard self.catalogGeneration == generation else { return }
                 self.catalog = []
                 self.catalogError = error.localizedDescription
                 self.isSearching = false
@@ -222,7 +233,7 @@ final class MonitorModel {
 
     /// Sizes need a request each, so they arrive after the list rather than
     /// holding it up. Bounded concurrency keeps this polite to the hub.
-    private func fillSizes(for models: [CatalogModel]) async {
+    private func fillSizes(for models: [CatalogModel], generation: UUID) async {
         let ids = models.prefix(30).map(\.id)
         var sizes: [String: Int64] = [:]
         await withTaskGroup(of: (String, Int64?).self) { group in
@@ -243,6 +254,7 @@ final class MonitorModel {
         // Sorting by date surfaces a lot of half-finished uploads: a repo
         // claiming to be a 36B model with 20 MB of files has no weights in it
         // yet. Once a size is known, drop anything too small to be a model.
+        guard catalogGeneration == generation else { return }
         let minimumUsableBytes: Int64 = 100 * 1024 * 1024
         catalog = catalog.compactMap { model in
             var model = model
@@ -277,6 +289,10 @@ final class MonitorModel {
 
     func download(_ model: CatalogModel) { downloader.download(model.id) }
     func cancelDownload(_ model: CatalogModel) { downloader.cancel(model.id) }
+    func downloadGGUF(repository: String, filename: String) { downloader.download(repository, filename: filename) }
+    func pauseDownload(_ identifier: String) { downloader.pause(identifier) }
+    func continueDownload(_ identifier: String) { downloader.resume(identifier) }
+    func cancelGGUF(_ identifier: String) { downloader.cancel(identifier) }
     func dismissDownload(_ repository: String) { downloader.clear(repository) }
 
     // MARK: - Serving models
@@ -285,9 +301,11 @@ final class MonitorModel {
         let folders = modelFolders
         Task.detached(priority: .utility) {
             let found = ModelLibrary.scan(extraPaths: folders)
+            let gguf = GGUFModels.scan()
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 self.localModels = found
+                self.ggufModels = gguf
                 if self.selectedModel == nil || !found.contains(where: { $0.id == self.selectedModel?.id }) {
                     self.selectedModel = found.first
                 }

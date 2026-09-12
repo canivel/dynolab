@@ -26,7 +26,11 @@ Dyno Lab is a native Mac workbench for **AI safety, alignment and mechanistic in
 
 Local MLX inference is the foundation. Run models on Apple Silicon, inspect requests as they execute, and track the memory and GPU capacity your experiments need.
 
-![Real Dyno Lab experiments: activations, interventions, probes and SAE results](https://dynolab.dev/assets/research-walkthrough.gif)
+![Qwen3-235B running across a Mac and RTX 5090 in Dyno Lab](https://dynolab.dev/assets/pool-235b-live.png)
+
+A real 142.2 GB model running across a 128 GiB Mac and a 32 GiB NVIDIA worker. CPU output tensors participate; reported memory headroom is not reserved capacity. [Reproduce the setup](docs/pool-guide.md).
+
+![Saved probe results from the pooled 235B model](https://dynolab.dev/assets/pool-probe-235b-live.png)
 
 *Recorded native app views of real Qwen 0.5B experiments. This walkthrough cycles through saved results; it is not a live generation recording.*
 
@@ -39,7 +43,7 @@ Local MLX inference is the foundation. Run models on Apple Silicon, inspect requ
 
 Requires **Apple Silicon and macOS 14+**. Python and MLX are bundled; model weights are downloaded separately. The product is **Dyno Lab**; the installed bundle is still `Dyno.app`, the command is `dyno`, and the Python distribution is `mlx-dyno`.
 
-**New in 0.2.2:** Causal patching, TopK SAE experiments, Neuronpedia feature lookup and saved research artifacts. Developer ID signed and Apple notarized, with release checksums. [Release notes →](docs/release-notes.md)
+**New in 0.3.0:** A local GPU pool for larger GGUF models, pooled Lab experiments, live worker telemetry and download controls. [Release notes →](docs/release-notes.md)
 
 ## Research tools
 
@@ -130,3 +134,7 @@ The website is maintained separately and deployed at [dynolab.dev](https://dynol
 ## License
 
 [MIT](LICENSE). Built with SwiftUI, [MLX](https://github.com/ml-explore/mlx) and [MLX LM](https://github.com/ml-explore/mlx-lm).
+
+## Expand your lab with a GPU pool
+
+The development preview connects a Mac coordinator and a native Windows NVIDIA worker over a verified local SSH tunnel. Supported GGUF models can distribute allocations across both devices, with per-device memory and live worker telemetry. [Setup and limitations](docs/pool-guide.md) · [Pool API and Python clients](docs/pool-api.md) · [Windows client](https://github.com/canivel/dynolab-windows-client). The development build has generated with Qwen3-235B-A22B Q4_K_M (142.2 GB) and passed the Lab API suite across Metal and RTX 5090. Native activation, probe and SAE runs also passed. Available in 0.3.0 as an experimental workflow.

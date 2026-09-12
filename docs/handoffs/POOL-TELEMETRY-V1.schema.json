@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dyno worker telemetry v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "instance_id",
+    "sequence",
+    "sample_age_ms",
+    "collector_status",
+    "rpc",
+    "gpus"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "instance_id": {
+      "type": "string",
+      "format": "uuid",
+      "maxLength": 36
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sample_age_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "collector_status": {
+      "enum": [
+        "ok",
+        "unavailable",
+        "error"
+      ]
+    },
+    "rpc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "running",
+        "pid",
+        "device_id",
+        "revision",
+        "transport",
+        "port"
+      ],
+      "properties": {
+        "running": {
+          "type": "boolean"
+        },
+        "pid": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "device_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "revision": {
+          "const": "5bda51bfbc62e64193221e639f6ad4e08767d760"
+        },
+        "transport": {
+          "const": "tcp"
+        },
+        "port": {
+          "const": 50052
+        }
+      }
+    },
+    "gpus": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "selected",
+          "utilization_percent",
+          "memory_used_bytes",
+          "memory_total_bytes",
+          "temperature_c",
+          "power_watts"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "selected": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "utilization_percent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "memory_used_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "memory_total_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "temperature_c": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": -40,
+            "maximum": 200
+          },
+          "power_watts": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 10000
+          }
+        }
+      }
+    }
+  }
+}

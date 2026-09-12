@@ -40,6 +40,13 @@ def validate(body):
             raise ValueError(f'{key} is out of range')
     if len(body.get('examples', [])) > 512:
         raise ValueError('At most 512 examples per experiment')
+    if body.get('backend') == 'pool':
+        if type(body.get('pool_port')) is not int or not 1024 <= body['pool_port'] <= 65535:
+            raise ValueError('Choose a loopback pool port')
+        if len(body.get('layers',[0])) > 4 or body.get('max_input_tokens',256)>256:
+            raise ValueError('Pool experiments support up to 4 layers and 256 input tokens')
+    elif body.get('backend') not in (None, 'mlx'):
+        raise ValueError('Unsupported research backend')
     if len(json.dumps(body)) > 500_000:
         raise ValueError('Experiment configuration is too large')
     return body

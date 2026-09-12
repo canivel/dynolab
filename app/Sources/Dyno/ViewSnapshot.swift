@@ -28,7 +28,31 @@ enum ViewSnapshot {
         waitForData(model)
         model.selectRunningModelForSnapshot()
         let publication = arguments.contains("--public")
-        if let fixture = ProcessInfo.processInfo.environment["DYNO_LAB_RESULT_FIXTURE"],
+        if let rawPort = ProcessInfo.processInfo.environment["DYNO_POOL_CAPTURE_PORT"], let port = UInt16(rawPort) {
+            var finished = false
+            var captureFailure: String?
+            Task {
+                do {
+                    let caps = try await model.researchLab.servingRequest(port: port, path: "capabilities")
+                    guard let resident = caps["model"] as? String else { throw NSError(domain: "Snapshot", code: 1) }
+                    await model.researchLab.captureServing(port: port, model: resident, parameters: [
+                        "prompt": "The capital of France is", "layers": [4, 24], "max_input_tokens": 256
+                    ])
+                    if model.researchLab.servingResult["status"] as? String != "completed" {
+                        captureFailure = ResearchLab.pretty(model.researchLab.servingResult)
+                    }
+                } catch { captureFailure = error.localizedDescription }
+                finished = true
+            }
+            let deadline = Date().addingTimeInterval(80)
+            while !finished && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
+            guard finished, captureFailure == nil else {
+                print(captureFailure ?? "Pool capture timed out")
+                return 1
+            }
+            try? ResearchLab.pretty(model.researchLab.servingResult).write(
+                toFile: directory + "/pool-capture.json", atomically: true, encoding: .utf8)
+        } else if let fixture = ProcessInfo.processInfo.environment["DYNO_LAB_RESULT_FIXTURE"],
            let data = try? Data(contentsOf: URL(fileURLWithPath: fixture)),
            let job = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             model.researchLab.servingResult = job
@@ -73,6 +97,32 @@ enum ViewSnapshot {
              CGSize(width: 320, height: 240)),
         ]
 
+        if arguments.contains("--discover-only") {
+            model.catalogFormat = .gguf
+            model.searchCatalog("Qwen3-0.6B")
+            RunLoop.main.run(until: Date().addingTimeInterval(2))
+            targets = [
+                ("discover-gguf", { AnyView(DiscoverView(model: model)) }, CGSize(width: 1100, height: 740)),
+                ("downloaded-gguf", { AnyView(DiscoverView(model: model, library: true)) }, CGSize(width: 1100, height: 500))
+            ]
+        }
+        if arguments.contains("--gguf-only") {
+            targets = [("window-gguf", { AnyView(MainWindow(model: model, initialTab: .run, modelFormat: "GGUF")) }, CGSize(width: 1100, height: 820))]
+        }
+        if arguments.contains("--pools-only") {
+            if let path = ProcessInfo.processInfo.environment["DYNO_POOL_LOG_FIXTURE"],
+               let log = try? String(contentsOfFile: path, encoding: .utf8) {
+                let session = PoolSession()
+                session.nearby.refresh()
+                for line in log.components(separatedBy: "\n") { session.telemetry.consume(line) }
+                session.telemetry.phase = "Recorded session"
+                session.telemetry.ready = false; session.telemetry.active = false
+                session.telemetry.measuredAt = nil
+                targets = [("pool-recorded", { AnyView(PoolDashboard(session: session, model: model, recorded: true, presentation: true)) }, CGSize(width: 1100, height: 1050))]
+            } else {
+                targets = [("window-pools", { AnyView(MainWindow(model: model, initialTab: .pools)) }, CGSize(width: 1100, height: 820))]
+            }
+        }
         if arguments.contains("--artifacts-only") {
             guard let path = ProcessInfo.processInfo.environment["DYNO_ARTIFACT_FIXTURE"],
                   let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
@@ -128,7 +178,7 @@ enum ViewSnapshot {
                 model.selectRunningModelForSnapshot()
                 let path = (directory as NSString)
                     .appendingPathComponent("\(name)-\(suffix).png")
-                if capture(view: makeView(), size: size, appearance: appearance, to: path) {
+                if capture(view: AnyView(makeView().dynoTheme()), size: size, appearance: appearance, to: path) {
                     wrote += 1
                 } else {
                     print("  FAILED \(name)-\(suffix)")

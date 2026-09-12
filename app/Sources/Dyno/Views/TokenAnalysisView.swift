@@ -145,7 +145,7 @@ struct TokenAnalysisView: View {
                 Spacer()
                 Button(running ? "Running…" : "Analyze tokens") { run() }
                     .controlSize(.large)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.dynoPrimary)
                     .disabled(running || referencePort == nil || servers.isEmpty
                               || prompt.trimmingCharacters(in: .whitespaces).isEmpty)
             }

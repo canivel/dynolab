@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// Runs `dyno pull` and follows its progress.
 ///
@@ -9,6 +10,13 @@ import Foundation
 public final class DownloadManager: @unchecked Sendable {
     public struct Progress: Sendable, Equatable {
         public var repository: String
+        public var displayName: String?
+        public var detail: String?
+        public var isExternal = false
+        public var isStale = false
+        public var isPaused = false
+        public var controlToken: String?
+        public var status: String?
         public var downloadedBytes: Int64 = 0
         public var totalBytes: Int64?
         public var isFinished = false
@@ -27,13 +35,33 @@ public final class DownloadManager: @unchecked Sendable {
     /// Fires on every progress update, on an arbitrary queue.
     public var onChange: (@Sendable ([String: Progress]) -> Void)?
 
-    public init() {}
+    private var backgroundTimer: DispatchSourceTimer?
+    private var background: [String: Progress] = [:]
+
+    public init() {
+        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+        timer.schedule(deadline: .now() + 1, repeating: 2)
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            let records = BackgroundDownloads.read()
+            let snapshot: [String: Progress]? = self.withLock {
+                guard records != self.background else { return nil }
+                self.background = records
+                return self.active.merging(records) { first, _ in first }
+            }
+            if let snapshot { self.onChange?(snapshot) }
+        }
+        backgroundTimer = timer
+        timer.resume()
+    }
+
+    deinit { backgroundTimer?.cancel() }
 
     private func withLock<T>(_ body: () -> T) -> T {
         lock.lock(); defer { lock.unlock() }; return body()
     }
 
-    public var current: [String: Progress] { withLock { active } }
+    public var current: [String: Progress] { withLock { active.merging(background) { first, _ in first } } }
 
     public func isDownloading(_ repository: String) -> Bool {
         withLock { active[repository]?.isFinished == false && active[repository]?.error == nil }
@@ -42,7 +70,7 @@ public final class DownloadManager: @unchecked Sendable {
     private func publish(_ progress: Progress) {
         let snapshot = withLock { () -> [String: Progress] in
             active[progress.repository] = progress
-            return active
+            return active.merging(background) { first, _ in first }
         }
         onChange?(snapshot)
     }
@@ -50,20 +78,61 @@ public final class DownloadManager: @unchecked Sendable {
     public func clear(_ repository: String) {
         let snapshot = withLock { () -> [String: Progress] in
             active.removeValue(forKey: repository)
-            return active
+            return active.merging(background) { first, _ in first }
         }
         onChange?(snapshot)
     }
 
-    public func cancel(_ repository: String) {
-        let task = withLock { tasks.removeValue(forKey: repository) }
-        task?.terminate()
-        clear(repository)
+    private func externalControl(_ repository: String, action: String) -> Bool {
+        guard let item = withLock({ background[repository] }) else { return false }
+        guard !item.isStale, let token = item.controlToken else { return true }
+        let name = String(repository.dropFirst("background:".count))
+        guard name == (name as NSString).lastPathComponent, name.hasSuffix(".json") else { return true }
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".mlx-dyno/downloads")
+            .appendingPathComponent(String(name.dropLast(5)) + ".control")
+        do {
+            let data = try JSONSerialization.data(withJSONObject: ["action": action, "token": token])
+            try data.write(to: url, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        } catch {
+            var failed = item; failed.detail = "Could not send download command: " + error.localizedDescription
+            publish(failed)
+        }
+        return true
     }
 
-    public func download(_ repository: String) {
+    public func pause(_ repository: String) {
+        if externalControl(repository, action: "pause") { return }
+        guard let task = withLock({ tasks[repository] }), task.isRunning, task.suspend() else { return }
+        if var item = withLock({ active[repository] }) { item.isPaused = true; publish(item) }
+    }
+
+    public func resume(_ repository: String) {
+        if externalControl(repository, action: "continue") { return }
+        guard let task = withLock({ tasks[repository] }), task.isRunning, task.resume() else { return }
+        if var item = withLock({ active[repository] }) { item.isPaused = false; publish(item) }
+    }
+
+    public func cancel(_ repository: String) {
+        if externalControl(repository, action: "cancel") { return }
+        let task = withLock { tasks.removeValue(forKey: repository) }
+        if let task, task.isRunning {
+            // Deliver TERM even if the process is suspended.
+            task.terminate()
+            kill(task.processIdentifier, SIGCONT)
+        }
+        if var item = withLock({ active[repository] }) {
+            item.isPaused = false; item.isFinished = true; item.status = "cancelled"; item.error = "Cancelled. Partial files kept; download again to resume."
+            publish(item)
+        }
+    }
+
+    public func download(_ repo: String, filename: String? = nil) {
+        let repository = filename.map { repo + "/" + $0 } ?? repo
+        var args = ["pull", repo, "--json"]
+        if let filename { args += ["--filename", filename] }
         guard !isDownloading(repository) else { return }
-        guard let invocation = Runtime.invocation(for: ["pull", repository, "--json"]) else {
+        guard let invocation = Runtime.invocation(for: args) else {
             publish(Progress(repository: repository, isFinished: true,
                              error: "No Python runtime found. Reinstall Dyno."))
             return
@@ -81,42 +150,37 @@ public final class DownloadManager: @unchecked Sendable {
         // The hub's own chatter goes to stderr; it is noise here.
         task.standardError = FileHandle.nullDevice
 
-        var buffer = Data()
-        output.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            guard let self else { return }
-            buffer.append(handle.availableData)
-            // Progress arrives as newline-delimited JSON; a read can split a line.
-            while let newline = buffer.firstIndex(of: UInt8(ascii: "\n")) {
-                let line = buffer[buffer.startIndex..<newline]
-                buffer.removeSubrange(buffer.startIndex...newline)
-                guard !line.isEmpty,
-                      let event = (try? JSONSerialization.jsonObject(with: Data(line)))
-                        as? [String: Any]
-                else { continue }
-                self.handle(event: event, repository: repository)
-            }
-        }
-
-        task.terminationHandler = { [weak self] finished in
-            output.fileHandleForReading.readabilityHandler = nil
-            guard let self else { return }
-            _ = self.withLock { self.tasks.removeValue(forKey: repository) }
-            let existing = self.withLock { self.active[repository] }
-            // A non-zero exit with no error event means it died without saying why.
-            if finished.terminationStatus != 0, existing?.isFinished != true {
-                var progress = existing ?? Progress(repository: repository)
-                progress.isFinished = true
-                progress.error = progress.error ?? "Download failed."
-                self.publish(progress)
-            }
-        }
-
+        _ = withLock { tasks[repository] = task }
         do {
             try task.run()
-            _ = withLock { tasks[repository] = task }
         } catch {
+            _ = withLock { tasks.removeValue(forKey: repository) }
             publish(Progress(repository: repository, isFinished: true,
                              error: "Could not start the download: \(error.localizedDescription)"))
+            return
+        }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            var buffer = Data()
+            while true {
+                let data = output.fileHandleForReading.availableData
+                if data.isEmpty { break }
+                buffer.append(data)
+                while let newline = buffer.firstIndex(of: UInt8(ascii: "\n")) {
+                    let line = Data(buffer[..<newline]); buffer.removeSubrange(...newline)
+                    guard let self, self.withLock({ self.tasks[repository] === task }),
+                          let event = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] else { continue }
+                    self.handle(event: event, repository: repository)
+                }
+            }
+            task.waitUntilExit()
+            guard let self, self.withLock({ self.tasks[repository] === task }) else { return }
+            _ = self.withLock { self.tasks.removeValue(forKey: repository) }
+            if let existing = self.withLock({ self.active[repository] }), !existing.isFinished {
+                var failed = existing
+                failed.isFinished = true
+                failed.error = task.terminationStatus == 0 ? "Download ended without confirming a complete model." : "Download failed."
+                self.publish(failed)
+            }
         }
     }
 

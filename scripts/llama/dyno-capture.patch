@@ -1,0 +1,270 @@
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index b6835e4..b0e5aff 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -1,4 +1,5 @@
+ #include "server-context.h"
++#include "dyno-capture.h"
+ #include "server-chat.h"
+ #include "server-common.h"
+ #include "server-http.h"
+@@ -552,7 +553,7 @@ struct server_slot {
+             state = SLOT_STATE_IDLE;
+ 
+             // do not keep context of the child slots - the parent's context is enough
+-            if (task->is_child()) {
++            if (task->is_child() || !task->params.dyno_layers.empty()) {
+                 prompt_clear();
+             }
+ 
+@@ -832,6 +833,7 @@ static int process_mtmd_chunk(const server_slot & slot, mtmd::batch_ptr & mbatch
+ 
+ struct server_context_impl {
+     friend struct server_context;
++    dyno_capture_state dyno_capture;
+ 
+ public:
+     // only use these pointers outside of this class:
+@@ -1096,6 +1098,8 @@ private:
+             params_base.load_progress_callback_user_data = &load_progress_text;
+         }
+ 
++        params_base.cb_eval = dyno_capture_callback;
++        params_base.cb_eval_user_data = &dyno_capture;
+         llama_init = common_init_from_params(params_base);
+ 
+         model_tgt = llama_init->model();
+@@ -2144,6 +2148,34 @@ private:
+             }
+         }
+ 
++
++        if (!slot.task->params.dyno_layers.empty()) {
++            json capture = {{"layers", json::array()}, {"tokens", json::array()}, {"token_ids", json::array()}};
++            for (size_t i = 0; i < slot.task->tokens.size(); ++i) {
++                auto token = slot.task->tokens[i];
++                capture["token_ids"].push_back(token);
++                capture["tokens"].push_back(common_token_to_piece(ctx_tgt, token, true));
++            }
++            for (int layer : slot.task->params.dyno_layers) {
++                if (dyno_capture.task_id != slot.task->id || dyno_capture.norms[layer].size() != slot.task->tokens.size()) {
++                    dyno_capture.error = "Incomplete block capture; this architecture or graph layout is not supported";
++                }
++                capture["layers"].push_back({{"layer", layer}, {"norms", dyno_capture.norms[layer]}, {"backend", dyno_capture.backends[layer]}});
++                if (slot.task->params.dyno_vectors) { capture["layers"].back()["vectors"] = dyno_capture.vectors[layer]; }
++            }
++            if (slot.task->params.dyno_vectors && dyno_capture.error.empty()) {
++                const int count = llama_vocab_n_tokens(llama_model_get_vocab(model_tgt));
++                const float * logits = llama_get_logits_ith(ctx_tgt, -1);
++                if (!logits || count>262144) { dyno_capture.error = "Logits unavailable or vocabulary too large"; }
++                else { capture["logits"] = std::vector<float>(logits, logits+count); }
++            }
++            if (!dyno_capture.error.empty()) { capture = {{"error", dyno_capture.error}}; }
++            else {
++                capture["note"] = "Experimental GGUF block-output L2 norms from a fresh uncached prefill on the resident pool. Includes tokenizer special tokens. One greedy output token is computed; no weights are changed. Request-scoped capture/patch; research requests clear their slot cache on release.";
++                capture["provenance"] = {{"mode", "pool"}, {"backend", "llama.cpp"}, {"hook", "l_out"}, {"input_mode", "raw text"}, {"model", params_base.model.path}, {"revision", "5bda51bfbc62e64193221e639f6ad4e08767d760"}, {"capture_version", 2}};
++            }
++            res->dyno_capture = capture;
++        }
+         res->generation_params = slot.task->params; // copy the parameters
+ 
+         queue_results.send(std::move(res));
+@@ -3679,7 +3711,30 @@ private:
+         // note: the sync is done here too, so that the wait is also covered by the yield
+         int ret = 0;
+         queue_tasks.yield_to_queue([&]() {
++
++            dyno_capture.enabled = false;
++            if (slots.size() == 1 && slots[0].task && !slots[0].task->params.dyno_layers.empty()) {
++                auto & task = *slots[0].task;
++                if (dyno_capture.task_id != task.id) {
++                    dyno_capture = dyno_capture_state();
++                    dyno_capture.task_id = task.id;
++                    dyno_capture.layers = task.params.dyno_layers;
++                    dyno_capture.token_count = task.n_tokens();
++                    dyno_capture.vectors_enabled = task.params.dyno_vectors;
++                    if (!task.params.dyno_patch.is_null()) {
++                        dyno_capture.patch_layer = task.params.dyno_patch.at("layer").get<int>();
++                        dyno_capture.patch_position = task.params.dyno_patch.at("position").get<int>();
++                        dyno_capture.patch_vector = task.params.dyno_patch.at("vector").get<std::vector<float>>();
++                    }
++                }
++                // Capture only a complete uncached prefill, never generated tokens or another request.
++                if (batch_view.n_tokens == dyno_capture.token_count && batch_view.pos && batch_view.pos[0] == 0) {
++                    dyno_capture.enabled = true;
++                }
++            }
+             ret = llama_decode(ctx_tgt, batch_view);
++            if (dyno_capture.enabled) { llama_synchronize(ctx_tgt); }
++            dyno_capture.enabled = false;
+             if (ret == 0 && has_output) {
+                 llama_synchronize(ctx_tgt);
+             }
+@@ -4318,6 +4373,48 @@ std::unique_ptr<server_res_generator> server_routes::handle_completions_impl(
+                     meta->logit_bias_eog,
+                     data);
+ 
++
++            if (data.contains("dyno_layers")) {
++                if (params.n_parallel != 1 || inputs.size() != 1 || res_type != TASK_RESPONSE_TYPE_NONE ||
++                    task.params.stream || task.params.n_cmpl != 1 || task.n_tokens() < 1 || task.n_tokens() > 256 ||
++                    params.n_ubatch < 256 || params.n_batch < 256) {
++                    throw std::runtime_error("Dyno capture requires one non-streaming raw-text request, one slot, 1-256 tokens, and batch/ubatch >=256");
++                }
++                if (!data.at("dyno_layers").is_array()) { throw std::runtime_error("Layers must be an array"); }
++                for (const auto & value : data.at("dyno_layers")) {
++                    if (!value.is_number_integer()) { throw std::runtime_error("Layers must be integers"); }
++                }
++                task.params.dyno_layers = data.at("dyno_layers").get<std::vector<int>>();
++                auto & layers = task.params.dyno_layers;
++                std::set<int> unique(layers.begin(), layers.end());
++                if (layers.empty() || layers.size() > 4 || unique.size() != layers.size()) {
++                    throw std::runtime_error("Choose 1-4 distinct layers");
++                }
++                for (int layer : layers) {
++                    if (layer < 0 || layer >= llama_model_n_layer(ctx_server.model_tgt)-1) {
++                        throw std::runtime_error("Capture supports non-final block outputs only; final-layer token pruning is not supported");
++                    }
++                }
++                task.params.dyno_vectors = json_value(data, "dyno_vectors", false);
++                if (data.contains("dyno_patch")) {
++                    const auto & patch = data.at("dyno_patch");
++                    if (!patch.is_object() || !patch.at("layer").is_number_integer() || !patch.at("position").is_number_integer()) {
++                        throw std::runtime_error("Patch requires integer layer and position");
++                    }
++                    int layer = patch.at("layer").get<int>(), pos = patch.at("position").get<int>();
++                    if (std::find(layers.begin(), layers.end(), layer)==layers.end() || pos<0 || pos>=task.n_tokens()) {
++                        throw std::runtime_error("Patch must target a captured layer and valid token");
++                    }
++                    auto values = patch.at("vector").get<std::vector<float>>();
++                    if (values.empty() || values.size()>32768 || std::any_of(values.begin(),values.end(),[](float v){return !std::isfinite(v);})) {
++                        throw std::runtime_error("Patch vector is invalid or too large");
++                    }
++                    task.params.dyno_patch = patch;
++                }
++                task.params.cache_prompt = false;
++                task.params.n_predict = 1;
++                task.params.sampling.temp = 0;
++            }
+             task.params.message_spans = task.tokens.find_message_spans(delimiters);
+ 
+             task.id_slot = json_value(data, "id_slot", -1);
+@@ -4611,6 +4708,7 @@ static json get_res_props(const server_context_meta & meta, const common_params
+ 
+     json props = {
+         { "default_generation_settings", default_generation_settings_for_props },
++        { "dyno_capture_version",        params.n_parallel == 1 ? 2 : 0 },
+         { "total_slots",                 params.n_parallel },
+         { "model_alias",                 meta.model_name },
+         { "model_ftype",                 meta.model_ftype },
+diff --git a/tools/server/server-task.cpp b/tools/server/server-task.cpp
+index 0d3beb3..07d1481 100644
+--- a/tools/server/server-task.cpp
++++ b/tools/server/server-task.cpp
+@@ -356,6 +356,7 @@ json server_task_result_cmpl_final::to_json_non_oaicompat() {
+         {"tokens_cached",       n_tokens_cached},
+         {"timings",             stats.to_json()},
+     };
++    if (!dyno_capture.is_null()) { res["dyno_capture"] = dyno_capture; }
+     if (!stream && !probs_output.empty()) {
+         res["completion_probabilities"] = completion_token_output::probs_vector_to_json(probs_output, post_sampling_probs);
+     }
+diff --git a/tools/server/server-task.h b/tools/server/server-task.h
+index 9c99143..f8386e2 100644
+--- a/tools/server/server-task.h
++++ b/tools/server/server-task.h
+@@ -48,6 +48,9 @@ enum stop_type {
+ };
+ 
+ struct task_params {
++    std::vector<int> dyno_layers;
++    bool dyno_vectors = false;
++    json dyno_patch;
+     bool stream          = false;
+     bool include_usage   = false;
+     bool cache_prompt    = true; // remember the prompt to avoid reprocessing all prompt
+@@ -318,6 +321,7 @@ struct completion_token_output {
+ };
+ 
+ struct server_task_result_cmpl_final : server_task_result {
++    json dyno_capture;
+     std::string content;
+     llama_tokens tokens;
+ 
+diff --git a/tools/server/dyno-capture.h b/tools/server/dyno-capture.h
+new file mode 100644
+index 0000000..fdc2783
+--- /dev/null
++++ b/tools/server/dyno-capture.h
+@@ -0,0 +1,71 @@
++#pragma once
++#include "ggml-backend.h"
++#include <cmath>
++#include <cstring>
++#include <map>
++#include <string>
++#include <vector>
++#include <algorithm>
++
++struct dyno_capture_state {
++    bool enabled = false;
++    bool vectors_enabled = false;
++    std::map<int, std::vector<std::vector<float>>> vectors;
++    int patch_layer = -1;
++    int patch_position = -1;
++    std::vector<float> patch_vector;
++    int task_id = -1;
++    int token_count = 0;
++    std::vector<int> layers;
++    std::map<int, std::vector<double>> norms;
++    std::map<int, std::string> backends;
++    std::string error;
++};
++
++static bool dyno_capture_callback(ggml_tensor * t, bool ask, void * user_data) {
++    auto & state = *static_cast<dyno_capture_state *>(user_data);
++    if (!state.enabled) return !ask;
++    int layer = -1;
++    char rest = 0;
++    if (sscanf(t->name, "l_out-%d%c", &layer, &rest) != 1 ||
++        std::find(state.layers.begin(), state.layers.end(), layer) == state.layers.end()) return !ask;
++    if (ask) return true;
++    try {
++        if (t->type != GGML_TYPE_F32 || !ggml_is_contiguous(t) || t->ne[1] != state.token_count ||
++            t->ne[2] != 1 || t->ne[3] != 1 || ggml_nbytes(t) > 64*1024*1024) {
++            state.error = "Unsupported activation layout or capture size";
++            return true;
++        }
++        std::vector<float> data(ggml_nelements(t));
++        ggml_backend_tensor_get(t, data.data(), 0, ggml_nbytes(t));
++        if (state.patch_layer == layer) {
++            if (state.patch_position < 0 || state.patch_position >= t->ne[1] ||
++                state.patch_vector.size() != size_t(t->ne[0])) {
++                state.error = "Patch position or hidden dimension mismatch"; return true;
++            }
++            std::copy(state.patch_vector.begin(), state.patch_vector.end(),
++                      data.begin() + state.patch_position*t->ne[0]);
++            ggml_backend_tensor_set(t, data.data(), 0, ggml_nbytes(t));
++        }
++        if (state.vectors_enabled) {
++            if (ggml_nbytes(t) > 4*1024*1024) { state.error = "Vector capture exceeds 4 MiB per layer"; return true; }
++            auto & rows = state.vectors[layer]; rows.clear();
++            for (int64_t token=0; token<t->ne[1]; ++token) {
++                rows.emplace_back(data.begin()+token*t->ne[0], data.begin()+(token+1)*t->ne[0]);
++            }
++        }
++        auto & norms = state.norms[layer];
++        norms.clear();
++        for (int64_t token = 0; token < t->ne[1]; ++token) {
++            double sum = 0;
++            for (int64_t channel = 0; channel < t->ne[0]; ++channel) {
++                double value = data[token*t->ne[0]+channel];
++                sum += value*value;
++            }
++            if (!std::isfinite(sum)) { state.error = "Non-finite activation"; return true; }
++            norms.push_back(std::sqrt(sum));
++        }
++        state.backends[layer] = ggml_backend_buffer_name(t->buffer);
++    } catch (const std::exception & e) { state.error = e.what(); }
++    return true;
++}

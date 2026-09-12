@@ -200,3 +200,11 @@ To continue a study after restarting your script, keep the job ID and call `lab.
 ## Research interoperability
 
 Version 0.2.2 exposes `Lab.patch_sweep` and the data-only `dyno.interop` exporters for external attention, SAELens feature activations and Circuit Tracer subgraphs. See [research tools](https://github.com/canivel/dynolab/blob/main/docs/research-tools.md) for examples. These adapters do not install or run the upstream model backends.
+
+## Using a GPU pool
+
+For pool inference, use the [Pool API Python example](pool-api.md#python-without-extra-dependencies). `Lab` and `ServingModel` target research services and do not control or inspect distributed GGUF pools. See the [pool setup guide](pool-guide.md) for the development preview.
+
+## Pool research
+
+Use Lab.submit_pool(operation, resident_model_path, pool_port=8978, **settings) for a running GGUF pool with research runtime v2. The Lab client URL stays on the research service. Jobs, cancellation and artifact downloads use the existing SDK methods. See [pool research](pool-lab-capture.md) for limits and examples.

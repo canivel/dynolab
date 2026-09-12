@@ -31,6 +31,10 @@ public struct CatalogModel: Sendable, Identifiable, Hashable {
 /// the box. Listing is done here rather than in Python: it is one request, and
 /// the browser should stay responsive whether or not a model is loaded.
 public enum ModelCatalog {
+    public enum ModelFormat: String, CaseIterable, Identifiable, Sendable {
+        case mlx = "MLX", gguf = "GGUF"
+        public var id: String { rawValue }
+    }
     private static let base = "https://huggingface.co/api/models"
 
     /// How the hub should order results.
@@ -103,10 +107,10 @@ public enum ModelCatalog {
     }
 
     public static func search(
-        _ query: String, sort: Sort = .popular, limit: Int = 50
+        _ query: String, sort: Sort = .popular, limit: Int = 50, format: ModelFormat = .mlx
     ) async throws -> [CatalogModel] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return try await fetch(query: trimmed.isEmpty ? nil : trimmed, sort: sort, limit: limit)
+        return try await fetch(query: trimmed.isEmpty ? nil : trimmed, sort: sort, limit: limit, format: format)
     }
 
     /// Total download size, summed from the repository's file listing.
@@ -135,19 +139,18 @@ public enum ModelCatalog {
     }
 
     private static func fetch(
-        query: String?, sort: Sort, limit: Int
+        query: String?, sort: Sort, limit: Int, format: ModelFormat = .mlx
     ) async throws -> [CatalogModel] {
         // Ask for extra: some of what comes back is filtered out below.
-        var components = "filter=mlx&sort=\(sort.apiValue)&direction=-1&limit=\(limit * 2)"
-        if let query, !query.isEmpty {
-            let escaped = query.addingPercentEncoding(
-                withAllowedCharacters: .urlQueryAllowed
-            ) ?? query
-            components += "&search=\(escaped)"
-        }
-        guard let url = URL(string: "\(base)?\(components)") else {
-            throw CatalogError.unreachable
-        }
+        var components = URLComponents(string: base)!
+        components.queryItems = [
+            URLQueryItem(name: "filter", value: format.rawValue.lowercased()),
+            URLQueryItem(name: "sort", value: sort.apiValue),
+            URLQueryItem(name: "direction", value: "-1"),
+            URLQueryItem(name: "limit", value: String(limit * 2))
+        ]
+        if let query, !query.isEmpty { components.queryItems?.append(URLQueryItem(name: "search", value: query)) }
+        guard let url = components.url else { throw CatalogError.unreachable }
         guard let (data, response) = try? await session.data(from: url),
               (response as? HTTPURLResponse)?.statusCode == 200,
               let payload = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]

@@ -13,10 +13,13 @@ struct MainWindow: View {
     /// Chat is a mode rather than a tab: it is reached from its own button and
     /// leaves the tab you were on selected, so going back lands where you were.
     @State private var showingChat = false
+    @State private var poolSession = PoolSession()
+    @State private var modelFormat = "MLX"
 
-    init(model: MonitorModel, initialTab: Tab = .lab, chat: Bool = false) {
+    init(model: MonitorModel, initialTab: Tab = .lab, chat: Bool = false, modelFormat: String = "MLX") {
         self.model = model
         _tab = State(initialValue: initialTab)
+        _modelFormat = State(initialValue: modelFormat)
         _showingChat = State(initialValue: chat)
     }
 
@@ -26,6 +29,7 @@ struct MainWindow: View {
         case run = "Models"
         case discover = "Discover"
         case router = "Router"
+        case pools = "Pools"
         case observe = "Performance"
         var id: String { rawValue }
     }
@@ -35,19 +39,22 @@ struct MainWindow: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Picker("", selection: Binding(
-                    get: { tab },
-                    set: { newTab in
-                        tab = newTab
-                        showingChat = false
+                DynoBrandMark().padding(.trailing, 8)
+                HStack(spacing: 3) {
+                    ForEach(Tab.allCases) { item in
+                        Button {
+                            tab = item
+                            showingChat = false
+                        } label: {
+                            Text(item.rawValue).font(.system(size: 12, weight: .medium))
+                                .lineLimit(1).frame(maxWidth: .infinity).padding(.vertical, 7)
+                                .foregroundStyle(tab == item && !showingChat ? DynoBrand.ink : Color.primary)
+                                .background(tab == item && !showingChat ? DynoBrand.lime : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+                        }.buttonStyle(.plain)
+                            .accessibilityAddTraits(tab == item && !showingChat ? .isSelected : [])
                     }
-                )) {
-                    ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 485)
-                .opacity(showingChat ? 0.55 : 1)
+                }.padding(4).background(DynoBrand.surface, in: RoundedRectangle(cornerRadius: 9))
+                .frame(width: 550)
                 Spacer()
                 if case let .running(name, port) = model.serverState {
                     HStack(spacing: 5) {
@@ -73,12 +80,12 @@ struct MainWindow: View {
                         Text(showingChat ? "Back" : "Chat")
                             .font(.system(size: 12.5, weight: .semibold))
                     }
-                    .foregroundStyle(showingChat ? Color.accentColor : .white)
+                    .foregroundStyle(showingChat ? DynoBrand.accent : DynoBrand.ink)
                     .padding(.horizontal, 14).padding(.vertical, 7)
                     .background(
                         RoundedRectangle(cornerRadius: 8)
                             .fill(showingChat
-                                  ? Color.accentColor.opacity(0.15) : Color.accentColor)
+                                  ? DynoBrand.accent.opacity(0.15) : DynoBrand.lime)
                             .shadow(color: Color.accentColor.opacity(showingChat ? 0 : 0.35),
                                     radius: 5, y: 1)
                     )
@@ -99,7 +106,8 @@ struct MainWindow: View {
             }
         }
         .frame(minWidth: 800, minHeight: 540)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(DynoBrand.background)
+        .dynoTheme()
         // One view asking to show another — Chat sending you to Models when
         // nothing is loaded — goes through the model rather than reaching into
         // this view's state directly.
@@ -128,18 +136,43 @@ struct MainWindow: View {
                 ExecutionView(model: model)
             case .router:
                 RouterView(model: model)
+            case .pools:
+                PoolsView(session: poolSession, model: model)
             case .observe:
-                ObservabilityView(model: model)
+                PerformanceView(model: model, session: poolSession)
             case .run:
-                HStack(spacing: 0) {
-                    ModelSidebar(model: model)
-                        .frame(width: 240)
+                VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Picker("Format", selection: $modelFormat) {
+                            Text("MLX").tag("MLX")
+                            Text("GGUF").tag("GGUF")
+                        }.pickerStyle(.segmented).frame(width: 220)
+                        Label(modelFormat == "MLX"
+                              ? "MLX · Native Apple Silicon serving and Lab experiments. These model folders cannot be used by the GGUF pool."
+                              : "GGUF · For the experimental llama.cpp pool. Select a file/quantization below. GGUF models cannot use Dyno’s MLX serving or Lab capture path.",
+                              systemImage: "info.circle").font(.callout).foregroundStyle(.secondary)
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
                     Divider()
-                    RunPanel(model: model)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if modelFormat == "GGUF" {
+                        GGUFModelsView(model: model) { path in
+                            poolSession.selectModel(path)
+                            tab = .pools
+                        }
+                    } else {
+                        HStack(spacing: 0) {
+                            ModelSidebar(model: model).frame(width: 240)
+                            Divider()
+                            RunPanel(model: model).frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    }
                 }
             case .discover:
-                DiscoverView(model: model)
+                DiscoverView(model: model, useMLX: { repository in
+                    if let local = model.localModels.first(where: { $0.name == repository }) { model.selectedModel = local }
+                    modelFormat = "MLX"; tab = .run
+                }, useGGUF: { path in
+                    poolSession.selectModel(path); tab = .pools
+                })
             }
         }
     }
@@ -351,7 +384,7 @@ private struct RunPanel: View {
             case .stopped, .failed:
                 Button("Start") { model.startSelectedModel() }
                     .controlSize(.large)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.dynoPrimary)
                     .disabled(model.selectedModel == nil || model.runtime == nil)
             }
             }

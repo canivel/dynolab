@@ -103,19 +103,54 @@ final class ResearchLab {
         catch { self.error = error.localizedDescription }
     }
     func servingRequest(port: UInt16, path: String, body: [String: Any]? = nil) async throws -> [String: Any] {
-        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/lab/\(path)")!)
-        request.timeoutInterval = body == nil ? 3 : 75
-        if let body {
-            request.httpMethod = "POST"
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        func call(_ route: String, _ payload: [String: Any]? = nil) async throws -> (Int, [String: Any]) {
+            var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)\(route)")!)
+            request.timeoutInterval = payload == nil ? 3 : 75
+            if let payload {
+                request.httpMethod = "POST"
+                request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            }
+            let (data, response) = try await URLSession.shared.data(for: request)
+            return ((response as? HTTPURLResponse)?.statusCode ?? 0,
+                    (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:])
         }
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-        guard let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status) else {
-            throw NSError(domain: "DynoLab", code: 3, userInfo: [NSLocalizedDescriptionKey: object["error"] as? String ?? "This endpoint does not support serving activation capture. Restart it with the updated dyno serve when traffic is quiet; no server has been stopped."])
+        func failure(_ value: [String: Any], _ fallback: String) -> NSError {
+            let detail = value["error"] as? String ?? (value["error"] as? [String: Any])?["message"] as? String
+            return NSError(domain: "DynoLab", code: 3, userInfo: [NSLocalizedDescriptionKey: detail ?? fallback])
         }
-        return object
+        let (status, object) = try await call("/lab/\(path)", body)
+        if (200..<300).contains(status) { return object }
+        guard status == 404 else { throw failure(object, "Lab request failed (HTTP \(status)).") }
+        let (propsStatus, props) = try await call("/props")
+        guard propsStatus == 200, (props["dyno_capture_version"] as? Int ?? 0) >= 1,
+              let resident = props["model_path"] as? String else {
+            throw failure([:], "This endpoint has no Lab capture API. GGUF pools require the Dyno capture runtime; ordinary llama.cpp supports inference only.")
+        }
+        if path == "capabilities" {
+            return ["serving_activations": true, "model": resident, "max_input_tokens": 256, "max_layers": 4,
+                    "backend": "llama.cpp", "capture_version": props["dyno_capture_version"] as? Int ?? 1]
+        }
+        guard path == "activations", let body, body["model"] as? String == resident,
+              let prompt = body["prompt"] as? String else {
+            throw failure([:], "Resident pool model changed. Refresh the endpoint before capturing.")
+        }
+        let limit = body["max_input_tokens"] as? Int ?? 256
+        let (tokenStatus, tokenized) = try await call("/tokenize", ["content": prompt, "add_special": true])
+        guard tokenStatus == 200, let tokens = tokenized["tokens"] as? [Int],
+              !tokens.isEmpty, tokens.count <= min(limit, 256) else {
+            throw failure([:], "Prompt exceeds the capture token limit or could not be tokenized. No truncation was applied.")
+        }
+        let (captureStatus, completion) = try await call("/completion", [
+            "prompt": tokens, "dyno_layers": body["layers"] as? [Int] ?? [0],
+            "n_predict": 1, "temperature": 0, "stream": false, "cache_prompt": false
+        ])
+        guard captureStatus == 200, var result = completion["dyno_capture"] as? [String: Any] else {
+            throw failure(completion, "The pool did not return an activation capture.")
+        }
+        if result["error"] != nil { throw failure(result, "Pool capture failed.") }
+        result["continuation"] = completion["content"] as? String
+        return result
     }
     func captureServing(port: UInt16, model: String, parameters: [String: Any]) async {
         capturing = true
