@@ -21,6 +21,10 @@ class WorkerTests(unittest.TestCase):
         self.binary = Path(self.folder.name) / 'rpc'
         self.binary.write_bytes(b'test runtime')
         self.manifest()
+        # Hosted Windows runners can reserve the production RPC port.
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            self.port = probe.getsockname()[1]
         self.worker = w.Worker()
         self.addCleanup(self.worker.stop)
 
@@ -34,7 +38,7 @@ class WorkerTests(unittest.TestCase):
         self.binary.write_bytes(b'changed')
         with patch.object(w.subprocess, 'Popen') as popen:
             with self.assertRaisesRegex(ValueError, 'integrity'):
-                self.worker.start(self.binary)
+                self.worker.start(self.binary, port=self.port)
             popen.assert_not_called()
         self.assertEqual(self.worker.snapshot()['state'], 'Failed')
 
@@ -87,7 +91,7 @@ class WorkerTests(unittest.TestCase):
     def test_early_exit_is_failure(self):
         with patch.object(w, 'command', return_value=[sys.executable, '-c', 'raise SystemExit(2)']):
             with self.assertRaisesRegex(ValueError, 'exited'):
-                self.worker.start(self.binary)
+                self.worker.start(self.binary, port=self.port)
         self.assertEqual(self.worker.snapshot()['state'], 'Failed')
 
     def test_logs_bounded(self):
@@ -101,7 +105,7 @@ class WorkerTests(unittest.TestCase):
                 'import time; time.sleep(60)']), \
                 patch('dyno.pool.windows_job.Job.assign', side_effect=OSError('assignment denied')):
             with self.assertRaisesRegex(OSError, 'assignment denied'):
-                self.worker.start(self.binary)
+                self.worker.start(self.binary, port=self.port)
         self.assertIsNotNone(self.worker.process.poll())
         self.assertTrue(self.worker.process.stdout.closed)
         self.assertIsNone(self.worker.job)
