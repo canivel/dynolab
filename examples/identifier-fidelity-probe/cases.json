@@ -1,0 +1,578 @@
+[
+  {
+    "group": "Purtro",
+    "kind": "reported",
+    "value": "Purtro",
+    "variant": 0,
+    "split": "train",
+    "user": "Copy the inventory reference exactly. Output only the reference: Purtro"
+  },
+  {
+    "group": "Purtro",
+    "kind": "reported",
+    "value": "Purtro",
+    "variant": 1,
+    "split": "train",
+    "user": "Return JSON with the key reference and this exact inventory reference: Purtro"
+  },
+  {
+    "group": "Purtro",
+    "kind": "reported",
+    "value": "Purtro",
+    "variant": 2,
+    "split": "train",
+    "user": "The shipment label reads Purtro. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "Purtro",
+    "kind": "control",
+    "value": "REF-700",
+    "variant": 0,
+    "split": "train",
+    "user": "Copy the inventory reference exactly. Output only the reference: REF-700"
+  },
+  {
+    "group": "Purtro",
+    "kind": "control",
+    "value": "REF-700",
+    "variant": 1,
+    "split": "train",
+    "user": "Return JSON with the key reference and this exact inventory reference: REF-700"
+  },
+  {
+    "group": "Purtro",
+    "kind": "control",
+    "value": "REF-700",
+    "variant": 2,
+    "split": "train",
+    "user": "The shipment label reads REF-700. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "Kinhted",
+    "kind": "reported",
+    "value": "Kinhted",
+    "variant": 0,
+    "split": "test",
+    "user": "Copy the inventory reference exactly. Output only the reference: Kinhted"
+  },
+  {
+    "group": "Kinhted",
+    "kind": "reported",
+    "value": "Kinhted",
+    "variant": 1,
+    "split": "test",
+    "user": "Return JSON with the key reference and this exact inventory reference: Kinhted"
+  },
+  {
+    "group": "Kinhted",
+    "kind": "reported",
+    "value": "Kinhted",
+    "variant": 2,
+    "split": "test",
+    "user": "The shipment label reads Kinhted. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "Kinhted",
+    "kind": "control",
+    "value": "REF-701",
+    "variant": 0,
+    "split": "test",
+    "user": "Copy the inventory reference exactly. Output only the reference: REF-701"
+  },
+  {
+    "group": "Kinhted",
+    "kind": "control",
+    "value": "REF-701",
+    "variant": 1,
+    "split": "test",
+    "user": "Return JSON with the key reference and this exact inventory reference: REF-701"
+  },
+  {
+    "group": "Kinhted",
+    "kind": "control",
+    "value": "REF-701",
+    "variant": 2,
+    "split": "test",
+    "user": "The shipment label reads REF-701. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "ForCanBeConverted",
+    "kind": "reported",
+    "value": "ForCanBeConverted",
+    "variant": 0,
+    "split": "train",
+    "user": "Copy the inventory reference exactly. Output only the reference: ForCanBeConverted"
+  },
+  {
+    "group": "ForCanBeConverted",
+    "kind": "reported",
+    "value": "ForCanBeConverted",
+    "variant": 1,
+    "split": "train",
+    "user": "Return JSON with the key reference and this exact inventory reference: ForCanBeConverted"
+  },
+  {
+    "group": "ForCanBeConverted",
+    "kind": "reported",
+    "value": "ForCanBeConverted",
+    "variant": 2,
+    "split": "train",
+    "user": "The shipment label reads ForCanBeConverted. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "ForCanBeConverted",
+    "kind": "control",
+    "value": "REF-702",
+    "variant": 0,
+    "split": "train",
+    "user": "Copy the inventory reference exactly. Output only the reference: REF-702"
+  },
+  {
+    "group": "ForCanBeConverted",
+    "kind": "control",
+    "value": "REF-702",
+    "variant": 1,
+    "split": "train",
+    "user": "Return JSON with the key reference and this exact inventory reference: REF-702"
+  },
+  {
+    "group": "ForCanBeConverted",
+    "kind": "control",
+    "value": "REF-702",
+    "variant": 2,
+    "split": "train",
+    "user": "The shipment label reads REF-702. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "ForCanBeConvertedToF",
+    "kind": "reported",
+    "value": "ForCanBeConvertedToF",
+    "variant": 0,
+    "split": "train",
+    "user": "Copy the inventory reference exactly. Output only the reference: ForCanBeConvertedToF"
+  },
+  {
+    "group": "ForCanBeConvertedToF",
+    "kind": "reported",
+    "value": "ForCanBeConvertedToF",
+    "variant": 1,
+    "split": "train",
+    "user": "Return JSON with the key reference and this exact inventory reference: ForCanBeConvertedToF"
+  },
+  {
+    "group": "ForCanBeConvertedToF",
+    "kind": "reported",
+    "value": "ForCanBeConvertedToF",
+    "variant": 2,
+    "split": "train",
+    "user": "The shipment label reads ForCanBeConvertedToF. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "ForCanBeConvertedToF",
+    "kind": "control",
+    "value": "REF-703",
+    "variant": 0,
+    "split": "train",
+    "user": "Copy the inventory reference exactly. Output only the reference: REF-703"
+  },
+  {
+    "group": "ForCanBeConvertedToF",
+    "kind": "control",
+    "value": "REF-703",
+    "variant": 1,
+    "split": "train",
+    "user": "Return JSON with the key reference and this exact inventory reference: REF-703"
+  },
+  {
+    "group": "ForCanBeConvertedToF",
+    "kind": "control",
+    "value": "REF-703",
+    "variant": 2,
+    "split": "train",
+    "user": "The shipment label reads REF-703. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "ForCanBeConvertedToForeach",
+    "kind": "reported",
+    "value": "ForCanBeConvertedToForeach",
+    "variant": 0,
+    "split": "train",
+    "user": "Copy the inventory reference exactly. Output only the reference: ForCanBeConvertedToForeach"
+  },
+  {
+    "group": "ForCanBeConvertedToForeach",
+    "kind": "reported",
+    "value": "ForCanBeConvertedToForeach",
+    "variant": 1,
+    "split": "train",
+    "user": "Return JSON with the key reference and this exact inventory reference: ForCanBeConvertedToForeach"
+  },
+  {
+    "group": "ForCanBeConvertedToForeach",
+    "kind": "reported",
+    "value": "ForCanBeConvertedToForeach",
+    "variant": 2,
+    "split": "train",
+    "user": "The shipment label reads ForCanBeConvertedToForeach. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "ForCanBeConvertedToForeach",
+    "kind": "control",
+    "value": "REF-704",
+    "variant": 0,
+    "split": "train",
+    "user": "Copy the inventory reference exactly. Output only the reference: REF-704"
+  },
+  {
+    "group": "ForCanBeConvertedToForeach",
+    "kind": "control",
+    "value": "REF-704",
+    "variant": 1,
+    "split": "train",
+    "user": "Return JSON with the key reference and this exact inventory reference: REF-704"
+  },
+  {
+    "group": "ForCanBeConvertedToForeach",
+    "kind": "control",
+    "value": "REF-704",
+    "variant": 2,
+    "split": "train",
+    "user": "The shipment label reads REF-704. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "tarsker",
+    "kind": "reported",
+    "value": "tarsker",
+    "variant": 0,
+    "split": "train",
+    "user": "Copy the inventory reference exactly. Output only the reference: tarsker"
+  },
+  {
+    "group": "tarsker",
+    "kind": "reported",
+    "value": "tarsker",
+    "variant": 1,
+    "split": "train",
+    "user": "Return JSON with the key reference and this exact inventory reference: tarsker"
+  },
+  {
+    "group": "tarsker",
+    "kind": "reported",
+    "value": "tarsker",
+    "variant": 2,
+    "split": "train",
+    "user": "The shipment label reads tarsker. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "tarsker",
+    "kind": "control",
+    "value": "REF-705",
+    "variant": 0,
+    "split": "train",
+    "user": "Copy the inventory reference exactly. Output only the reference: REF-705"
+  },
+  {
+    "group": "tarsker",
+    "kind": "control",
+    "value": "REF-705",
+    "variant": 1,
+    "split": "train",
+    "user": "Return JSON with the key reference and this exact inventory reference: REF-705"
+  },
+  {
+    "group": "tarsker",
+    "kind": "control",
+    "value": "REF-705",
+    "variant": 2,
+    "split": "train",
+    "user": "The shipment label reads REF-705. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "tarskereso",
+    "kind": "reported",
+    "value": "tarskereso",
+    "variant": 0,
+    "split": "test",
+    "user": "Copy the inventory reference exactly. Output only the reference: tarskereso"
+  },
+  {
+    "group": "tarskereso",
+    "kind": "reported",
+    "value": "tarskereso",
+    "variant": 1,
+    "split": "test",
+    "user": "Return JSON with the key reference and this exact inventory reference: tarskereso"
+  },
+  {
+    "group": "tarskereso",
+    "kind": "reported",
+    "value": "tarskereso",
+    "variant": 2,
+    "split": "test",
+    "user": "The shipment label reads tarskereso. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "tarskereso",
+    "kind": "control",
+    "value": "REF-706",
+    "variant": 0,
+    "split": "test",
+    "user": "Copy the inventory reference exactly. Output only the reference: REF-706"
+  },
+  {
+    "group": "tarskereso",
+    "kind": "control",
+    "value": "REF-706",
+    "variant": 1,
+    "split": "test",
+    "user": "Return JSON with the key reference and this exact inventory reference: REF-706"
+  },
+  {
+    "group": "tarskereso",
+    "kind": "control",
+    "value": "REF-706",
+    "variant": 2,
+    "split": "test",
+    "user": "The shipment label reads REF-706. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "szexf",
+    "kind": "reported",
+    "value": "szexf",
+    "variant": 0,
+    "split": "train",
+    "user": "Copy the inventory reference exactly. Output only the reference: szexf"
+  },
+  {
+    "group": "szexf",
+    "kind": "reported",
+    "value": "szexf",
+    "variant": 1,
+    "split": "train",
+    "user": "Return JSON with the key reference and this exact inventory reference: szexf"
+  },
+  {
+    "group": "szexf",
+    "kind": "reported",
+    "value": "szexf",
+    "variant": 2,
+    "split": "train",
+    "user": "The shipment label reads szexf. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "szexf",
+    "kind": "control",
+    "value": "REF-707",
+    "variant": 0,
+    "split": "train",
+    "user": "Copy the inventory reference exactly. Output only the reference: REF-707"
+  },
+  {
+    "group": "szexf",
+    "kind": "control",
+    "value": "REF-707",
+    "variant": 1,
+    "split": "train",
+    "user": "Return JSON with the key reference and this exact inventory reference: REF-707"
+  },
+  {
+    "group": "szexf",
+    "kind": "control",
+    "value": "REF-707",
+    "variant": 2,
+    "split": "train",
+    "user": "The shipment label reads REF-707. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "PostalCodesNL",
+    "kind": "reported",
+    "value": "PostalCodesNL",
+    "variant": 0,
+    "split": "test",
+    "user": "Copy the inventory reference exactly. Output only the reference: PostalCodesNL"
+  },
+  {
+    "group": "PostalCodesNL",
+    "kind": "reported",
+    "value": "PostalCodesNL",
+    "variant": 1,
+    "split": "test",
+    "user": "Return JSON with the key reference and this exact inventory reference: PostalCodesNL"
+  },
+  {
+    "group": "PostalCodesNL",
+    "kind": "reported",
+    "value": "PostalCodesNL",
+    "variant": 2,
+    "split": "test",
+    "user": "The shipment label reads PostalCodesNL. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "PostalCodesNL",
+    "kind": "control",
+    "value": "REF-708",
+    "variant": 0,
+    "split": "test",
+    "user": "Copy the inventory reference exactly. Output only the reference: REF-708"
+  },
+  {
+    "group": "PostalCodesNL",
+    "kind": "control",
+    "value": "REF-708",
+    "variant": 1,
+    "split": "test",
+    "user": "Return JSON with the key reference and this exact inventory reference: REF-708"
+  },
+  {
+    "group": "PostalCodesNL",
+    "kind": "control",
+    "value": "REF-708",
+    "variant": 2,
+    "split": "test",
+    "user": "The shipment label reads REF-708. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "useRalative",
+    "kind": "reported",
+    "value": "useRalative",
+    "variant": 0,
+    "split": "train",
+    "user": "Copy the inventory reference exactly. Output only the reference: useRalative"
+  },
+  {
+    "group": "useRalative",
+    "kind": "reported",
+    "value": "useRalative",
+    "variant": 1,
+    "split": "train",
+    "user": "Return JSON with the key reference and this exact inventory reference: useRalative"
+  },
+  {
+    "group": "useRalative",
+    "kind": "reported",
+    "value": "useRalative",
+    "variant": 2,
+    "split": "train",
+    "user": "The shipment label reads useRalative. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "useRalative",
+    "kind": "control",
+    "value": "REF-709",
+    "variant": 0,
+    "split": "train",
+    "user": "Copy the inventory reference exactly. Output only the reference: REF-709"
+  },
+  {
+    "group": "useRalative",
+    "kind": "control",
+    "value": "REF-709",
+    "variant": 1,
+    "split": "train",
+    "user": "Return JSON with the key reference and this exact inventory reference: REF-709"
+  },
+  {
+    "group": "useRalative",
+    "kind": "control",
+    "value": "REF-709",
+    "variant": 2,
+    "split": "train",
+    "user": "The shipment label reads REF-709. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "webElementX",
+    "kind": "reported",
+    "value": "webElementX",
+    "variant": 0,
+    "split": "test",
+    "user": "Copy the inventory reference exactly. Output only the reference: webElementX"
+  },
+  {
+    "group": "webElementX",
+    "kind": "reported",
+    "value": "webElementX",
+    "variant": 1,
+    "split": "test",
+    "user": "Return JSON with the key reference and this exact inventory reference: webElementX"
+  },
+  {
+    "group": "webElementX",
+    "kind": "reported",
+    "value": "webElementX",
+    "variant": 2,
+    "split": "test",
+    "user": "The shipment label reads webElementX. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "webElementX",
+    "kind": "control",
+    "value": "REF-710",
+    "variant": 0,
+    "split": "test",
+    "user": "Copy the inventory reference exactly. Output only the reference: REF-710"
+  },
+  {
+    "group": "webElementX",
+    "kind": "control",
+    "value": "REF-710",
+    "variant": 1,
+    "split": "test",
+    "user": "Return JSON with the key reference and this exact inventory reference: REF-710"
+  },
+  {
+    "group": "webElementX",
+    "kind": "control",
+    "value": "REF-710",
+    "variant": 2,
+    "split": "test",
+    "user": "The shipment label reads REF-710. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "ejahter",
+    "kind": "reported",
+    "value": "ejahter",
+    "variant": 0,
+    "split": "train",
+    "user": "Copy the inventory reference exactly. Output only the reference: ejahter"
+  },
+  {
+    "group": "ejahter",
+    "kind": "reported",
+    "value": "ejahter",
+    "variant": 1,
+    "split": "train",
+    "user": "Return JSON with the key reference and this exact inventory reference: ejahter"
+  },
+  {
+    "group": "ejahter",
+    "kind": "reported",
+    "value": "ejahter",
+    "variant": 2,
+    "split": "train",
+    "user": "The shipment label reads ejahter. What is the reference printed on the label? Copy it exactly."
+  },
+  {
+    "group": "ejahter",
+    "kind": "control",
+    "value": "REF-711",
+    "variant": 0,
+    "split": "train",
+    "user": "Copy the inventory reference exactly. Output only the reference: REF-711"
+  },
+  {
+    "group": "ejahter",
+    "kind": "control",
+    "value": "REF-711",
+    "variant": 1,
+    "split": "train",
+    "user": "Return JSON with the key reference and this exact inventory reference: REF-711"
+  },
+  {
+    "group": "ejahter",
+    "kind": "control",
+    "value": "REF-711",
+    "variant": 2,
+    "split": "train",
+    "user": "The shipment label reads REF-711. What is the reference printed on the label? Copy it exactly."
+  }
+]

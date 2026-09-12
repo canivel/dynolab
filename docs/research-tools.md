@@ -103,3 +103,7 @@ This native app view shows public GPT-2 feature examples fetched from Neuronpedi
 ## Validation status
 
 Native compilation, MLX hybrid-decoder worker integration, neutral and clean-recovery patch controls, TopK activity bounds, export orientation and malformed artifact rejection are covered by local tests. Those checks establish implementation behavior, not research effectiveness. Full PyTorch/TransformerLens/SAELens/Circuit Tracer execution is external and has not been validated end-to-end in this release. A cached Qwen1.5 0.5B 4-bit model also completed a four-site patch sweep with restored unpatched logits. The development app opened its window on launch; a UI-triggered Neuronpedia lookup saved 32 public examples. UI automation disconnected after the fetch; an offscreen native snapshot subsequently verified the loaded feature plots. Full interactive coverage remains limited.
+
+## Worked example: reference corruption
+
+The [Qwen3.8 identifier-fidelity experiment](../examples/identifier-fidelity-probe/README.md) includes importable Lab JSON, exact prompts, generated outputs, saved weights, SDK submission and HTTP commands. It uses the existing jobs and artifacts APIs. The probe predicts literal reference absence, not harmfulness or deceptive intent.

@@ -233,3 +233,7 @@ Results include provenance such as configuration hash, runtime versions, request
 ## GPU pool inference (development preview)
 
 Pools use a separate loopback llama.cpp endpoint, normally `http://127.0.0.1:8978/v1`. See the [Pool API](pool-api.md) for raw completions, Python examples, lifecycle CLI and telemetry. The research OpenAPI schema does not describe this endpoint.
+
+## Worked example: reference corruption
+
+The [Qwen3.8 identifier-fidelity experiment](../examples/identifier-fidelity-probe/README.md) includes importable Lab JSON, exact prompts, generated outputs, saved weights, SDK submission and HTTP commands. It uses the existing jobs and artifacts APIs. The probe predicts literal reference absence, not harmfulness or deceptive intent.

@@ -208,3 +208,7 @@ For pool inference, use the [Pool API Python example](pool-api.md#python-without
 ## Pool research
 
 Use Lab.submit_pool(operation, resident_model_path, pool_port=8978, **settings) for a running GGUF pool with research runtime v2. The Lab client URL stays on the research service. Jobs, cancellation and artifact downloads use the existing SDK methods. See [pool research](pool-lab-capture.md) for limits and examples.
+
+## Worked example: reference corruption
+
+The [Qwen3.8 identifier-fidelity experiment](../examples/identifier-fidelity-probe/README.md) includes importable Lab JSON, exact prompts, generated outputs, saved weights, SDK submission and HTTP commands. It uses the existing jobs and artifacts APIs. The probe predicts literal reference absence, not harmfulness or deceptive intent.

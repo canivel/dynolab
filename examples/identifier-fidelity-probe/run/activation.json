@@ -1,0 +1,14 @@
+{
+  "operation": "inspect",
+  "model": "lmstudio-community/Qwen3.8-27B-MLX-4bit",
+  "revision": "6067b15cf581666a4aecf6af3afaba4bb5efc20c",
+  "prompt": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: Kinhted<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+  "layers": [
+    0,
+    16,
+    32,
+    48
+  ],
+  "max_input_tokens": 256,
+  "seed": 20260917
+}

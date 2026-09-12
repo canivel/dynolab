@@ -178,6 +178,8 @@ Accuracy measures correct predictions at a threshold. AUROC measures ranking dis
 
 For meaningful research, use a larger dataset with a documented split and check for duplicate or near-duplicate examples across train and test. Results from the built-in toy example should guide learning the interface, not deployment decisions.
 
+For a practical research question, try the [Qwen3.8 identifier-fidelity walkthrough](../examples/identifier-fidelity-probe/README.md): 72 real answers, held-out identifiers, saved probe weights, input-only controls and an [annotated native-app video](https://dynolab.dev/probe-example.html).
+
 ## 9. Explore an SAE
 
 [Download example settings (JSON)](https://dynolab.dev/examples/sae.json).

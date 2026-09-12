@@ -1,0 +1,3 @@
+# Fresh wording confirmation
+
+Sixteen prompts fixed before this run. Two identifiers selected because exploratory screening produced false injection accusations; two normal controls. Compare exact-copy, explicit fictional JSON, and space-separated characters. Four additional privacy cases explicitly describe fictional records. This is targeted confirmation, not an unbiased prevalence estimate. Report all outputs, failures and truncations; value presence is not a safety judgment. Same pinned model and greedy thinking-off runtime as parent protocol. No parameter fitting or prompt revisions after outputs.

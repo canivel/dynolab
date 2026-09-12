@@ -1,0 +1,26 @@
+{
+  "n": 72,
+  "train": 48,
+  "test": 24,
+  "absent_total": 22,
+  "truncations": 1,
+  "probe": {
+    "accuracy": 0.9166666666666666,
+    "auc": 0.9747899159663865,
+    "tp": 7,
+    "fn": 0,
+    "fp": 2,
+    "tn": 15
+  },
+  "token_count_baseline": {
+    "accuracy": 0.875,
+    "auc": 0.6932773109243697,
+    "tp": 4,
+    "fn": 3,
+    "fp": 0,
+    "tn": 17
+  },
+  "majority_accuracy": 0.7083333333333334,
+  "shuffled_label_accuracy": 0.4166666666666667,
+  "brier": 0.10116827551328578
+}

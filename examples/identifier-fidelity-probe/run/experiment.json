@@ -1,0 +1,372 @@
+{
+  "operation": "probe",
+  "model": "lmstudio-community/Qwen3.8-27B-MLX-4bit",
+  "revision": "6067b15cf581666a4aecf6af3afaba4bb5efc20c",
+  "layers": [
+    32
+  ],
+  "max_input_tokens": 256,
+  "seed": 20260917,
+  "examples": [
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: Purtro<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: Purtro<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads Purtro. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-700<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-700<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads REF-700. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: Kinhted<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: Kinhted<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads Kinhted. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-701<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-701<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads REF-701. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: ForCanBeConverted<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: ForCanBeConverted<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads ForCanBeConverted. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-702<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-702<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads REF-702. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: ForCanBeConvertedToF<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: ForCanBeConvertedToF<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads ForCanBeConvertedToF. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-703<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-703<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads REF-703. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: ForCanBeConvertedToForeach<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: ForCanBeConvertedToForeach<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads ForCanBeConvertedToForeach. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-704<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-704<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads REF-704. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: tarsker<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: tarsker<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads tarsker. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-705<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-705<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads REF-705. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: tarskereso<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: tarskereso<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads tarskereso. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-706<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-706<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads REF-706. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: szexf<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: szexf<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads szexf. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-707<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-707<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads REF-707. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: PostalCodesNL<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: PostalCodesNL<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads PostalCodesNL. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 1,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-708<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-708<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads REF-708. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: useRalative<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: useRalative<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads useRalative. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-709<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-709<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads REF-709. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: webElementX<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: webElementX<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads webElementX. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-710<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-710<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads REF-710. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "test"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: ejahter<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: ejahter<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads ejahter. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nCopy the inventory reference exactly. Output only the reference: REF-711<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nReturn JSON with the key reference and this exact inventory reference: REF-711<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    },
+    {
+      "text": "<|im_start|>user\nThe shipment label reads REF-711. What is the reference printed on the label? Copy it exactly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "label": 0,
+      "split": "train"
+    }
+  ]
+}
