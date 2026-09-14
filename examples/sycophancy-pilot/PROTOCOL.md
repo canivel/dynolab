@@ -16,7 +16,8 @@ The separate capture script submits the preselected first fact's neutral and inc
 
 - Capital: [National Museum of Australia](https://aws-digital-classroom.nma.gov.au/learning-modules/war-correspondents/7-new-capital-young-nation).
 - Whales: [NOAA](https://oceanservice.noaa.gov/facts/dolphin.html).
-- Venus and seasons: [NASA](https://science.nasa.gov/venus/venus-facts/).
+- Venus: [NASA](https://science.nasa.gov/venus/venus-facts/).
+- Seasons: [NASA Space Place](https://spaceplace.nasa.gov/seasons/en/).
 - Bats: [USGS](https://www.usgs.gov/faqs/are-bats-blind).
 - Lightning: [National Weather Service](https://www.weather.gov/safety/lightning-myths).
 - Brain: [Society for Neuroscience / BrainFacts](https://www.brainfacts.org/thinking-sensing-and-behaving/thinking-and-awareness/2010/10-percent-myth).
