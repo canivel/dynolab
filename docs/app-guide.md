@@ -2,9 +2,29 @@
 
 Download the app, run your first model, and turn a question about its behavior into an experiment. **Start here if you want to use the native app.** You do not need Python or the SDK to follow this guide.
 
-Dyno Lab is the research product; the installed macOS application is currently named **Dyno**. This guide covers the 0.2 research workflows. Images are actual app captures or cropped results from completed local experiments, not mock measurements. Some older captures have an earlier toolbar arrangement; the current navigation is described below.
+Dyno Lab is the research product; the installed macOS application is currently named **Dyno**. This guide covers the published 0.3.0 release, including its experimental pool workflows. Images are actual app captures or cropped results from completed local experiments, not mock measurements. Some older captures have an earlier toolbar arrangement; the current navigation is described below.
 
 [Download for Apple Silicon](https://github.com/canivel/dynolab/releases/latest) · [Python SDK](sdk-guide.md) · [HTTP API](http-api.md) · [Local MCP](local-mcp.md)
+
+## First experiment
+
+**Start with one model on your Mac. A GPU pool is optional.** Run a request, inspect it, save an activation capture, and change one thing before running again.
+
+1. [Install the Apple Silicon app](#1-download-and-install), then [download a compatible MLX language model](#3-discover-and-download-a-model). Choose one that leaves room for runtime workspace as well as its weights.
+2. Start the model in **Models**, try a prompt in **Chat**, and inspect its input and output in **Execution**.
+3. Open **Lab → Experiments → Activations → Inspect serving model**, select the running endpoint and enter a short prompt. Select layers that exist in the model, read the readiness guidance, and run the capture. Resident capture reuses loaded weights but still needs workspace.
+4. Reopen the saved result. Change one input and run another capture. Color measures activation magnitude; it does not explain what a neuron means. The raw-text capture is a fresh forward pass, not a trace of your earlier templated Chat request.
+5. Ready for a research question? [Reproduce the reference-corruption probe](https://dynolab.dev/probe-example.html#try-it). It includes an importable configuration, recorded results, baselines and limitations.
+
+For exact prompts, screenshots and troubleshooting, follow the [step-by-step first session](https://github.com/canivel/dynolab/blob/main/docs/first-experiment.md).
+
+| Path | What you need | Where to start |
+| --- | --- | --- |
+| Local experiments | Apple Silicon Mac, compatible MLX model and enough memory for the selected method. | [Download a model](#3-discover-and-download-a-model) |
+| Recorded Qwen3.8 example | No installation to inspect the evidence. Rerunning uses Qwen3.8-27B MLX 4-bit and additional workspace; check readiness first. | [Watch and inspect the evidence](https://dynolab.dev/probe-example.html) |
+| Experimental GPU pool | Coordinator, compatible worker on the same local network, GGUF model and matching research runtime. MLX weights cannot be reused in a GGUF pool. | [Pool setup and compatibility](pool-guide.md) |
+
+If you get stuck, [report the step and error](https://github.com/canivel/dynolab/issues/new/choose), with your app version and model. Remove private prompts and credentials before sharing logs.
 
 ## 1. Download and install
 
@@ -14,7 +34,7 @@ Dyno Lab is the research product; the installed macOS application is currently n
 2. Under **Assets**, download the file ending in `arm64.dmg`. The `.whl` and `.tar.gz` files are for Python users, not the Mac installation.
 3. Open the DMG and drag **Dyno** to **Applications**.
 4. Open Dyno from Applications. Python, MLX and the local MCP launcher are already bundled. Model weights are downloaded separately.
-5. Click the Dyno **menu bar icon** to open the main window. The app is a menu bar application, so the absence of a Dock icon is expected. Right-click its menu bar item for a compact performance summary.
+5. The main window opens on launch. Use the Dyno **menu bar icon** to reopen it later. The app has no persistent Dock icon; right-click its menu bar item for a compact performance summary.
 
 The release includes a SHA-256 checksum beside the DMG. If you want to verify your download, run `shasum -a 256` on the downloaded DMG and compare the output with that file.
 
@@ -41,7 +61,7 @@ For your first session, follow **Discover → Models → Chat → Lab**. Lab ope
 
 ## 3. Discover and download a model
 
-In the Pools development preview, **Discover** has an **MLX / GGUF** format filter and **Search Hub / Downloaded** views. Search results identify locally downloaded models. Select **Downloaded** to filter your local library by name and format. **Use in Models** selects MLX weights in the serving controls; **Use in Pools** selects a GGUF and opens the pool configuration. Neither action starts inference. For GGUF search results, **Choose GGUF file** opens a quantization picker so you download the intended file rather than every variant in the repository. Split GGUF downloads remain unsupported in this preview UI.
+In 0.3.0, **Discover** has an **MLX / GGUF** format filter and **Search Hub / Downloaded** views. Search results identify locally downloaded models. Select **Downloaded** to filter your local library by name and format. **Use in Models** selects MLX weights in the serving controls; **Use in Pools** selects a GGUF and opens the pool configuration. Neither action starts inference. For GGUF search results, **Choose GGUF file** opens a quantization picker so you download the intended file rather than every variant in the repository. Split GGUF downloads remain unsupported in this preview UI.
 
 Start with a small MLX model so you can complete the workflow quickly. The examples below use `mlx-community/Qwen1.5-0.5B-Chat-4bit`; it is a demonstration model, not a recommendation for safety-critical work.
 
@@ -58,7 +78,7 @@ If the model does not appear in Models, refresh the library and confirm that the
 
 ## 4. Start, configure and stop a model
 
-### Model formats in the Pools development preview
+### Model formats in 0.3.0
 
 The **Models → Format** selector separates **MLX** and **GGUF** models. MLX weights support Dyno's native Apple Silicon serving and Lab experiments. GGUF files support the experimental llama.cpp pool; they cannot be started with the MLX server or used for MLX Lab capture. Selecting a format does not convert weights or reuse an already loaded model.
 

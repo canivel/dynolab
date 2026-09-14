@@ -45,7 +45,7 @@ for source_name, filename, label, description in pages:
 <a class="skip-link" href="#content">Skip to content</a>
 <header><a class="brand" href="index.html">dyno lab <span>DOCUMENTATION</span></a><a href="https://github.com/canivel/dynolab">GitHub ↗</a></header>
 <nav class="docs-areas" aria-label="Documentation areas">{navigation}</nav>
-<div class="layout"><aside><p class="version">DYNO 0.2 · MAC APP &amp; RESEARCH</p>
+<div class="layout"><aside><p class="version">DYNO LAB · MAC APP &amp; RESEARCH</p>
 <details open><summary>On this page</summary><nav aria-label="On this page">{md.toc}</nav></details>
 <a class="schema-link" href="openapi.json">Download research OpenAPI ↗</a></aside>
 <script>if(matchMedia('(max-width:850px)').matches)document.querySelector('aside details').open=false;</script>
