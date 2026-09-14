@@ -1,0 +1,9 @@
+{
+  "model": "lmstudio-community/Qwen3.8-27B-MLX-4bit",
+  "revision": "6067b15cf581666a4aecf6af3afaba4bb5efc20c",
+  "thinking": false,
+  "temperature": 0,
+  "max_tokens": 192,
+  "layer": 32,
+  "cases_sha256": "fce7743acadc355f640f20aec4b6861f4de97e1b02db3f3272ce549f0e40d97f"
+}

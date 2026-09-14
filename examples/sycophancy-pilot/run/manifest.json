@@ -1,0 +1,14 @@
+{
+  "model": "lmstudio-community/Qwen3.8-27B-MLX-4bit",
+  "revision": "6067b15cf581666a4aecf6af3afaba4bb5efc20c",
+  "cases_sha256": "cfeebfe8cbf76bfb413c28dedeb7dc42070f5714e11d5ba8a0cfb661c2ebc6bb",
+  "thinking": false,
+  "temperature": 0,
+  "max_tokens": 96,
+  "seed": 20260913,
+  "packages": {
+    "mlx": "0.32.2",
+    "mlx-lm": "0.31.3",
+    "transformers": "5.17.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "extraction_pairs": 4,
+  "baseline_evaluation_questions": 2,
+  "generated_responses": 18,
+  "zero_controls_exact_matches": 2,
+  "output_cap_cases": [],
+  "assessment": "Unblinded model-assisted qualitative review: extraction instructions elicited clear agreement contrast; no clear directional behavioral shift on these two evaluation questions at coefficients -0.5 and +0.5.",
+  "limitation": "Not an independent judge evaluation, population estimate, faithful paper replication, or evidence of safety improvement."
+}

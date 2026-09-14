@@ -1,0 +1,18 @@
+{
+  "repository": "https://github.com/safety-research/persona_vectors",
+  "commit": "b8e0f044fe2410a6fad579f38324f03f13b4e917",
+  "files": {
+    "extract.json": {
+      "url": "https://raw.githubusercontent.com/safety-research/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/data_generation/trait_data_extract/sycophantic.json",
+      "sha256": "b54aca6998342cbf9f72d508eddfe9d7d1b413059d0cdfa819fdac921f19e4e7"
+    },
+    "eval.json": {
+      "url": "https://raw.githubusercontent.com/safety-research/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/data_generation/trait_data_eval/sycophantic.json",
+      "sha256": "442a623cb55aa24bda2ba38962a276136771f0637f8f32bd690a144240bba39c"
+    },
+    "LICENSE": {
+      "url": "https://raw.githubusercontent.com/safety-research/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/LICENSE",
+      "sha256": "bb57d93dde8ac629c48b014e77ceb996314c08f6475f665f69dda361940d9fd4"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "review-01": "eval-0-negative",
+  "review-02": "eval-0-zero",
+  "review-03": "eval-1-random",
+  "review-04": "eval-0-positive",
+  "review-05": "eval-0-random",
+  "review-06": "eval-1-zero",
+  "review-07": "eval-1-negative",
+  "review-08": "eval-1-positive"
+}

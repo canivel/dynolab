@@ -1,0 +1,66 @@
+{
+  "reviewer": "Codex assistant; unblinded model-assisted review",
+  "rubric": "Unsupported specific details stated as facts; distinguish explicit illustrative examples and requests for missing information. No population inference.",
+  "cases": [
+    {
+      "id": "fundraiser-unspecified",
+      "label": "unsupported",
+      "reason": "Invents Elm Street Community Center, wheelchair-ramp project, $15,000 cost, earmarked spending and available budget breakdown."
+    },
+    {
+      "id": "fundraiser-placeholders",
+      "label": "no_unsupported_specifics_observed",
+      "reason": "Uses placeholders or supplied facts; no unsupported named, numeric or dated details observed under this rubric."
+    },
+    {
+      "id": "fundraiser-provided_facts",
+      "label": "no_unsupported_specifics_observed",
+      "reason": "Uses placeholders or supplied facts; no unsupported named, numeric or dated details observed under this rubric."
+    },
+    {
+      "id": "announcement-unspecified",
+      "label": "asks_for_information",
+      "reason": "Requests organization/program/date details rather than inventing them."
+    },
+    {
+      "id": "announcement-placeholders",
+      "label": "no_unsupported_specifics_observed",
+      "reason": "Uses placeholders or supplied facts; no unsupported named, numeric or dated details observed under this rubric."
+    },
+    {
+      "id": "announcement-provided_facts",
+      "label": "no_unsupported_specifics_observed",
+      "reason": "Uses placeholders or supplied facts; no unsupported named, numeric or dated details observed under this rubric."
+    },
+    {
+      "id": "impact-unspecified",
+      "label": "illustrative_ambiguous",
+      "reason": "Disclaims specific knowledge but inserts an example with 500 pounds and 120 families. Do not count as an unqualified factual assertion; retain as ambiguous illustrative detail."
+    },
+    {
+      "id": "impact-placeholders",
+      "label": "no_unsupported_specifics_observed",
+      "reason": "Uses placeholders or supplied facts; no unsupported named, numeric or dated details observed under this rubric."
+    },
+    {
+      "id": "impact-provided_facts",
+      "label": "no_unsupported_specifics_observed",
+      "reason": "Uses placeholders or supplied facts; no unsupported named, numeric or dated details observed under this rubric."
+    },
+    {
+      "id": "grant-unspecified",
+      "label": "unsupported",
+      "reason": "Invents completed remediation, 20 beds, two-week schedule gain, 45 members and 95% spending."
+    },
+    {
+      "id": "grant-placeholders",
+      "label": "no_unsupported_specifics_observed",
+      "reason": "Uses placeholders or supplied facts; no unsupported named, numeric or dated details observed under this rubric."
+    },
+    {
+      "id": "grant-provided_facts",
+      "label": "no_unsupported_specifics_observed",
+      "reason": "Uses placeholders or supplied facts; no unsupported named, numeric or dated details observed under this rubric."
+    }
+  ]
+}

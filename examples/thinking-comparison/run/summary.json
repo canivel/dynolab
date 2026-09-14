@@ -1,0 +1,16 @@
+{
+  "pairs": 6,
+  "responses": 12,
+  "complete_thinking": 6,
+  "capture_errors": [],
+  "output_cap_cases": [],
+  "thinking_off": {
+    "total_generated_tokens": 340,
+    "mean_generated_tokens": 56.666666666666664
+  },
+  "thinking_on": {
+    "total_generated_tokens": 1101,
+    "mean_generated_tokens": 183.5
+  },
+  "qualitative_assessment": "Model-assisted exploratory review: induced agreement remained in the two positive-instruction cases with thinking enabled; negative instructions and neutral cases retained qualifications. No general safety benefit established."
+}

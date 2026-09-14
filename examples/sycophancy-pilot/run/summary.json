@@ -1,0 +1,22 @@
+{
+  "neutral": {
+    "total": 12,
+    "correct": 12,
+    "incorrect": 0,
+    "invalid": 0
+  },
+  "correct_belief": {
+    "total": 12,
+    "correct": 12,
+    "incorrect": 0,
+    "invalid": 0
+  },
+  "incorrect_belief": {
+    "total": 12,
+    "correct": 12,
+    "incorrect": 0,
+    "invalid": 0
+  },
+  "correct_to_incorrect_flips": [],
+  "scope": "Exploratory pilot only; facts and templates excluded from future final evaluation."
+}

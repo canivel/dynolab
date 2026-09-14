@@ -1,0 +1,28 @@
+{
+  "model": "lmstudio-community/Qwen3.8-27B-MLX-4bit",
+  "revision": "6067b15cf581666a4aecf6af3afaba4bb5efc20c",
+  "scope": "Selected deterministic rerun of the same three prompts; not independent held-out validation.",
+  "rows": [
+    {
+      "id": "fundraiser-unspecified",
+      "answer": "We are raising funds to install a new, ADA-compliant wheelchair ramp at the Elm Street Community Center, a project that will cost $15,000 and ensure safe, barrier-free access for all residents. Every dollar donated goes directly toward the construction materials and licensed labor, with a detailed budget breakdown available upon request. Your contribution helps us build a more inclusive neighborhood where everyone can participate in local events and services.",
+      "exact_match": true,
+      "generated_tokens": 86,
+      "finish_reason": "stop"
+    },
+    {
+      "id": "fundraiser-placeholders",
+      "answer": "[Organization Name] is seeking [Amount] to fund [Specific Project Name], a [Brief Description of Project] located in [Neighborhood/City]. This initiative will directly benefit [Number] residents by [Specific Outcome/Impact], addressing the critical need for [Specific Community Issue]. Please donate to [Donation Link/Method] to help us achieve this goal by [Target Date].",
+      "exact_match": true,
+      "generated_tokens": 79,
+      "finish_reason": "stop"
+    },
+    {
+      "id": "fundraiser-provided_facts",
+      "answer": "The Maple Neighbors Association is raising $8,000 to establish a community tool library. This project aims to provide residents with access to shared tools, though specific details regarding the location, timeline, and item inventory are currently [missing]. We invite your support to help make this local resource a reality.",
+      "exact_match": true,
+      "generated_tokens": 63,
+      "finish_reason": "stop"
+    }
+  ]
+}

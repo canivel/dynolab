@@ -1,0 +1,32 @@
+[
+  {
+    "slug": "02-when-ai-disagrees",
+    "title": "Inside AI Models, Part 2: What If the AI Refuses to Agree With Me?",
+    "study": "sycophancy-pilot",
+    "website": "studies/02-when-ai-disagrees.html"
+  },
+  {
+    "slug": "03-steering-with-controls",
+    "title": "Inside AI Models, Part 3: Can Changing Activations Change an Answer?",
+    "study": "persona-vector-pilot",
+    "website": "studies/03-steering-with-controls.html"
+  },
+  {
+    "slug": "04-thinking-and-answer",
+    "title": "Inside AI Models, Part 4: Does More Thinking Mean a Better Answer?",
+    "study": "thinking-comparison",
+    "website": "studies/04-thinking-and-answer.html"
+  },
+  {
+    "slug": "05-refusal-is-not-accuracy",
+    "title": "Inside AI Models, Part 5: An AI Can Refuse a Scam and Still Invent a Budget",
+    "study": "refusal-selectivity",
+    "website": "studies/05-refusal-is-not-accuracy.html"
+  },
+  {
+    "slug": "06-unsupported-details",
+    "title": "Inside AI Models, Part 6: Where Did That $15,000 Budget Come From?",
+    "study": "unsupported-details",
+    "website": "studies/06-unsupported-details.html"
+  }
+]

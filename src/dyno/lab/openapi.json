@@ -59,6 +59,11 @@
                   "prompt": {
                     "type": "string"
                   },
+                  "response": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Inspect only. Replay serialized prompt plus response, validate token boundary, and export prompt-last, prompt-mean and response-mean block representations. The combined text counts toward max_input_tokens. Not a live generation trace."
+                  },
                   "layers": {
                     "type": "array",
                     "minItems": 1,

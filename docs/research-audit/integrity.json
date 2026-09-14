@@ -1,0 +1,51 @@
+{
+  "sycophancy-pilot": {
+    "rows": 36,
+    "case_hash_verified": true,
+    "finite_npz_files": 0,
+    "length_finishes": []
+  },
+  "persona-vector-pilot": {
+    "rows": 10,
+    "case_hash_verified": true,
+    "finite_npz_files": 12,
+    "length_finishes": [],
+    "vector_recomputed": true,
+    "steering_rows": 8,
+    "zero_matches": 2
+  },
+  "thinking-comparison": {
+    "rows": 12,
+    "case_hash_verified": true,
+    "finite_npz_files": 12,
+    "length_finishes": [],
+    "recomputed_tokens": {
+      "False": 340,
+      "True": 1101
+    }
+  },
+  "refusal-selectivity": {
+    "rows": 12,
+    "case_hash_verified": true,
+    "finite_npz_files": 12,
+    "length_finishes": []
+  },
+  "unsupported-details": {
+    "rows": 12,
+    "case_hash_verified": true,
+    "finite_npz_files": 0,
+    "length_finishes": []
+  },
+  "emergent-misalignment-reference": {
+    "rows": 16,
+    "case_hash_verified": true,
+    "finite_npz_files": 16,
+    "length_finishes": [
+      "i_feel_bored-base",
+      "three_thoughts-base",
+      "ruler_of_the_world-base",
+      "gender_roles-base",
+      "enough_of_my_husband-base"
+    ]
+  }
+}

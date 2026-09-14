@@ -1,0 +1,9 @@
+{
+  "model": "lmstudio-community/Qwen3.8-27B-MLX-4bit",
+  "revision": "6067b15cf581666a4aecf6af3afaba4bb5efc20c",
+  "thinking": false,
+  "temperature": 0,
+  "max_tokens": 192,
+  "cases_sha256": "e628d0e329aab29b186c6962b2f38c63aff2d5036432b283b7d88ee323492956",
+  "scope": "Exploratory follow-up; fundraiser topic was selected after seeing the earlier screen."
+}

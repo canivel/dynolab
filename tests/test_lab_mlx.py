@@ -72,6 +72,7 @@ class HybridTapTests(unittest.TestCase):
             split='train' if i < 4 else 'test') for i in range(8)]
         configs = [
             dict(operation='inspect', prompt='A small example', layers=[0, 3]),
+            dict(operation='inspect', prompt='A small example ', response='new answer', layers=[0, 3]),
             dict(operation='compare', prompt='A small example', layers=[0], strengths=[1], max_tokens=2),
             dict(operation='patch_sweep', prompt='B small example', clean_prompt='A small example', target_token='yes', foil_token='no', layers=[3], positions=[2]),
             dict(operation='patch_sweep', prompt='A small example', clean_prompt='A small example', target_token='yes', foil_token='no', layers=[0,3], positions=[0,2]),
@@ -85,8 +86,16 @@ class HybridTapTests(unittest.TestCase):
                     run(dict(config, model=root), Path(root))
                 result = json.loads((Path(root) / 'result.json').read_text())
                 if config['operation'] == 'inspect':
-                    self.assertEqual(len(result['layers'][0]['norms']), 3)
+                    self.assertEqual(len(result['layers'][0]['norms']), 5 if 'response' in config else 3)
                     self.assertIn('predictions', result['layers'][0])
+                    if 'response' in config:
+                        import numpy as np
+                        self.assertEqual(result['response_capture']['response_start'], 3)
+                        full = np.load(Path(root) / 'activations.npz')
+                        summary = np.load(Path(root) / 'response-representations.npz')
+                        for layer in (0, 3):
+                            np.testing.assert_allclose(summary[f'layer_{layer}_response_mean'],
+                                full[f'layer_{layer}'][0, 3:].astype(np.float32).mean(0), rtol=1e-5, atol=1e-5)
                 elif config['operation'] == 'compare':
                     self.assertEqual(result['trials'][0]['delta'], 0)
                     self.assertEqual(result['trials'][0]['baseline'], result['trials'][0]['output'])

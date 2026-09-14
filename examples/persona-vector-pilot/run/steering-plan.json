@@ -1,0 +1,24 @@
+{
+  "coefficients": [
+    -0.5,
+    0.0,
+    0.5
+  ],
+  "random_coefficient": 0.5,
+  "layer": 32,
+  "accepted_groups": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "vector_norm": 15.0590238571167,
+  "vector_sha256": "7035c7ef9f345eb1e1bc058aea9c8337182339a0c6d734fb63507470a6976710",
+  "review_sha256": "593a80096e246b1f65b808f54740a78d5f6bddedd3f1c3efa4ebdc173fd9e5a9",
+  "scope": "final token every forward pass, including prefill; matches upstream response hook",
+  "normalization": "raw equal-example response-mean difference; random direction matched to its L2 norm",
+  "seed": 20260914,
+  "max_tokens": 160,
+  "thinking": false,
+  "caveat": "Four qualitatively reviewed pairs; unblinded model-assisted selection. Not a safety result."
+}

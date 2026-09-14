@@ -146,3 +146,7 @@ The website is maintained separately and deployed at [dynolab.dev](https://dynol
 ## Expand your lab with a GPU pool
 
 The development preview connects a Mac coordinator and a native Windows NVIDIA worker over a verified local SSH tunnel. Supported GGUF models can distribute allocations across both devices, with per-device memory and live worker telemetry. [Setup and limitations](docs/pool-guide.md) · [Pool API and Python clients](docs/pool-api.md) · [Windows client](https://github.com/canivel/dynolab-windows-client). The development build has generated with Qwen3-235B-A22B Q4_K_M (142.2 GB) and passed the Lab API suite across Metal and RTX 5090. Native activation, probe and SAE runs also passed. Available in 0.3.0 as an experimental workflow.
+
+## Development research notes
+
+[Audited study register](docs/research-study-register.md) · [Evidence review](docs/research-audit/REVIEW.md) · [Inside AI Models drafts](docs/blog/studies/manifest.json). These small exploratory studies include negative results and are not safety certifications or full paper replications.

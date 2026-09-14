@@ -20,7 +20,7 @@ struct LabArtifactView: View {
         HSplitView {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Research artifacts").font(.title2.bold())
-                Text("Explore attention, feature examples and attribution graphs exported from your research tools.").foregroundStyle(.secondary)
+                Text("Explore generated thinking, measured activations, attention and research graphs.").foregroundStyle(.secondary)
                 Button("Import artifact JSON") { importArtifact() }.buttonStyle(.dynoPrimary)
                 Link("Neuronpedia feature atlas ↗", destination: URL(string: "https://www.neuronpedia.org/")!)
                 Text("Neuronpedia opens in your browser. Imported descriptions are source annotations, not locally verified explanations. No prompts are uploaded by this viewer.").font(.caption).foregroundStyle(.secondary)
@@ -50,6 +50,7 @@ struct LabArtifactView: View {
                         Text(a.model).font(.title2.bold())
                         Text("Source: \(a.source) · \(a.kind)").font(.caption).foregroundStyle(.secondary)
                         Text(a.note).font(.callout)
+                        if a.kind == "generation" { GenerationArtifactView(artifact: a).id(a.tokens) }
                         if let values = a.values, let tokens = a.tokens, a.kind == "attention" {
                             Text("Attention · query row × key column").font(.headline)
                             Chart(values.indices, id: \.self) { q in

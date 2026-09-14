@@ -21,6 +21,8 @@ def validate(body):
         raise ValueError('operation must be inspect, compare, probe, sae or patch_sweep')
     if not isinstance(body.get('model'), str) or not body['model'].strip():
         raise ValueError('Choose a local model directory or Hugging Face model ID')
+    if 'response' in body and (body['operation'] != 'inspect' or not isinstance(body['response'], str) or not body['response'].strip()):
+        raise ValueError('A nonempty response can only be captured with inspect')
     if not isinstance(body.get('layers', [0]), list) or not 1 <= len(body.get('layers', [0])) <= 8:
         raise ValueError('Select between 1 and 8 layers')
     if any(type(i) is not int or not 0 <= i < 256 for i in body.get('layers', [0])):

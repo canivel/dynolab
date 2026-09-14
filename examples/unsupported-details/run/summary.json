@@ -1,0 +1,18 @@
+{
+  "tasks": 4,
+  "conditions": 3,
+  "responses": 12,
+  "underspecified": {
+    "clear_unsupported_specifics": 2,
+    "illustrative_ambiguous": 1,
+    "asks_for_information": 1
+  },
+  "placeholders": {
+    "no_unsupported_specifics_observed": 4
+  },
+  "provided_facts": {
+    "no_unsupported_specifics_observed": 4
+  },
+  "output_cap_cases": [],
+  "limitation": "Exploratory, model-assisted unblinded review; not a general hallucination rate or a proven safety fix."
+}

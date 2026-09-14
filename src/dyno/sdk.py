@@ -44,6 +44,9 @@ class Lab:
             raise ValueError('pool_port must be 1024–65535')
         return self.submit(operation, model, **dict(settings, backend='pool', pool_port=pool_port))
     def inspect(self, model, prompt, **settings): return self.submit('inspect',model,prompt=prompt,**settings)
+    def capture_response(self, model, prompt, response, **settings):
+        """Replay prompt plus response and export separate response-mean representations."""
+        return self.inspect(model, prompt, response=response, **settings)
     def compare(self, model, prompt, **settings): return self.submit('compare',model,prompt=prompt,**settings)
     def probe(self, model, examples, **settings): return self.submit('probe',model,examples=examples,**settings)
     def sae(self, model, examples, **settings): return self.submit('sae',model,examples=examples,**settings)
