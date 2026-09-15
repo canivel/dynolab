@@ -18,6 +18,6 @@ applied = subprocess.run(["git", "apply", "--reverse", "--check", str(patch)], c
 if not applied:
     run("git", "apply", "--check", str(patch))
     run("git", "apply", str(patch))
-run(a.cmake, "-S", ".", "-B", a.build_dir, "-DGGML_RPC=ON", "-DLLAMA_BUILD_SERVER=ON", "-DCMAKE_BUILD_TYPE=Release")
+run(a.cmake, "-S", ".", "-B", a.build_dir, "-DGGML_RPC=ON", "-DLLAMA_BUILD_SERVER=ON", "-DCMAKE_BUILD_TYPE=Release", "-DOPENSSL_USE_STATIC_LIBS=TRUE")
 run(a.cmake, "--build", a.build_dir, "--target", "llama-server", "-j", "8")
 print(root / a.build_dir / "bin" / "llama-server")

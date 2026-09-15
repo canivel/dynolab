@@ -1,4 +1,4 @@
-Dyno Lab 0.4.1 adds research notebooks and visible, recoverable model runs.
+Dyno Lab 0.4.2 adds research notebooks and visible, recoverable model runs.
 
 ## Studies and live responses
 
@@ -24,3 +24,5 @@ Bundled pool libraries resolve relative to their executable rather than a tempor
 Stop active runs before replacing the app. Download the signed and notarized Apple Silicon DMG from this release. Existing models and notebook evidence remain in their local data directories. Requires macOS 14 or later.
 
 The 0.4.0 release workflow stopped on a process-startup race in its download-control test before publishing assets. 0.4.1 adds an explicit child-readiness handshake; process identity enforcement is unchanged. The failed tag is retained.
+
+The 0.4.1 draft was held after download verification found a Homebrew OpenSSL dependency in its pool executable. 0.4.2 links OpenSSL statically, includes its license, rejects unbundled native dependencies and executes the signed pool runtime during packaging. Neither earlier candidate was published.
