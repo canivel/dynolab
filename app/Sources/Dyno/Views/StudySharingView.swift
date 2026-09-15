@@ -97,6 +97,8 @@ struct StudyImportView: View {
                     do { let id = try p.importInto(journal.store, original: data, sourceURL: source.isEmpty ? "Downloaded study package; source URL not supplied" : source); journal.select(id); dismiss() }
                     catch { self.error = error.localizedDescription }
                 }
+                .disabled(journal.running || journal.voice.recording || journal.voice.transcribing || journal.voice.requestingMicrophone || journal.voice.audio != nil || !journal.pendingWrites.isEmpty)
+                if journal.running || !journal.pendingWrites.isEmpty { Text("Finish the current run and save pending entries before importing.").font(.caption).foregroundStyle(.orange) }
             }
             if !error.isEmpty { Text(error).foregroundStyle(.orange) }
         }.padding(24).frame(width: 660, height: 530, alignment: .topLeading).background(DynoBrand.background).textFieldStyle(.roundedBorder)
