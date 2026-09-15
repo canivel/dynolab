@@ -65,7 +65,8 @@ struct ResearchLabView: View {
                 do { try await Task.sleep(for: .seconds(3)) } catch { break }
             }
         }
-        .onAppear { if model.researchLab.draftPrompt != nil { workspace = .analyze; model.researchLab.tokenAnalysis = false } }
+        .onAppear { if model.researchLab.draftPrompt != nil { workspace = .analyze; model.researchLab.tokenAnalysis = false }; if model.researchLab.journal.incomingCommunityStudy != nil { workspace = .studies } }
+        .onChange(of: model.researchLab.journal.incomingCommunityStudy) { _, value in if value != nil { workspace = .studies } }
         .onChange(of: model.researchLab.draftPrompt) { _, value in
             if value != nil { workspace = .analyze; model.researchLab.tokenAnalysis = false }
         }

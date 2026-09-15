@@ -100,6 +100,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleName</key>              <string>$APP_NAME</string>
     <key>CFBundleDisplayName</key>       <string>$APP_NAME</string>
     <key>CFBundleIdentifier</key>        <string>$BUNDLE_ID</string>
+    <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>Dyno research study</string><key>CFBundleURLSchemes</key><array><string>dynolab</string></array></dict></array>
     <key>CFBundleExecutable</key>        <string>Dyno</string>
     <key>CFBundleIconFile</key>          <string>AppIcon</string>
     <key>CFBundlePackageType</key>       <string>APPL</string>

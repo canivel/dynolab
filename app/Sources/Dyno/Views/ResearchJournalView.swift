@@ -6,6 +6,8 @@ struct ResearchJournalView: View {
     var model: MonitorModel
     private var journal: ResearchJournal { model.researchLab.journal }
     @State private var creating = false
+    @State private var sharing = false
+    @State private var importing = false
     @State private var title = ""
     @State private var question = ""
     @State private var hypothesis = ""
@@ -23,6 +25,7 @@ struct ResearchJournalView: View {
                 Text("Your studies").font(.title2.bold())
                 Text("A question, its evidence, and how your understanding changes.").foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Button("New study", systemImage: "plus") { creating = true }.disabled(journal.running || voice.recording || voice.transcribing || voice.requestingMicrophone || voice.audio != nil)
+                Button("Import study", systemImage: "square.and.arrow.down") { importing = true }.disabled(journal.running)
                 Button("Refresh studies") { journal.reload() }
                 ScrollView {
                     ForEach(journal.studies) { item in
@@ -41,7 +44,7 @@ struct ResearchJournalView: View {
             if let study {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        HStack { Text(study.title).font(.largeTitle.bold()); Spacer(); Button("Export notebook") { journal.export() } }
+                        HStack { Text(study.title).font(.largeTitle.bold()); Spacer(); Button("Share study", systemImage: "square.and.arrow.up") { sharing = true }; Menu("More") { Button("Export full private notebook") { journal.export() } } }
                         Text(study.question).font(.title3)
                         if !study.hypothesis.isEmpty { Text("Initial hypothesis: \(study.hypothesis)") }
                         Text("Keep observations separate from interpretations. Record disconfirming examples, output limits and alternative explanations.").font(.caption).foregroundStyle(.secondary)
@@ -81,8 +84,11 @@ struct ResearchJournalView: View {
         .sheet(isPresented: $showLive) {
             ResearchLiveResponseView(journal: journal) { showLive = false }
         }
-        .onAppear { journal.reload(); if journal.running { showLive = true } }
+        .onAppear { journal.reload(); if journal.running { showLive = true }; if journal.incomingCommunityStudy != nil { importing = true } }
+        .onChange(of: journal.incomingCommunityStudy) { _, id in if id != nil { importing = true } }
         .onDisappear { voice.stop(); voice.cancelTranscription() }
+        .sheet(isPresented: $sharing) { if let study { StudySharingView(journal: journal, study: study) } }
+        .sheet(isPresented: $importing) { StudyImportView(journal: journal) }
         .sheet(isPresented: $creating) {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Start a research study").font(.title2)

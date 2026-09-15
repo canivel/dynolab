@@ -66,6 +66,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    nonisolated func application(_ application: NSApplication, open urls: [URL]) {
+        MainActor.assumeIsolated {
+            guard let url = urls.first, url.scheme == "dynolab", url.host == "study",
+                  url.query == nil, url.fragment == nil,
+                  let id = UUID(uuidString: String(url.path.dropFirst())) else { return }
+            MonitorModel.shared.researchLab.journal.incomingCommunityStudy = id
+            MonitorModel.shared.requestedTab = .lab
+            showMainWindow()
+        }
+    }
+
     /// Clicking the app in the Dock or Finder while it is already running.
     nonisolated func applicationShouldHandleReopen(
         _ sender: NSApplication, hasVisibleWindows: Bool
