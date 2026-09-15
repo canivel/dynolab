@@ -6,6 +6,7 @@ import Observation
     var studies: [ResearchStudy] = []
     var entries: [ResearchEntry] = []
     var selected: UUID?
+    var incomingCommunityStudy: UUID?
     var error: String?
     var pendingWrites: [UUID: ResearchEntry] = [:]
     @ObservationIgnored private var pendingStudies: [UUID: UUID] = [:]
