@@ -5,6 +5,8 @@ import Observation
 
 @Observable @MainActor
 final class ResearchLab {
+    let journal = ResearchJournal()
+    let runtime = LabRuntimeStatus()
     var tokenAnalysis = false
     var servingResult: [String: Any] = [:]
     var capturing = false

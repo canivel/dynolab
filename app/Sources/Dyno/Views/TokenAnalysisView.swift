@@ -23,6 +23,8 @@ struct TokenAnalysisView: View {
     @State private var other: TokenTrace?
     @State private var selected: TokenReading?
 
+    private var runtimeReady: Bool { model.researchLab.runtime.ready(referencePort) && (comparePort == nil || model.researchLab.runtime.ready(comparePort)) }
+
     private var servers: [(name: String, id: String, port: UInt16)] {
         model.snapshot.models.compactMap { served in
             guard let port = served.port, !served.identifier.isEmpty else { return nil }
@@ -34,17 +36,19 @@ struct TokenAnalysisView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Token analysis").font(.title2)
+                    Text("Token probabilities").font(.title2)
                     Text("Uses an already-running endpoint; no extra model copy or Lab service is needed. Analysis sends inference requests and shares serving capacity.")
                         .font(.callout).foregroundStyle(.secondary)
                     Text("Token probability measures the likelihood of the next token, not correctness or safety.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                if !runtimeReady { Text("Start a model or pool to run token analysis. Saved analyses below remain available.").font(.callout).foregroundStyle(.orange) }
                 controls
                 if let saveError { Text(saveError).foregroundStyle(.orange) }
                 DisclosureGroup("Saved token analyses (\(savedRuns.count))") {
                     ForEach(savedRuns.indices, id: \.self) { i in
                         let saved = savedRuns[i]
+                        JournalAttachButton(value: saved, title: "Token analysis")
                         Button {
                             prompt = saved["prompt"] as? String ?? ""
                             maxTokens = saved["max_tokens"] as? Int ?? 120
@@ -146,7 +150,7 @@ struct TokenAnalysisView: View {
                 Button(running ? "Running…" : "Analyze tokens") { run() }
                     .controlSize(.large)
                     .buttonStyle(.dynoPrimary)
-                    .disabled(running || referencePort == nil || servers.isEmpty
+                    .disabled(!runtimeReady || running || referencePort == nil || servers.isEmpty
                               || prompt.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
@@ -168,6 +172,7 @@ struct TokenAnalysisView: View {
     }
 
     private func run() {
+        guard runtimeReady else { saveError = "Start the selected model or pool before analyzing tokens. Saved analyses remain readable."; return }
         guard let referencePort,
               let referenceModel = servers.first(where: { $0.port == referencePort })?.id
         else { return }

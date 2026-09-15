@@ -163,6 +163,7 @@ SAEs train a small ReLU/L1 autoencoder on final-token states. Examine held-out r
 | `Lab.jobs()` | None | List of up to 100 recent job summaries, newest first |
 | `Lab.submit(operation, model, **settings)` | `inspect`, `compare`, `probe` or `sae`; model ID/path; configuration | Submitted job dictionary including `id` |
 | `Lab.inspect(model, prompt, **settings)` | Raw prompt and inspect settings | Shortcut for `submit("inspect", ...)` |
+| `Lab.capture_response(model, prompt, response, **settings)` | Serialized prompt and response; combined token limit | Inspect job with separate prompt/response representations; development checkout only |
 | `Lab.compare(model, prompt, **settings)` | Raw prompt and intervention settings | Shortcut for `submit("compare", ...)` |
 | `Lab.probe(model, examples, **settings)` | Labeled train/test examples | Shortcut for `submit("probe", ...)` |
 | `Lab.sae(model, examples, **settings)` | Train/test texts and training settings | Shortcut for `submit("sae", ...)` |

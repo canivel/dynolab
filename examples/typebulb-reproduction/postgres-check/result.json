@@ -1,0 +1,70 @@
+{
+  "version": "PostgreSQL 18.3 (PGlite 0.5.8) on wasm32-unknown-emscripten, compiled by emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 3.1.74 (1092ec30a3fb1d46b1782ff1b4db5094d3d06ae5), 32-bit",
+  "engine": "PGlite 0.5.8 (PostgreSQL WASM)",
+  "date": "2026-09-14T23:57:41.637Z",
+  "row_count": 100000,
+  "forced_index": false,
+  "identical_plans": true,
+  "identical_results": true,
+  "runs": [
+    {
+      "query": "SELECT * FROM sample WHERE a = 42 AND b = 42042",
+      "plan": [
+        {
+          "Plan": {
+            "Node Type": "Index Scan",
+            "Parallel Aware": false,
+            "Async Capable": false,
+            "Scan Direction": "Forward",
+            "Index Name": "sample_ab",
+            "Relation Name": "sample",
+            "Alias": "sample",
+            "Startup Cost": 0.29,
+            "Total Cost": 8.31,
+            "Plan Rows": 1,
+            "Plan Width": 49,
+            "Disabled": false,
+            "Index Cond": "((a = 42) AND (b = 42042))"
+          }
+        }
+      ],
+      "rows": [
+        {
+          "a": 42,
+          "b": 42042,
+          "payload": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
+      ]
+    },
+    {
+      "query": "SELECT * FROM sample WHERE b = 42042 AND a = 42",
+      "plan": [
+        {
+          "Plan": {
+            "Node Type": "Index Scan",
+            "Parallel Aware": false,
+            "Async Capable": false,
+            "Scan Direction": "Forward",
+            "Index Name": "sample_ab",
+            "Relation Name": "sample",
+            "Alias": "sample",
+            "Startup Cost": 0.29,
+            "Total Cost": 8.31,
+            "Plan Rows": 1,
+            "Plan Width": 49,
+            "Disabled": false,
+            "Index Cond": "((a = 42) AND (b = 42042))"
+          }
+        }
+      ],
+      "rows": [
+        {
+          "a": 42,
+          "b": 42042,
+          "payload": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
+      ]
+    }
+  ],
+  "note": "A controlled planner counterexample, not a reproduction of the fictional ten-million-row workload or its claimed speedup."
+}

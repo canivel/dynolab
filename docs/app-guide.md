@@ -6,6 +6,15 @@ Dyno Lab is the research product; the installed macOS application is currently n
 
 [Download for Apple Silicon](https://github.com/canivel/dynolab/releases/latest) · [Python SDK](sdk-guide.md) · [HTTP API](http-api.md) · [Local MCP](local-mcp.md)
 
+## Studies: a question, its evidence, and the next test
+
+In **Lab**, start with **Studies** for prompt-based research. **Analyze** contains activation experiments and token probabilities. **Evidence** opens imported research artifacts. Start a model in Models or a pool in Pools before executing; saved history and notes remain readable offline.
+
+Create a study, record your question and hypothesis, then write a prompt. Thinking and the output limit are visible below it. **Run and save iteration** opens live thinking and answer panels. A token limit covers both; truncated results are explicitly incomplete. Use **Revise prompt** for an independent comparison or **Follow up** to include a completed answer as conversation context.
+
+Archive hides a query and its result. Show archived queries and Restore bring it back without deleting evidence. Notes, branches, screenshots and exports stay available. [Read the complete Studies guide](research-notebooks.md).
+
+
 ## First experiment
 
 **Start with one model on your Mac. A GPU pool is optional.** Run a request, inspect it, save an activation capture, and change one thing before running again.

@@ -5,32 +5,89 @@ import SwiftUI
 
 struct ResearchLabView: View {
     var model: MonitorModel
-    @State private var artifacts = false
-    var body: some View {
-        VStack(spacing: 0) {
-            Picker("Lab workspace", selection: Binding(
-                get: { artifacts ? "artifacts" : (model.researchLab.tokenAnalysis ? "tokens" : "experiments") },
-                set: { artifacts = $0 == "artifacts"; model.researchLab.tokenAnalysis = $0 == "tokens" }
-            )) {
-                Text("Experiments").tag("experiments")
-                Text("Token analysis").tag("tokens")
-                Text("Research artifacts").tag("artifacts")
-            }.pickerStyle(.segmented).labelsHidden().frame(width: 460)
-                .frame(maxWidth: .infinity, alignment: .leading).padding(14)
-            Divider()
-            if artifacts {
-                LabArtifactView()
-            } else if model.researchLab.tokenAnalysis {
-                TokenAnalysisView(model: model)
-            } else {
-                ResearchExperimentView(model: model)
+    private enum Workspace: String, CaseIterable {
+        case studies = "Studies", analyze = "Analyze", evidence = "Evidence"
+        var symbol: String {
+            switch self { case .studies: return "book.closed"; case .analyze: return "waveform.path.ecg"; case .evidence: return "doc.text.magnifyingglass" }
+        }
+        var explanation: String {
+            switch self {
+            case .studies: return "Start a question, try prompts, and keep a journal of your observations and next steps."
+            case .analyze: return "Run a focused analysis, inspect its result, then save useful evidence to a study."
+            case .evidence: return "Open saved or imported artifacts to inspect thinking, activations, attention and research graphs."
             }
         }
-        .onAppear { if model.researchLab.draftPrompt != nil { model.researchLab.tokenAnalysis = false } }
+    }
+    @State private var workspace: Workspace = CommandLine.arguments.contains("--snapshot") && !CommandLine.arguments.contains("--notebooks-only") ? .analyze : .studies
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 10) {
+                runtimeStatus
+                HStack(spacing: 8) {
+                    ForEach(Workspace.allCases, id: \.self) { item in
+                        Button { workspace = item } label: {
+                            Label(item.rawValue, systemImage: item.symbol)
+                                .font(.headline).padding(.horizontal, 18).padding(.vertical, 9)
+                                .foregroundStyle(workspace == item ? Color.black : Color.primary)
+                                .background(workspace == item ? DynoBrand.lime : Color.secondary.opacity(0.1))
+                                .clipShape(RoundedRectangle(cornerRadius: 9))
+                        }.buttonStyle(.plain)
+                        .accessibilityAddTraits(workspace == item ? .isSelected : [])
+                        .help(item.explanation)
+                    }
+                    Spacer()
+                    if workspace != .studies, let study = model.researchLab.journal.studies.first(where: { $0.id == model.researchLab.journal.selected }) {
+                        Button { workspace = .studies } label: { Label(study.title, systemImage: "book.closed").lineLimit(1) }
+                            .help("Return to your study. Analysis results are saved with Save to study.")
+                    }
+                }
+                Text(workspace.explanation).font(.callout).foregroundStyle(.secondary)
+                if workspace == .analyze {
+                    Picker("Analysis tool", selection: Binding(get: { model.researchLab.tokenAnalysis }, set: { model.researchLab.tokenAnalysis = $0 })) {
+                        Text("Activations, probes & interventions").tag(false)
+                        Text("Token probabilities").tag(true)
+                    }.pickerStyle(.segmented).frame(maxWidth: 560)
+                }
+            }.padding(.horizontal, 18).padding(.vertical, 12)
+                .fixedSize(horizontal: false, vertical: true)
+            Divider()
+            switch workspace {
+            case .studies: ResearchJournalView(model: model)
+            case .evidence: LabArtifactView()
+            case .analyze:
+                if model.researchLab.tokenAnalysis { TokenAnalysisView(model: model) }
+                else { ResearchExperimentView(model: model) }
+            }
+        }
+        .task(id: model.snapshot.models.map { "\($0.port ?? 0):\($0.identifier)" }.joined(separator: "|")) {
+            while !Task.isCancelled {
+                await model.researchLab.runtime.refresh(model.snapshot.models)
+                do { try await Task.sleep(for: .seconds(3)) } catch { break }
+            }
+        }
+        .onAppear { if model.researchLab.draftPrompt != nil { workspace = .analyze; model.researchLab.tokenAnalysis = false } }
         .onChange(of: model.researchLab.draftPrompt) { _, value in
-            if value != nil { model.researchLab.tokenAnalysis = false }
+            if value != nil { workspace = .analyze; model.researchLab.tokenAnalysis = false }
         }
     }
+    private var runtimeStatus: some View {
+        let runtime = model.researchLab.runtime
+        let ready = runtime.available
+        return HStack(spacing: 12) {
+            Image(systemName: ready.isEmpty ? "powerplug" : "checkmark.circle.fill")
+                .foregroundStyle(ready.isEmpty ? Color.orange : DynoBrand.lime)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(ready.isEmpty ? "Step 1 · Start a model or pool" : "Research runtime ready").font(.headline)
+                Text(ready.isEmpty ? "Reading mode. Studies, history and evidence remain available. Start a runtime to run new iterations or analyses." : ready.map { "\($0.name) · :\($0.port)" }.joined(separator: "  •  "))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Models") { model.requestedTab = .run }
+            Button("Pools") { model.requestedTab = .pools }
+            Button(runtime.checking ? "Checking…" : "Check connection") { Task { await runtime.refresh(model.snapshot.models) } }.disabled(runtime.checking)
+        }.padding(12).background(Color.secondary.opacity(0.07)).clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
 }
 
 private struct ResearchExperimentView: View {
@@ -55,6 +112,8 @@ private struct ResearchExperimentView: View {
     @State private var advanced = false
     private var lab: ResearchLab { model.researchLab }
     private var runBlockedReason: String? {
+        if model.researchLab.runtime.available.isEmpty { return "Start a model in Models or a pool in Pools before running an analysis. Saved results remain available." }
+        if (usingServing || usingPoolExperiment) && !model.researchLab.runtime.ready(servingPort) { return "The selected endpoint is offline or still starting. Check its connection or select a running endpoint." }
         if submitting || lab.capturing { return "An experiment is being submitted or captured." }
         if !usingServing && lab.busy { return "Wait for the current isolated experiment to finish, or cancel it." }
         if !usingServing && !usingPoolExperiment && modelPath.isEmpty {
@@ -76,10 +135,11 @@ private struct ResearchExperimentView: View {
         VStack(spacing: 0) {
             HStack {
                 Image(systemName: "flask").foregroundStyle(DynoBrand.violet)
-                Text("Research Lab").font(.headline)
+                Text("Model analysis").font(.headline)
                 Text(usingServing ? (captureAvailable ? "Resident model · no extra copy" : (capabilityError == nil ? "Checking capture support" : "Capture unavailable")) : (lab.connected ? "Local API :\(String(lab.port))" : "Service stopped")).font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 if !usingServing && !lab.connected { Button("Start lab") { Task { await lab.start(); await lab.refresh() } } }
+                JournalAttachButton(value: displayJob, title: "Lab experiment")
                 Button("Export experiment") { lab.export(displayJob) }.disabled(displayJob.isEmpty)
             }.padding(14)
             Text(usingPoolExperiment ? "Pool research · resident LLM weights · local training and saved artifacts" : usingServing ? "Read-only serving capture · raw text · automatically saved on this Mac" : "Isolated experiments · raw text inputs · results saved locally · measurements, not safety certifications")
@@ -90,7 +150,7 @@ private struct ResearchExperimentView: View {
             HSplitView {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
-                        Text("NEW EXPERIMENT").font(.caption).foregroundStyle(.secondary)
+                        Text("CONFIGURE ANALYSIS").font(.caption).foregroundStyle(.secondary)
                         Picker("Method", selection: $operation) { ForEach(operations, id: \.self) { Text(name($0)).tag($0) } }.disabled(lab.capturing)
                         if operation == "inspect" {
                             Picker("Capture mode", selection: $captureSource) {

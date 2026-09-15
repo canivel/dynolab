@@ -1,23 +1,24 @@
-Dyno Lab 0.3.0 brings larger local models into the research lab with an experimental LAN GPU pool.
+Dyno Lab 0.4.0 adds research notebooks and visible, recoverable model runs.
 
-## GPU pools and research
+## Studies and live responses
 
-- Pair a native Windows NVIDIA worker using a full verification code and strict SSH host verification. Save and select workers without duplicate entries for the same verified device.
-- Run supported GGUF models across Metal and the worker GPU. View actual model allocations, generation activity and live worker telemetry.
-- Run activations, interventions, causal patching, probes and ReLU/TopK SAE experiments on the resident pool. Save results and learned artifacts; reload settings for another experiment.
-- Download GGUF and MLX models with format filters, a downloaded library and pause/resume/cancel controls.
-- Use the updated Python SDK, Lab HTTP API and local MCP, with separate app, pool, SDK and API guides.
+- Organize a research question, hypotheses, prompt revisions, notes and saved results in Studies. Review history without a running model; connect a healthy endpoint before executing.
+- Stream model-emitted thinking and answers in a dedicated window. Follow incoming text, inspect earlier output, or cancel. Partial output is retained on failure.
+- Set thinking mode and the output budget in visible controls with a slider and presets. Token-limit warnings distinguish incomplete responses from completed answers.
+- Archive a query and its result together; restore them without changing the original evidence. Later branches and notes remain intact.
+- Save working drafts, attach evidence, export notebooks and record local voice notes. On-device transcription depends on macOS language support and permissions; no cloud fallback is used.
+- Replay an explicit local protocol through the native notebook runner. Empty system instructions omit the system message for controlled tests.
 
-## Verified example
+## Research and integration
 
-Qwen3-235B-A22B Q4_K_M (142.2 GB) generated on a 128 GiB M5 Max coordinator and a roughly 32 GiB RTX 5090 worker. Layer captures crossed RPC and Metal. All nine research configurations, cancellation, artifacts, no-op controls and restored outputs passed. Native activation, probe and SAE runs and saved-result reloads also passed.
+Generation artifacts can display model-emitted thinking separately from final answers. The Lab SDK/API can request bounded response-token replay measurements; these are fresh forward passes, not traces of the original generation. Existing model serving and experimental GPU pool features remain available.
 
-A short 128-token completion measured about 10.1 tokens/second; this is not a comparative benchmark. Loading took about 49 minutes on the tested network. CPU output tensors participate. Mapped memory is not resident RAM, and combined reported headroom does not guarantee a model fits. Swap already existed before the successful run and did not rise above its captured baseline.
+The Typebulb reproduction is an exploratory transcript audit with explicit local settings. It is not a hosted leaderboard reproduction, general safety score, or causal explanation of the model.
 
-Pool research is experimental, limited to supported layouts and bounded inputs. Probe/SAE fitting runs on the coordinator, not as distributed training. Toy experiment results are not safety certification or evidence of probe generalization.
+## Packaging
 
-## Install and upgrade
+Bundled pool libraries resolve relative to their executable rather than a temporary build directory. Release validation checks the relocated runtime before publication.
 
-Download **Dyno-0.3.0-arm64.dmg**, open it and drag Dyno into Applications. Requires Apple Silicon and macOS 14+. Model weights are downloaded separately. Use the matching native Windows worker from https://github.com/canivel/dynolab-windows-client for the tested pool setup.
+## Upgrade
 
-Stop active experiments and the pool before replacing the app. Existing model downloads and saved results stay in their data directories. Verify the release checksum and signing/notarization evidence accompanying the final DMG.
+Stop active runs before replacing the app. Download the signed and notarized Apple Silicon DMG from this release. Existing models and notebook evidence remain in their local data directories. Requires macOS 14 or later.

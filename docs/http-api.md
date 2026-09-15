@@ -114,6 +114,7 @@ Common fields for `POST /lab/v1/jobs`:
 | `revision` | Optional revision string | Pin a model revision |
 | `layers` | `[0]`; 1–8 indices, each 0–255 | Zero-indexed block outputs; indices must exist in the model |
 | `prompt` | Required in practice for inspect/compare | Raw text, without chat template |
+| `response` | Optional, inspect only; development checkout | Teacher-forced replay of prompt plus response. Combined text must fit `max_input_tokens`; ambiguous token boundaries fail. Adds `response_capture` metadata and `response-representations.npz` with `layer_N_prompt_last`, `layer_N_prompt_mean`, `layer_N_response_mean`. Not a live generation trace. |
 | `max_input_tokens` | 256; range 1–1024 | Input token limit |
 | `max_tokens` | 32; range 1–128 | Greedy continuation budget for comparisons |
 | `seed` | 0; range 0–2147483647 | Experiment seed |

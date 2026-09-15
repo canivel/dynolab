@@ -15,6 +15,7 @@ root = Path(__file__).resolve().parents[1]
 target = args.website_root / 'public'
 assert (target / 'index.html').is_file(), 'Expected website checkout with public/index.html'
 pages = [
+    ("research-notebooks.md", "studies.html", "Studies", "Keep a research journal, stream responses and preserve every iteration."),
     ("pool-lab-capture.md", "pool-lab.html", "Pool research", "Run interventions, probes and SAEs on resident distributed GGUF models."),
     ('pool-guide.md', 'pools.html', 'GPU pools', 'Set up a verified local GPU pool, connect a Windows worker and understand memory and telemetry.'),
     ('pool-api.md', 'pool-api.html', 'Pool API', 'Loopback inference, Python clients, lifecycle CLI and worker telemetry for the GPU pool preview.'),
