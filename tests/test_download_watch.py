@@ -30,9 +30,18 @@ class DownloadControlTests(unittest.TestCase):
     def test_pause_continue_cancel_and_identity_check(self):
         import subprocess, sys, time, signal, os
         from dyno.download_watch import apply_control, process_identity
-        child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+        child = subprocess.Popen([sys.executable, '-u', '-c',
+            'import time; print("ready", flush=True); time.sleep(60)'],
+            stdout=subprocess.PIPE, text=True)
         try:
+            # Wait until exec/startup completes before recording the command identity.
+            import selectors
+            with selectors.DefaultSelector() as ready:
+                ready.register(child.stdout, selectors.EVENT_READ)
+                self.assertTrue(ready.select(timeout=10), "child did not become ready")
+                self.assertEqual(child.stdout.readline().strip(), "ready")
             identity = process_identity(child.pid)
+            self.assertTrue(identity)
             self.assertFalse(apply_control(child.pid, 'different process', {'token':'a','action':'cancel'}, 'a'))
             self.assertFalse(apply_control(child.pid, identity, {'token':'wrong','action':'cancel'}, 'a'))
             self.assertTrue(apply_control(child.pid, identity, {'token':'a','action':'pause'}, 'a'))
@@ -49,3 +58,4 @@ class DownloadControlTests(unittest.TestCase):
         finally:
             if child.poll() is None:
                 os.kill(child.pid, signal.SIGCONT); child.kill(); child.wait()
+            child.stdout.close()
