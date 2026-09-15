@@ -2,7 +2,7 @@
 
 Download the app, run your first model, and turn a question about its behavior into an experiment. **Start here if you want to use the native app.** You do not need Python or the SDK to follow this guide.
 
-Dyno Lab is the research product; the installed macOS application is currently named **Dyno**. This guide covers the 0.4.0 release, including its experimental pool workflows. Images are actual app captures or cropped results from completed local experiments, not mock measurements. Some older captures have an earlier toolbar arrangement; the current navigation is described below.
+Dyno Lab is the research product; the installed macOS application is currently named **Dyno**. This guide covers the 0.4.1 release, including its experimental pool workflows. Images are actual app captures or cropped results from completed local experiments, not mock measurements. Some older captures have an earlier toolbar arrangement; the current navigation is described below.
 
 [Download for Apple Silicon](https://github.com/canivel/dynolab/releases/latest) · [Python SDK](sdk-guide.md) · [HTTP API](http-api.md) · [Local MCP](local-mcp.md)
 
