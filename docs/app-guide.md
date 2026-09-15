@@ -2,7 +2,7 @@
 
 Download the app, run your first model, and turn a question about its behavior into an experiment. **Start here if you want to use the native app.** You do not need Python or the SDK to follow this guide.
 
-Dyno Lab is the research product; the installed macOS application is currently named **Dyno**. This guide covers the published 0.3.0 release, including its experimental pool workflows. Images are actual app captures or cropped results from completed local experiments, not mock measurements. Some older captures have an earlier toolbar arrangement; the current navigation is described below.
+Dyno Lab is the research product; the installed macOS application is currently named **Dyno**. This guide covers the 0.4.0 release, including its experimental pool workflows. Images are actual app captures or cropped results from completed local experiments, not mock measurements. Some older captures have an earlier toolbar arrangement; the current navigation is described below.
 
 [Download for Apple Silicon](https://github.com/canivel/dynolab/releases/latest) · [Python SDK](sdk-guide.md) · [HTTP API](http-api.md) · [Local MCP](local-mcp.md)
 
@@ -70,7 +70,7 @@ For your first session, follow **Discover → Models → Chat → Lab**. Lab ope
 
 ## 3. Discover and download a model
 
-In 0.3.0, **Discover** has an **MLX / GGUF** format filter and **Search Hub / Downloaded** views. Search results identify locally downloaded models. Select **Downloaded** to filter your local library by name and format. **Use in Models** selects MLX weights in the serving controls; **Use in Pools** selects a GGUF and opens the pool configuration. Neither action starts inference. For GGUF search results, **Choose GGUF file** opens a quantization picker so you download the intended file rather than every variant in the repository. Split GGUF downloads remain unsupported in this preview UI.
+**Discover** has an **MLX / GGUF** format filter and **Search Hub / Downloaded** views. Search results identify locally downloaded models. Select **Downloaded** to filter your local library by name and format. **Use in Models** selects MLX weights in the serving controls; **Use in Pools** selects a GGUF and opens the pool configuration. Neither action starts inference. For GGUF search results, **Choose GGUF file** opens a quantization picker so you download the intended file rather than every variant in the repository. Split GGUF downloads remain unsupported in this preview UI.
 
 Start with a small MLX model so you can complete the workflow quickly. The examples below use `mlx-community/Qwen1.5-0.5B-Chat-4bit`; it is a demonstration model, not a recommendation for safety-critical work.
 
@@ -87,7 +87,7 @@ If the model does not appear in Models, refresh the library and confirm that the
 
 ## 4. Start, configure and stop a model
 
-### Model formats in 0.3.0
+### Model formats
 
 The **Models → Format** selector separates **MLX** and **GGUF** models. MLX weights support Dyno's native Apple Silicon serving and Lab experiments. GGUF files support the experimental llama.cpp pool; they cannot be started with the MLX server or used for MLX Lab capture. Selecting a format does not convert weights or reuse an already loaded model.
 
