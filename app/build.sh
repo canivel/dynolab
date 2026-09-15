@@ -117,6 +117,9 @@ PLIST
 
 echo "==> Signing"
 ./sign-app.sh "$APP"
+if [ -x "$RESOURCES/pool-runtime/llama-server" ]; then
+  "$RESOURCES/pool-runtime/llama-server" --version 2>&1 | grep -q '5bda51b'
+fi
 
 rm -rf "$BUILD_DIR/AppIcon.iconset" "$BUILD_DIR/AppIcon.icns"
 echo

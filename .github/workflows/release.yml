@@ -61,6 +61,7 @@ jobs:
           git -C "$RUNNER_TEMP/dyno-llama" checkout --detach FETCH_HEAD
           uv run --frozen python scripts/llama/build-capture.py "$RUNNER_TEMP/dyno-llama"
           cp "$RUNNER_TEMP/dyno-llama/LICENSE" "$RUNNER_TEMP/dyno-llama/build-dyno/bin/llama-LICENSE"
+          cp "$(brew --prefix openssl@3)/LICENSE.txt" "$RUNNER_TEMP/dyno-llama/build-dyno/bin/openssl-LICENSE.txt"
           echo "DYNO_POOL_RUNTIME_DIR=$RUNNER_TEMP/dyno-llama/build-dyno/bin" >> "$GITHUB_ENV"
       - name: Import release signing credentials
         env:
