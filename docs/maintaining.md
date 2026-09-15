@@ -40,7 +40,7 @@ Published ad-hoc releases remain unchanged. Local builds default to ad-hoc signi
 set `DYNO_SIGN_IDENTITY` to select an installed **Developer ID Application**
 certificate with its private key. The build signs every nested Mach-O executable
 and library with hardened runtime and a secure timestamp, then seals and verifies
-the app. No runtime entitlements are relaxed by default.
+the app. The app requests the audio-input entitlement for optional voice notes; microphone access still requires user permission. Other runtime entitlements are not relaxed.
 
 ```bash
 export DYNO_SIGN_IDENTITY='Developer ID Application: Your Name (YOUR_TEAM_ID)'
