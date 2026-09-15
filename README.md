@@ -48,7 +48,7 @@ Start a model or pool, then open **Lab → Studies**. Keep your question, prompt
 
 Requires **Apple Silicon and macOS 14+**. Python and MLX are bundled; model weights are downloaded separately. The product is **Dyno Lab**; the installed bundle is `Dyno.app`, the command is `dyno`, and the Python distribution is `mlx-dyno`.
 
-**[0.3.0 is the current published release](https://github.com/canivel/dynolab/releases/tag/v0.3.0).** It includes experimental GPU pools, pooled Lab experiments, live worker telemetry and download controls. Experimental describes the workflow's limits, not an unreleased download. [Release notes](docs/release-notes.md).
+**[Download 0.4.2](https://github.com/canivel/dynolab/releases/tag/v0.4.2).** It adds persistent Studies, live thinking and answers, visible generation settings and reversible query archiving alongside experimental GPU pools and pooled Lab experiments. Experimental describes the workflow's limits, not an unreleased download. [Release notes](docs/release-notes.md).
 
 ### Which model format should I use?
 
