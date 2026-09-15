@@ -3,8 +3,9 @@
 set -euo pipefail
 APP=${1:?Usage: sign-app.sh path/to/Dyno.app}
 IDENTITY=${DYNO_SIGN_IDENTITY:--}
+ENTITLEMENTS="$(cd "$(dirname "$0")" && pwd)/entitlements.plist"
 if [ "$IDENTITY" = - ]; then
-  codesign --force --deep --sign - "$APP"
+  codesign --force --deep --sign - --entitlements "$ENTITLEMENTS" "$APP"
 else
   case "$IDENTITY" in
     'Developer ID Application: '*) ;;
@@ -17,6 +18,6 @@ else
       codesign --force --sign "$IDENTITY" --timestamp --options runtime "$binary"
     fi
   done < <(find "$APP/Contents" -type f -print0)
-  codesign --force --sign "$IDENTITY" --timestamp --options runtime "$APP"
+  codesign --force --sign "$IDENTITY" --timestamp --options runtime --entitlements "$ENTITLEMENTS" "$APP"
 fi
 codesign --verify --deep --strict "$APP"

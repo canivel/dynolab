@@ -33,6 +33,13 @@ Start with a model on your Mac. For larger GGUF models, an experimental local GP
 
 The edited tour combines real model-selection, request, activation and pool captures with a saved probe recording. These are separate runs, not continuous execution. [Full probe protocol and controls](https://dynolab.dev/probe-example.html).
 
+## Research you can return to
+
+Start a model or pool, then open **Lab → Studies**. Keep your question, prompts, results and observations in one local notebook. Watch thinking and answers stream, compare revisions, and archive clutter without losing the evidence. Token limits and incomplete runs are visible rather than silently treated as answers.
+
+[Studies guide](docs/research-notebooks.md) · [Sycophancy reproduction](examples/typebulb-reproduction/README.md)
+
+
 ## Start with one model and one question
 
 1. **[Download the Apple Silicon DMG](https://github.com/canivel/dynolab/releases/latest)**, open it and drag **Dyno** into Applications.

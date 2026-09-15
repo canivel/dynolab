@@ -78,6 +78,7 @@ if [ -n "${DYNO_POOL_RUNTIME_DIR:-}" ]; then
   "$DYNO_POOL_RUNTIME_DIR/llama-server" --version 2>&1 | grep -q '5bda51b'
   mkdir -p "$RESOURCES/pool-runtime"
   ditto "$DYNO_POOL_RUNTIME_DIR" "$RESOURCES/pool-runtime"
+  python3 Tools/relocate-runtime.py "$RESOURCES/pool-runtime"
 fi
 
 # Shell entry point for MCP clients; resolves paths after the app is relocated.
@@ -105,6 +106,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundleVersion</key>           <string>$VERSION</string>
     <key>LSMinimumSystemVersion</key>    <string>14.0</string>
+    <key>NSMicrophoneUsageDescription</key><string>Record voice notes for your local research notebook.</string>
+    <key>NSSpeechRecognitionUsageDescription</key><string>Transcribe research voice notes using on-device speech recognition. Dyno does not use a cloud fallback.</string>
     <key>NSHighResolutionCapable</key>   <true/>
     <!-- Menu bar plus an on-demand window: no permanent Dock icon. -->
     <key>LSUIElement</key>               <true/>

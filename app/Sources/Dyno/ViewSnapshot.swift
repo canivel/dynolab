@@ -123,11 +123,19 @@ enum ViewSnapshot {
                 targets = [("window-pools", { AnyView(MainWindow(model: model, initialTab: .pools)) }, CGSize(width: 1100, height: 820))]
             }
         }
+        if arguments.contains("--notebooks-only") {
+            var checked = false
+            Task { await model.researchLab.runtime.refresh(model.snapshot.models); checked = true }
+            let deadline = Date().addingTimeInterval(5)
+            while !checked && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
+
+            targets = [("research-notebooks", { AnyView(MainWindow(model: model, initialTab: .lab)) }, CGSize(width: 1300, height: 1100))]
+        }
         if arguments.contains("--artifacts-only") {
             guard let path = ProcessInfo.processInfo.environment["DYNO_ARTIFACT_FIXTURE"],
                   let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
                   let artifact = try? LabArtifact.read(data) else { return 1 }
-            targets = [("lab-artifacts", { AnyView(LabArtifactView(initialArtifact: artifact)) }, CGSize(width: 1100, height: 850))]
+            targets = [("lab-artifacts", { AnyView(LabArtifactView(initialArtifact: artifact)) }, CGSize(width: 1100, height: artifact.kind == "generation" ? 1400 : 850))]
         }
         if publication {
             // Omit conversations, traces, connection addresses and filesystem views.
@@ -206,7 +214,7 @@ enum ViewSnapshot {
         RunLoop.main.run(until: Date().addingTimeInterval(2.5))
     }
 
-    private static func capture(
+    static func capture(
         view: AnyView, size: CGSize, appearance: NSAppearance.Name, to path: String
     ) -> Bool {
         // The AppKit appearance and the SwiftUI colour scheme have to be set

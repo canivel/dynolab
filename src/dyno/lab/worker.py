@@ -113,7 +113,14 @@ def run(config, folder):
         from .patching import sweep
         result = sweep(config, selected, encode, forward, captured, active, tokenizer)
     elif operation in ('inspect', 'compare'):
-        ids = encode(config.get('prompt', ''))
+        response_boundary = None
+        if 'response' in config:
+            if operation != 'inspect':
+                raise ValueError('Response capture is only supported by inspect')
+            from .response_capture import response_tokens
+            ids, response_boundary = response_tokens(tokenizer, config.get('prompt'), config['response'], limit)
+        else:
+            ids = encode(config.get('prompt', ''))
         baseline = forward(ids)
         baseline_captures = {i: captured[i] for i in selected}
         if operation == 'inspect':
@@ -140,6 +147,18 @@ def run(config, folder):
             result = dict(tokens=[tokenizer.decode([i]) for i in ids], token_ids=ids,
                           layers=maps, next_tokens=top(baseline[0, -1]),
                           note='Raw block-output logit lens; an intermediate readout is not a causal explanation.')
+            if response_boundary is not None:
+                from .response_capture import summarize_response
+                summaries = {}
+                for index, states in baseline_captures.items():
+                    for name, vector in summarize_response(np.array(states[0].astype(mx.float32)), response_boundary).items():
+                        summaries[f'layer_{index}_{name}'] = vector
+                np.savez(folder / 'response-representations.npz', **summaries)
+                result['response_capture'] = dict(prompt_tokens=response_boundary,
+                    response_tokens=len(ids)-response_boundary, response_start=response_boundary,
+                    mode='teacher-forced replay; not a live generation trace',
+                    pooling='equal token mean within each response; no EOS appended',
+                    artifact='response-representations.npz')
         else:
             layer = selected[0]
             kind = config.get('intervention', 'scale')

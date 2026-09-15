@@ -9,6 +9,12 @@ struct DynoApp: App {
         // Support hatches: inspect what the app resolved, or render its UI,
         // without launching the interface.
         let arguments = CommandLine.arguments
+        if arguments.contains("--journal-batch") {
+            exit(MainActor.assumeIsolated { JournalBatch.run(arguments) })
+        }
+        if arguments.contains("--journal-check") {
+            exit(MainActor.assumeIsolated { JournalCheck.run(arguments) })
+        }
         if arguments.contains("--diagnose") {
             exit(Diagnose.run(arguments: Array(arguments.dropFirst())))
         }

@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 from dyno.lab.server import validate
 
-PAGES = ['pool-lab.html', 'pools.html', 'pool-api.html', 'research-tools.html', 'guide.html', 'sdk.html', 'api.html', 'mcp.html']
+PAGES = ['studies.html', 'pool-lab.html', 'pools.html', 'pool-api.html', 'research-tools.html', 'guide.html', 'sdk.html', 'api.html', 'mcp.html']
 class Page(HTMLParser):
     def __init__(self, source):
         super().__init__()
@@ -58,7 +58,7 @@ def main():
                     assert (public / filename).is_file(), (name, reference)
                 else:
                     # These assets are maintained and browser-tested in the website repo.
-                    assert filename in ('index.html', 'favicon.svg', 'guide.css', 'probe-example.html') or filename.startswith(('assets/', 'screenshots/')), (name, reference)
+                    assert filename in ('index.html', 'favicon.svg', 'guide.css', 'probe-example.html', 'typebulb-study.html') or filename.startswith(('assets/', 'screenshots/')), (name, reference)
         schema = json.loads((public / 'openapi.json').read_text())
         assert schema['openapi'].startswith('3.')
     print('Documentation generation, internal links, code syntax and example configurations passed.')
