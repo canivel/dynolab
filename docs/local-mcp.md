@@ -40,7 +40,7 @@ launcher bundled in an updated Dyno app:
 The launcher resolves its own runtime after relocation. Adjust the app path if
 Dyno is installed elsewhere. The `mcpServers` envelope is a common client format;
 use your client's equivalent command and argument fields when its format differs.
-The 0.2.0 release contains this launcher. Upgrade older installations from
+The current Mac DMG contains this launcher. Upgrade older installations from
 [GitHub Releases](https://github.com/canivel/dynolab/releases/latest).
 
 ## Tools
