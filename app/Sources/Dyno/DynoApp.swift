@@ -28,6 +28,12 @@ struct DynoApp: App {
     /// This scene exists because an App needs one; it is never shown.
     var body: some Scene {
         Settings { EmptyView() }
+            .commands {
+                CommandGroup(replacing: .appInfo) {
+                    Button("About Dyno Lab") { AppIdentity.showAbout() }
+                    UpdateCheckMenuItem()
+                }
+            }
     }
 }
 
@@ -54,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     nonisolated func applicationDidFinishLaunching(_ notification: Notification) {
         MainActor.assumeIsolated {
             AppDelegate.shared = self
+            AppUpdates.shared.start()
             // Menu bar only until a window is opened.
             NSApp.setActivationPolicy(.accessory)
             statusItem = StatusItemController(model: MonitorModel.shared)
@@ -63,6 +70,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { AppDelegate.shared?.showMainWindow() }
             }
+        }
+    }
+
+    nonisolated func application(_ application: NSApplication, open urls: [URL]) {
+        MainActor.assumeIsolated {
+            guard let url = urls.first, url.scheme == "dynolab", url.host == "study",
+                  url.query == nil, url.fragment == nil,
+                  let id = UUID(uuidString: String(url.path.dropFirst())) else { return }
+            MonitorModel.shared.researchLab.journal.incomingCommunityStudy = id
+            MonitorModel.shared.requestedTab = .lab
+            showMainWindow()
         }
     }
 

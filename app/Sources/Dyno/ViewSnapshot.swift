@@ -131,6 +131,13 @@ enum ViewSnapshot {
 
             targets = [("research-notebooks", { AnyView(MainWindow(model: model, initialTab: .lab)) }, CGSize(width: 1300, height: 1100))]
         }
+        if arguments.contains("--community-only") {
+            let journal = model.researchLab.journal
+            targets = [("study-import", { AnyView(StudyImportView(journal: journal)) }, CGSize(width: 660, height: 530))]
+            if let study = journal.studies.first(where: { $0.id == journal.selected }) {
+                targets.append(("study-sharing", { AnyView(StudySharingView(journal: journal, study: study)) }, CGSize(width: 740, height: 650)))
+            }
+        }
         if arguments.contains("--artifacts-only") {
             guard let path = ProcessInfo.processInfo.environment["DYNO_ARTIFACT_FIXTURE"],
                   let data = try? Data(contentsOf: URL(fileURLWithPath: path)),

@@ -18,6 +18,11 @@ else
       codesign --force --sign "$IDENTITY" --timestamp --options runtime "$binary"
     fi
   done < <(find "$APP/Contents" -type f -print0)
+  # Sparkle includes an updater app and XPC services. Seal nested bundles
+  # inside-out after signing their executable code, then seal the framework.
+  while IFS= read -r -d '' bundle; do
+    codesign --force --sign "$IDENTITY" --timestamp --options runtime "$bundle"
+  done < <(find "$APP/Contents/Frameworks" -depth -type d \( -name '*.xpc' -o -name '*.app' -o -name '*.framework' \) -print0)
   codesign --force --sign "$IDENTITY" --timestamp --options runtime --entitlements "$ENTITLEMENTS" "$APP"
 fi
 codesign --verify --deep --strict "$APP"
