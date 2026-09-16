@@ -111,3 +111,9 @@ Do not assume a checked-in workflow or CODEOWNERS file applies these settings au
 - [GitHub Actions secure use](https://docs.github.com/en/actions/reference/security/secure-use)
 - [GitHub artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations)
 - [Apple notarization](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)
+# In-app update signing
+
+Updater-enabled releases also require the protected `SPARKLE_PRIVATE_KEY`
+environment secret. See [app updates](app-updates.md) for key custody, feed
+publication and the installed-app smoke test. The feed is published with the
+reviewed stable GitHub release; creating a draft does not distribute an update.

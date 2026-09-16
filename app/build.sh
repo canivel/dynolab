@@ -35,6 +35,10 @@ echo "==> Assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$RESOURCES"
 cp .build/release/Dyno "$APP/Contents/MacOS/Dyno"
+SPARKLE_FRAMEWORK=$(find .build/artifacts -path '*/macos-arm64_x86_64/Sparkle.framework' -type d -print -quit)
+[ -n "$SPARKLE_FRAMEWORK" ] || { echo 'Sparkle framework not found' >&2; exit 1; }
+mkdir -p "$APP/Contents/Frameworks"
+ditto "$SPARKLE_FRAMEWORK" "$APP/Contents/Frameworks/Sparkle.framework"
 cp "$BUILD_DIR/AppIcon.icns" "$RESOURCES/AppIcon.icns"
 
 if [ "$SLIM" -eq 0 ]; then
@@ -115,6 +119,16 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+
+# Public verification key only. The signing key belongs in Keychain/CI secrets.
+SPARKLE_PUBLIC_KEY=$(tr -d '\r\n' < sparkle-public-key.txt)
+/usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string $SPARKLE_PUBLIC_KEY" "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c 'Add :SUFeedURL string https://github.com/canivel/dynolab/releases/latest/download/appcast.xml' "$APP/Contents/Info.plist"
+# Ask before enabling background checks; never install an update unattended.
+/usr/libexec/PlistBuddy -c 'Add :SUEnableAutomaticChecks bool false' "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c 'Add :SUAllowsAutomaticUpdates bool false' "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c 'Add :SUAutomaticallyUpdate bool false' "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c 'Add :SUSendProfileInfo bool false' "$APP/Contents/Info.plist"
 
 echo "==> Signing"
 ./sign-app.sh "$APP"

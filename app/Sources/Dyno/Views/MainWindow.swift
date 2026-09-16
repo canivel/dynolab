@@ -39,7 +39,15 @@ struct MainWindow: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                DynoBrandMark().padding(.trailing, 8)
+                Button { AppIdentity.showAbout() } label: {
+                    VStack(spacing: 3) {
+                        DynoBrandMark()
+                        Text(AppIdentity.label).font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(.secondary).fixedSize()
+                    }
+                }.buttonStyle(.plain).padding(.trailing, 8)
+                    .accessibilityLabel("About Dyno Lab, \(AppIdentity.label)")
+                    .help("About Dyno Lab · \(AppIdentity.label)")
                 HStack(spacing: 3) {
                     ForEach(Tab.allCases) { item in
                         Button {
@@ -56,6 +64,7 @@ struct MainWindow: View {
                 }.padding(4).background(DynoBrand.surface, in: RoundedRectangle(cornerRadius: 9))
                 .frame(width: 550)
                 Spacer()
+                AppUpdatesButton()
                 if case let .running(name, port) = model.serverState {
                     HStack(spacing: 5) {
                         Circle().fill(Color.green).frame(width: 6, height: 6)
@@ -108,6 +117,7 @@ struct MainWindow: View {
         .frame(minWidth: 800, minHeight: 540)
         .background(DynoBrand.background)
         .dynoTheme()
+        .onAppear { AppUpdates.shared.stopPool = { poolSession.stop() } }
         // One view asking to show another — Chat sending you to Models when
         // nothing is loaded — goes through the model rather than reaching into
         // this view's state directly.

@@ -100,7 +100,32 @@ jobs:
           ./app/package-dmg.sh
           spctl --assess --type open --context context:primary-signature --verbose=2 app/build/*.dmg
           cp app/build/*.dmg app/build/*.sha256 app/build/*.notary.json dist/
+      - name: Sign stable update and build verified appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Prereleases are distributed manually, never through the stable feed.
+          if [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            : "${SPARKLE_PRIVATE_KEY:?Missing Sparkle signing key in release-signing environment}"
+            curl --fail --location --proto '=https' --tlsv1.2 \
+              https://github.com/sparkle-project/Sparkle/releases/download/2.10.0/Sparkle-2.10.0.tar.xz \
+              -o "$RUNNER_TEMP/sparkle.tar.xz"
+            echo "c2bf58aa8387266ac179357b1415d6f2635f044da8be41042af32425dae6da0c  $RUNNER_TEMP/sparkle.tar.xz" | shasum -a 256 --check
+            mkdir -p "$RUNNER_TEMP/sparkle"
+            tar xf "$RUNNER_TEMP/sparkle.tar.xz" -C "$RUNNER_TEMP/sparkle"
+            VERSION=${RELEASE_TAG#v}
+            # Sign after notarization/stapling: any later modification invalidates it.
+            printf '%s' "$SPARKLE_PRIVATE_KEY" | "$RUNNER_TEMP/sparkle/bin/sign_update" \
+              --ed-key-file - -p "dist/Dyno-${VERSION}-arm64.dmg" > "$RUNNER_TEMP/update.sig"
+            uv run --frozen python scripts/build_appcast.py "dist/Dyno-${VERSION}-arm64.dmg" "$VERSION" \
+              --signature "$RUNNER_TEMP/update.sig" --output dist/appcast.xml
+          fi
           (cd dist && shasum -a 256 *.dmg *.whl *.tar.gz *.notary.json runtime-sbom.json uv.lock release-notes.md > SHA256SUMS)
+          if [ -f dist/appcast.xml ]; then
+            (cd dist && shasum -a 256 appcast.xml >> SHA256SUMS)
+          fi
       - name: Remove signing credentials
         if: always()
         run: |

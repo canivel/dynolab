@@ -28,6 +28,12 @@ struct DynoApp: App {
     /// This scene exists because an App needs one; it is never shown.
     var body: some Scene {
         Settings { EmptyView() }
+            .commands {
+                CommandGroup(replacing: .appInfo) {
+                    Button("About Dyno Lab") { AppIdentity.showAbout() }
+                    UpdateCheckMenuItem()
+                }
+            }
     }
 }
 
@@ -54,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     nonisolated func applicationDidFinishLaunching(_ notification: Notification) {
         MainActor.assumeIsolated {
             AppDelegate.shared = self
+            AppUpdates.shared.start()
             // Menu bar only until a window is opened.
             NSApp.setActivationPolicy(.accessory)
             statusItem = StatusItemController(model: MonitorModel.shared)

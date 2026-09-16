@@ -1,28 +1,20 @@
-Dyno Lab 0.4.2 adds research notebooks and visible, recoverable model runs.
+Dyno Lab 0.4.3 adds signed in-app updates and reviewed study sharing.
 
-## Studies and live responses
+## In-app updates
 
-- Organize a research question, hypotheses, prompt revisions, notes and saved results in Studies. Review history without a running model; connect a healthy endpoint before executing.
-- Stream model-emitted thinking and answers in a dedicated window. Follow incoming text, inspect earlier output, or cancel. Partial output is retained on failure.
-- Set thinking mode and the output budget in visible controls with a slider and presets. Token-limit warnings distinguish incomplete responses from completed answers.
-- Archive a query and its result together; restore them without changing the original evidence. Later branches and notes remain intact.
-- Save working drafts, attach evidence, export notebooks and record local voice notes. On-device transcription depends on macOS language support and permissions; no cloud fallback is used.
-- Replay an explicit local protocol through the native notebook runner. Empty system instructions omit the system message for controlled tests.
+- Use Updates in the toolbar or Dyno Lab → Check for Updates to find new stable releases.
+- Optionally enable automatic background checks. Installation always asks before restarting.
+- Update downloads are verified with a dedicated Ed25519 signature, in addition to Apple Developer ID signing and notarization.
+- The installed version appears in the window, app header and About panel.
 
-## Research and integration
+## Share and continue studies
 
-Generation artifacts can display model-emitted thinking separately from final answers. The Lab SDK/API can request bounded response-token replay measurements; these are fresh forward passes, not traces of the original generation. Existing model serving and experimental GPU pool features remain available.
+- Review selected notebook entries and export a community study package, then open research.dynolab.dev to publish it under your account.
+- Import shared studies into separate local notebooks with source information. Importing never runs a model or overwrites existing research.
+- Open study links from the research website in Dyno. Active notebook work is preserved before importing.
 
-The Typebulb reproduction is an exploratory transcript audit with explicit local settings. It is not a hosted leaderboard reproduction, general safety score, or causal explanation of the model.
+## Install this upgrade once
 
-## Packaging
+Version 0.4.2 and older do not have an updater. Download this release's signed and notarized Apple Silicon DMG, stop active runs, and replace Dyno in Applications once. Subsequent releases can be installed from inside the app. Studies, settings and downloaded models remain in their local data directories.
 
-Bundled pool libraries resolve relative to their executable rather than a temporary build directory. Release validation checks the relocated runtime before publication.
-
-## Upgrade
-
-Stop active runs before replacing the app. Download the signed and notarized Apple Silicon DMG from this release. Existing models and notebook evidence remain in their local data directories. Requires macOS 14 or later.
-
-The 0.4.0 release workflow stopped on a process-startup race in its download-control test before publishing assets. 0.4.1 adds an explicit child-readiness handshake; process identity enforcement is unchanged. The failed tag is retained.
-
-The 0.4.1 draft was held after download verification found a Homebrew OpenSSL dependency in its pool executable. 0.4.2 links OpenSSL statically, includes its license, rejects unbundled native dependencies and executes the signed pool runtime during packaging. Neither earlier candidate was published.
+Requires Apple Silicon and macOS 14 or later. The updater does not update Windows workers. GPU pools remain experimental. Published research and model-emitted thinking are evidence to inspect, not verified explanations of model computation.
