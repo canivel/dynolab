@@ -25,7 +25,7 @@ dependencies = ["rich>=13.7"]
 [project.optional-dependencies]
 pool = ["zeroconf==0.151.3", "cryptography==50.0.1", "huggingface-hub>=0.36,<2"]
 serve = ["mlx-lm>=0.28"]
-mcp = ["mcp>=1.28,<2"]
+mcp = ["mcp>=1.28,<3"]
 docs = ["markdown>=3.7,<4"]
 
 [project.scripts]
