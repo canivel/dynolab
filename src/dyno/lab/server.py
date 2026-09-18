@@ -12,6 +12,10 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from ..execution import ExecutionHTTPMixin
+from .studies import Studies, summarize, monitor_metrics
+from .monitors import Monitors
+from .regressions import ResearchReports
+from .agent_tasks import AgentTasks
 
 OPERATIONS = ('inspect', 'compare', 'probe', 'sae', 'patch_sweep')
 
@@ -42,6 +46,20 @@ def validate(body):
             raise ValueError(f'{key} is out of range')
     if len(body.get('examples', [])) > 512:
         raise ValueError('At most 512 examples per experiment')
+    if 'probe_validation' in body and type(body['probe_validation']) is not bool:
+        raise ValueError('probe_validation must be a boolean')
+    if 'intervention_controls' in body and type(body['intervention_controls']) is not bool:
+        raise ValueError('intervention_controls must be a boolean')
+    if body.get('intervention_controls'):
+        if body['operation'] != 'compare': raise ValueError('intervention_controls applies only to comparisons')
+        if type(body.get('control_repeats', 3)) is not int or not 1 <= body.get('control_repeats', 3) <= 5:
+            raise ValueError('control_repeats must be 1–5')
+        if len(body.get('prompts', [body.get('prompt')])) * len(body.get('strengths', [0, .5, 1, 1.5])) > 24:
+            raise ValueError('Controlled interventions support at most 24 prompt/strength pairs')
+    if body.get('probe_validation'):
+        if body['operation'] != 'probe': raise ValueError('probe_validation applies only to probes')
+        from .probe_validation import validate_dataset
+        validate_dataset(body.get('examples'))
     if body.get('backend') == 'pool':
         if type(body.get('pool_port')) is not int or not 1024 <= body['pool_port'] <= 65535:
             raise ValueError('Choose a loopback pool port')
@@ -171,7 +189,43 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
             return
         path = self.path.split('?', 1)[0]
         if path == '/lab/v1/health':
-            self._execution_send({'status': 'ok', 'api_version': 1, 'worker_revision': 2, 'operations': OPERATIONS})
+            self._execution_send({'status': 'ok', 'api_version': 1, 'worker_revision': 2, 'controlled_studies': 1, 'monitor_evaluations': 1, 'operations': OPERATIONS})
+        elif path == '/lab/v1/agent-tasks':
+            self._execution_send({'tasks':self.server.agent_tasks.list()})
+        elif path.startswith('/lab/v1/agent-tasks/'):
+            try:self._execution_send(self.server.agent_tasks.read(path.rsplit('/',1)[-1]))
+            except (ValueError,OSError) as error:self._execution_send({'error':str(error)},400)
+        elif path == '/lab/v1/reports':
+            self._execution_send({'reports': self.server.reports.list()})
+        elif path.startswith('/lab/v1/reports/'):
+            try: self._execution_send(self.server.reports.read(path.rsplit('/',1)[-1]))
+            except (ValueError, OSError) as error: self._execution_send({'error':str(error)},400)
+        elif path == '/lab/v1/monitors':
+            self._execution_send({'evaluations': self.server.monitors.list()})
+        elif path.startswith('/lab/v1/monitors/'):
+            try:
+                parts = path.removeprefix('/lab/v1/monitors/').split('/')
+                if len(parts) == 1: result = self.server.monitors.read(parts[0])
+                elif parts[1:] == ['report']: result = self.server.monitors.report(parts[0])
+                elif parts[1:] == ['export']: result = self.server.monitors.export(parts[0])
+                else: raise ValueError('Unknown monitor route')
+                self._execution_send(result)
+            except (ValueError, OSError) as error:
+                self._execution_send({'error': str(error)}, 400)
+        elif path == '/lab/v1/studies':
+            self._execution_send({'studies': self.server.studies.list()})
+        elif path.startswith('/lab/v1/studies/'):
+            try:
+                parts = path.removeprefix('/lab/v1/studies/').split('/')
+                data = self.server.studies.read(parts[0])
+                if len(parts) == 1: result = data
+                elif parts[1:] == ['summary']: result = summarize(data)
+                elif parts[1:] == ['export']: result = self.server.studies.export(parts[0])
+                elif parts[1:] == ['reproduction-report']: result = self.server.studies.reproduction_report(parts[0])
+                else: raise ValueError('Unknown study route')
+                self._execution_send(result)
+            except (ValueError, OSError) as error:
+                self._execution_send({'error': str(error)}, 400)
         elif path == '/lab/v1/jobs':
             self._execution_send({'jobs': self.server.jobs.list()})
         elif path == '/lab/v1/openapi.json':
@@ -226,10 +280,62 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get('Content-Length', '0'))
-            if not 0 < length <= 500_000:
-                raise ValueError('Request must be 1–500000 bytes')
+            maximum = 4_000_000 if self.path == '/lab/v1/studies/import' else 500_000
+            if not 0 < length <= maximum:
+                raise ValueError(f'Request must be 1–{maximum} bytes')
             body = json.loads(self.rfile.read(length))
-            if self.path == '/lab/v1/jobs':
+            if not isinstance(body, dict): raise ValueError('Request must be an object')
+            if self.path == '/lab/v1/agent-tasks':
+                self._execution_send(self.server.agent_tasks.create(body),201)
+            elif self.path.startswith('/lab/v1/agent-tasks/'):
+                parts=self.path.removeprefix('/lab/v1/agent-tasks/').split('/')
+                if len(parts)!=2 or body:raise ValueError('Task action expects an empty object')
+                if parts[1]=='run':result=self.server.agent_tasks.run(parts[0])
+                elif parts[1]=='cancel':result=self.server.agent_tasks.cancel(parts[0])
+                else:raise ValueError('Unknown task action')
+                self._execution_send(result)
+            elif self.path == '/lab/v1/reports/compatibility':
+                self._execution_send(self.server.reports.compatibility(body,self.server.jobs),201)
+            elif self.path == '/lab/v1/reports/checkpoints':
+                self._execution_send(self.server.reports.checkpoints(body),201)
+            elif self.path == '/lab/v1/reports/regression':
+                self._execution_send(self.server.reports.regression(body),201)
+            elif self.path == '/lab/v1/monitors':
+                if set(body) != {'source_id', 'config'}: raise ValueError('Use source_id and config')
+                self._execution_send(self.server.monitors.create(body['source_id'], body['config']), 201)
+            elif self.path.startswith('/lab/v1/monitors/'):
+                parts = self.path.removeprefix('/lab/v1/monitors/').split('/')
+                if len(parts) != 2: raise ValueError('Invalid monitor route')
+                if parts[1] == 'select-threshold':
+                    if set(body)!={'candidates','prior_test_exposure'}:raise ValueError('Use candidates and prior_test_exposure')
+                    self._execution_send(self.server.monitors.select_threshold(parts[0],body['candidates'],body['prior_test_exposure']),201)
+                    return
+                if body: raise ValueError('Monitor action expects an empty object')
+                if parts[1] == 'run': result = self.server.monitors.run(parts[0])
+                elif parts[1] == 'cancel': result = self.server.monitors.cancel(parts[0])
+                else: raise ValueError('Unknown monitor action')
+                self._execution_send(result)
+            elif self.path == '/lab/v1/studies':
+                self._execution_send(self.server.studies.create(body), 201)
+            elif self.path == '/lab/v1/studies/import':
+                self._execution_send(self.server.studies.import_bundle(body), 201)
+            elif self.path == '/lab/v1/monitor-metrics':
+                self._execution_send(monitor_metrics(body.get('rows'), body.get('threshold')))
+            elif self.path.startswith('/lab/v1/studies/'):
+                parts = self.path.removeprefix('/lab/v1/studies/').split('/')
+                if len(parts) != 2: raise ValueError('Unknown study route')
+                identifier, action = parts
+                if action == 'run': result = self.server.studies.run(identifier, body.get('port'), body.get('model'))
+                elif action == 'cancel': result = self.server.studies.cancel(identifier)
+                elif action == 'labels': result = self.server.studies.label(identifier, body.get('run_id'), body.get('value'), body.get('reviewer'), body.get('note', ''))
+                elif action == 'prepare-review': result = self.server.studies.prepare_review(identifier, body.get('reviewer'), body.get('prior_exposure'))
+                elif action == 'review': result = self.server.studies.review(identifier, body.get('review_id'))
+                elif action == 'review-label': result = self.server.studies.review_label(identifier, body.get('review_id'), body.get('item_id'), body.get('value'), body.get('note', ''))
+                elif action == 'reveal-review': result = self.server.studies.reveal_review(identifier, body.get('review_id'))
+                elif action == 'reproduce': result = self.server.studies.reproduce(identifier)
+                else: raise ValueError('Unknown study action')
+                self._execution_send(result)
+            elif self.path == '/lab/v1/jobs':
                 self._execution_send(self.server.jobs.submit(body), 202)
             elif self.path.startswith('/lab/v1/jobs/') and self.path.endswith('/cancel'):
                 self._execution_send(self.server.jobs.cancel(self.path.split('/')[-2]))
@@ -248,6 +354,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
     server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
     server.jobs = Jobs(args.data_dir)
+    server.studies = Studies(Path(args.data_dir).expanduser() / 'controlled-studies')
+    server.agent_tasks = AgentTasks(Path(args.data_dir).expanduser() / 'agent-tasks')
+    server.reports = ResearchReports(Path(args.data_dir).expanduser() / 'research-reports', server.studies)
+    server.monitors = Monitors(Path(args.data_dir).expanduser() / 'monitor-evaluations', server.studies)
     print(f'Dyno Research Lab: http://127.0.0.1:{args.port}/lab/v1', flush=True)
     def terminate(*_):
         raise KeyboardInterrupt()
@@ -257,6 +367,12 @@ def main(argv=None):
     except KeyboardInterrupt:
         pass
     finally:
+        if server.agent_tasks.active:
+            server.agent_tasks.cancel(server.agent_tasks.active)
+        if server.monitors.active:
+            server.monitors.cancel(server.monitors.active)
+        if server.studies.active:
+            server.studies.cancel(server.studies.active)
         if server.jobs.active:
             server.jobs.cancel(server.jobs.active)
         server.server_close()

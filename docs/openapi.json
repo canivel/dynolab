@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Dyno Research Lab API",
-    "version": "0.2.2",
+    "version": "0.5.0",
     "description": "Local native clients only. Isolated jobs persist on disk. Resident capture runs on the serving endpoint at a separate port; it returns results directly. Native app history is not a Lab jobs API."
   },
   "servers": [
@@ -58,6 +58,11 @@
                   },
                   "prompt": {
                     "type": "string"
+                  },
+                  "response": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Inspect only. Replay serialized prompt plus response, validate token boundary, and export prompt-last, prompt-mean and response-mean block representations. The combined text counts toward max_input_tokens. Not a live generation trace."
                   },
                   "layers": {
                     "type": "array",
@@ -185,6 +190,21 @@
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 512
+                  },
+                  "backend": {
+                    "type": "string",
+                    "enum": [
+                      "mlx",
+                      "pool"
+                    ],
+                    "default": "mlx",
+                    "description": "Pool reuses resident GGUF weights; probe/SAE fitting runs on coordinator."
+                  },
+                  "pool_port": {
+                    "type": "integer",
+                    "minimum": 1024,
+                    "maximum": 65535,
+                    "description": "Required with backend=pool. Loopback pool with research runtime v2."
                   }
                 }
               }
@@ -392,6 +412,1574 @@
             "description": "Another capture is pending or running"
           }
         }
+      }
+    },
+    "/studies": {
+      "get": {
+        "summary": "List locally saved controlled studies",
+        "responses": {
+          "200": {
+            "description": "Saved result"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "description": "Nonlocal origin rejected"
+          },
+          "409": {
+            "description": "Active study conflict"
+          }
+        }
+      },
+      "post": {
+        "summary": "Validate and freeze a protocol",
+        "responses": {
+          "201": {
+            "description": "Saved result"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "description": "Nonlocal origin rejected"
+          },
+          "409": {
+            "description": "Active study conflict"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ControlledProtocol"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/studies/{id}": {
+      "get": {
+        "summary": "Read protocol, attempts and reviewer labels",
+        "responses": {
+          "200": {
+            "description": "Saved result"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "description": "Nonlocal origin rejected"
+          },
+          "409": {
+            "description": "Active study conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
+    },
+    "/studies/{id}/summary": {
+      "get": {
+        "summary": "Descriptive human-labeled counts, separated by partition",
+        "responses": {
+          "200": {
+            "description": "Saved result"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "description": "Nonlocal origin rejected"
+          },
+          "409": {
+            "description": "Active study conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
+    },
+    "/studies/{id}/export": {
+      "get": {
+        "summary": "Export data-only evidence and content hash",
+        "responses": {
+          "200": {
+            "description": "Saved result"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "description": "Nonlocal origin rejected"
+          },
+          "409": {
+            "description": "Active study conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
+    },
+    "/studies/{id}/run": {
+      "post": {
+        "summary": "Explicitly schedule unfinished conditions on a selected loopback endpoint",
+        "responses": {
+          "200": {
+            "description": "Saved result"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "description": "Nonlocal origin rejected"
+          },
+          "409": {
+            "description": "Active study conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "port",
+                  "model"
+                ],
+                "properties": {
+                  "port": {
+                    "type": "integer",
+                    "minimum": 1024,
+                    "maximum": 65535
+                  },
+                  "model": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/studies/{id}/cancel": {
+      "post": {
+        "summary": "Stop scheduling; in-flight inference may continue",
+        "responses": {
+          "200": {
+            "description": "Saved result"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "description": "Nonlocal origin rejected"
+          },
+          "409": {
+            "description": "Active study conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/studies/{id}/reproduce": {
+      "post": {
+        "summary": "Create an unexecuted protocol linked to its parent hash",
+        "responses": {
+          "200": {
+            "description": "Saved result"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "description": "Nonlocal origin rejected"
+          },
+          "409": {
+            "description": "Active study conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/studies/{id}/labels": {
+      "post": {
+        "summary": "Append a human label for a completed run",
+        "responses": {
+          "200": {
+            "description": "Saved result"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "description": "Nonlocal origin rejected"
+          },
+          "409": {
+            "description": "Active study conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "run_id",
+                  "value",
+                  "reviewer"
+                ],
+                "properties": {
+                  "run_id": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string",
+                    "enum": [
+                      "pass",
+                      "fail",
+                      "uncertain"
+                    ]
+                  },
+                  "reviewer": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/studies/import": {
+      "post": {
+        "summary": "Import read-only evidence; never execute. Maximum 4 MB.",
+        "responses": {
+          "201": {
+            "description": "Saved result"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "description": "Nonlocal origin rejected"
+          },
+          "409": {
+            "description": "Active study conflict"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "schema",
+                  "study",
+                  "sha256"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "schema": {
+                    "type": "string",
+                    "enum": [
+                      "dyno.controlled-study/1"
+                    ]
+                  },
+                  "study": {
+                    "type": "object"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/monitor-metrics": {
+      "post": {
+        "summary": "Calculate metrics from supplied scores and reference labels; does not run a monitor",
+        "responses": {
+          "200": {
+            "description": "Saved result"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "description": "Nonlocal origin rejected"
+          },
+          "409": {
+            "description": "Active study conflict"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "rows",
+                  "threshold"
+                ],
+                "properties": {
+                  "rows": {
+                    "type": "array",
+                    "maxItems": 10000,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "reference": {
+                          "type": "boolean",
+                          "nullable": true
+                        },
+                        "score": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        }
+                      }
+                    }
+                  },
+                  "threshold": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/studies/{id}/prepare-review": {
+      "post": {
+        "summary": "Prepare or resume a shuffled context-masked review",
+        "responses": {
+          "200": {
+            "description": "Saved result"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "description": "Nonlocal origin rejected"
+          },
+          "409": {
+            "description": "Active study conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reviewer",
+                  "prior_exposure"
+                ],
+                "properties": {
+                  "reviewer": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "prior_exposure": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Local development preview. No inference. Context masking is not access control; shared prompts and answers can reveal context. Reviewer identities and prior exposure are self-reported. One saved queue per reviewer; reveal cannot be reset."
+      }
+    },
+    "/studies/{id}/review": {
+      "post": {
+        "summary": "Read the allowlisted review view",
+        "responses": {
+          "200": {
+            "description": "Saved result"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "description": "Nonlocal origin rejected"
+          },
+          "409": {
+            "description": "Active study conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "review_id"
+                ],
+                "properties": {
+                  "review_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Local development preview. No inference. Context masking is not access control; shared prompts and answers can reveal context. Reviewer identities and prior exposure are self-reported. One saved queue per reviewer; reveal cannot be reset."
+      }
+    },
+    "/studies/{id}/review-label": {
+      "post": {
+        "summary": "Append a review judgment with exposure provenance",
+        "responses": {
+          "200": {
+            "description": "Saved result"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "description": "Nonlocal origin rejected"
+          },
+          "409": {
+            "description": "Active study conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "review_id",
+                  "item_id",
+                  "value"
+                ],
+                "properties": {
+                  "review_id": {
+                    "type": "string"
+                  },
+                  "item_id": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string",
+                    "enum": [
+                      "pass",
+                      "fail",
+                      "uncertain"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Local development preview. No inference. Context masking is not access control; shared prompts and answers can reveal context. Reviewer identities and prior exposure are self-reported. One saved queue per reviewer; reveal cannot be reset."
+      }
+    },
+    "/studies/{id}/reveal-review": {
+      "post": {
+        "summary": "Permanently reveal condition and model context for this session",
+        "responses": {
+          "200": {
+            "description": "Saved result"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "description": "Nonlocal origin rejected"
+          },
+          "409": {
+            "description": "Active study conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "review_id"
+                ],
+                "properties": {
+                  "review_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Local development preview. No inference. Context masking is not access control; shared prompts and answers can reveal context. Reviewer identities and prior exposure are self-reported. One saved queue per reviewer; reveal cannot be reset."
+      }
+    },
+    "/monitors": {
+      "get": {
+        "summary": "List local monitor evaluations",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request or unavailable evidence"
+          },
+          "409": {
+            "description": "Another monitor evaluation is running"
+          }
+        }
+      },
+      "post": {
+        "summary": "Freeze evidence and configuration without running inference",
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request or unavailable evidence"
+          },
+          "409": {
+            "description": "Another monitor evaluation is running"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "source_id",
+                  "config"
+                ],
+                "properties": {
+                  "source_id": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{32}$"
+                  },
+                  "config": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "title",
+                      "port",
+                      "model",
+                      "view"
+                    ],
+                    "properties": {
+                      "title": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "port": {
+                        "type": "integer",
+                        "minimum": 1024,
+                        "maximum": 65535
+                      },
+                      "model": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "view": {
+                        "enum": [
+                          "answer",
+                          "thinking",
+                          "combined"
+                        ]
+                      },
+                      "mode": {
+                        "enum": [
+                          "exploratory",
+                          "held-out"
+                        ],
+                        "default": "exploratory"
+                      },
+                      "threshold": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "default": 0.5
+                      },
+                      "max_tokens": {
+                        "type": "integer",
+                        "minimum": 32,
+                        "maximum": 1000,
+                        "default": 256
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/monitors/{id}": {
+      "get": {
+        "summary": "Read monitor evidence and attempts",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request or unavailable evidence"
+          },
+          "409": {
+            "description": "Another monitor evaluation is running"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
+    },
+    "/monitors/{id}/report": {
+      "get": {
+        "summary": "Read development/test metrics and disagreements",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request or unavailable evidence"
+          },
+          "409": {
+            "description": "Another monitor evaluation is running"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
+    },
+    "/monitors/{id}/export": {
+      "get": {
+        "summary": "Export inactive monitor evaluation",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request or unavailable evidence"
+          },
+          "409": {
+            "description": "Another monitor evaluation is running"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
+    },
+    "/monitors/{id}/run": {
+      "post": {
+        "summary": "Run saved monitor evaluation",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request or unavailable evidence"
+          },
+          "409": {
+            "description": "Another monitor evaluation is running"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/monitors/{id}/cancel": {
+      "post": {
+        "summary": "Cancel saved monitor evaluation",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request or unavailable evidence"
+          },
+          "409": {
+            "description": "Another monitor evaluation is running"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/studies/{id}/reproduction-report": {
+      "get": {
+        "summary": "Compare a reproduction with its immutable parent evidence",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Case/condition/seed matched text comparison, missing counts, changed protocol fields and compatibility limitations"
+          },
+          "400": {
+            "description": "No parent evidence or invalid parent hash"
+          },
+          "404": {
+            "description": "Study not found"
+          }
+        }
+      }
+    },
+    "/reports": {
+      "get": {
+        "summary": "List frozen local research reports",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid configuration or evidence"
+          },
+          "409": {
+            "description": "Resource active or conflicts with saved state"
+          }
+        }
+      }
+    },
+    "/reports/{id}": {
+      "get": {
+        "summary": "Read a saved research report",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid configuration or evidence"
+          },
+          "409": {
+            "description": "Resource active or conflicts with saved state"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
+    },
+    "/reports/regression": {
+      "post": {
+        "summary": "Create a paired behavioral regression report",
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid configuration or evidence"
+          },
+          "409": {
+            "description": "Resource active or conflicts with saved state"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "baseline": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "comparison": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "sources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 5,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "metric": {
+                          "enum": [
+                            "target_behavior",
+                            "correctness",
+                            "refusal",
+                            "honesty",
+                            "monitor_detectability"
+                          ]
+                        },
+                        "study_id": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{32}$"
+                        }
+                      },
+                      "required": [
+                        "metric",
+                        "study_id"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "title",
+                  "baseline",
+                  "comparison",
+                  "sources"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports/compatibility": {
+      "post": {
+        "summary": "Compare recorded artifact compatibility contracts",
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid configuration or evidence"
+          },
+          "409": {
+            "description": "Resource active or conflicts with saved state"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "source_job_id": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{32}$"
+                  },
+                  "target_job_id": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{32}$"
+                  }
+                },
+                "required": [
+                  "source_job_id",
+                  "target_job_id"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports/checkpoints": {
+      "post": {
+        "summary": "Compare checkpoint runs with matching protocols",
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid configuration or evidence"
+          },
+          "409": {
+            "description": "Resource active or conflicts with saved state"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "sources": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 4,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "label": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "study_id": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{32}$"
+                        },
+                        "revision": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "training_data": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "adapter": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "label",
+                        "study_id",
+                        "revision",
+                        "training_data",
+                        "adapter"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "title",
+                  "sources"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/monitors/{id}/select-threshold": {
+      "post": {
+        "summary": "Select a threshold using development predictions only",
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid configuration or evidence"
+          },
+          "409": {
+            "description": "Resource active or conflicts with saved state"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "candidates": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 21,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  },
+                  "prior_test_exposure": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "candidates",
+                  "prior_test_exposure"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
+    },
+    "/agent-tasks": {
+      "get": {
+        "summary": "List local simulated agent tasks",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid configuration or evidence"
+          },
+          "409": {
+            "description": "Resource active or conflicts with saved state"
+          }
+        }
+      },
+      "post": {
+        "summary": "Prepare a bounded simulated task without inference",
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid configuration or evidence"
+          },
+          "409": {
+            "description": "Resource active or conflicts with saved state"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "port": {
+                    "type": "integer",
+                    "minimum": 1024,
+                    "maximum": 65535
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "condition": {
+                    "enum": [
+                      "neutral",
+                      "pressure"
+                    ]
+                  },
+                  "max_steps": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 12,
+                    "default": 8
+                  },
+                  "max_tokens": {
+                    "type": "integer",
+                    "minimum": 64,
+                    "maximum": 1024,
+                    "default": 512
+                  }
+                },
+                "required": [
+                  "title",
+                  "port",
+                  "model"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent-tasks/{id}": {
+      "get": {
+        "summary": "Read saved actions, observations and verifier results",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid configuration or evidence"
+          },
+          "409": {
+            "description": "Resource active or conflicts with saved state"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
+    },
+    "/agent-tasks/{id}/run": {
+      "post": {
+        "summary": "Run a prepared simulated task",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid configuration or evidence"
+          },
+          "409": {
+            "description": "Resource active or conflicts with saved state"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {},
+                "required": []
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
+    },
+    "/agent-tasks/{id}/cancel": {
+      "post": {
+        "summary": "Cancel a prepared simulated task",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid configuration or evidence"
+          },
+          "409": {
+            "description": "Resource active or conflicts with saved state"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {},
+                "required": []
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ControlledProtocol": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "title",
+          "question",
+          "hypothesis",
+          "rubric",
+          "conditions",
+          "cases"
+        ],
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16000
+          },
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16000
+          },
+          "hypothesis": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16000
+          },
+          "rubric": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16000
+          },
+          "conditions": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 4,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "instruction"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "instruction": {
+                  "type": "string",
+                  "maxLength": 4000
+                }
+              }
+            }
+          },
+          "cases": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "group",
+                "split",
+                "prompt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "group": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "split": {
+                  "type": "string",
+                  "enum": [
+                    "development",
+                    "test"
+                  ]
+                },
+                "prompt": {
+                  "type": "string",
+                  "maxLength": 16000
+                }
+              }
+            }
+          },
+          "seeds": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10,
+            "uniqueItems": true,
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 16,
+            "maximum": 8192
+          },
+          "thinking": {
+            "type": "string",
+            "enum": [
+              "default",
+              "on",
+              "off"
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "parent_hash": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "description": "Local development preview. Maximum 200 requests and 200000 output tokens. All cases in a group must use the same split."
       }
     }
   }

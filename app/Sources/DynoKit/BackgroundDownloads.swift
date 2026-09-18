@@ -17,6 +17,7 @@ public enum BackgroundDownloads {
             let id = "background:" + url.lastPathComponent
             var progress = DownloadManager.Progress(repository: id)
             progress.displayName = name
+            progress.updatedAt = timestamp
             progress.downloadedBytes = min(bytes, total)
             progress.totalBytes = total
             progress.isExternal = true

@@ -5,6 +5,7 @@ import SwiftUI
 
 struct ResearchLabView: View {
     var model: MonitorModel
+    @State private var checkingConnection = false
     private enum Workspace: String, CaseIterable {
         case studies = "Studies", analyze = "Analyze", evidence = "Evidence"
         var symbol: String {
@@ -65,7 +66,8 @@ struct ResearchLabView: View {
                 do { try await Task.sleep(for: .seconds(3)) } catch { break }
             }
         }
-        .onAppear { if model.researchLab.draftPrompt != nil { workspace = .analyze; model.researchLab.tokenAnalysis = false }; if model.researchLab.journal.incomingCommunityStudy != nil { workspace = .studies } }
+        .onChange(of: model.researchLab.investigationDraft?.configuration) { _, value in if value != nil { workspace = .analyze; model.researchLab.tokenAnalysis = false } }
+        .onAppear { if model.researchLab.investigationDraft != nil { workspace = .analyze }; if model.researchLab.draftPrompt != nil { workspace = .analyze; model.researchLab.tokenAnalysis = false }; if model.researchLab.journal.incomingCommunityStudy != nil { workspace = .studies } }
         .onChange(of: model.researchLab.journal.incomingCommunityStudy) { _, value in if value != nil { workspace = .studies } }
         .onChange(of: model.researchLab.draftPrompt) { _, value in
             if value != nil { workspace = .analyze; model.researchLab.tokenAnalysis = false }
@@ -85,7 +87,15 @@ struct ResearchLabView: View {
             Spacer()
             Button("Models") { model.requestedTab = .run }
             Button("Pools") { model.requestedTab = .pools }
-            Button(runtime.checking ? "Checking…" : "Check connection") { Task { await runtime.refresh(model.snapshot.models) } }.disabled(runtime.checking)
+            Button {
+                checkingConnection = true
+                Task {
+                    defer { checkingConnection = false }
+                    await runtime.refresh(model.snapshot.models)
+                }
+            } label: {
+                Text(checkingConnection ? "Checking…" : "Check connection").frame(width: 135)
+            }.disabled(checkingConnection)
         }.padding(12).background(Color.secondary.opacity(0.07)).clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
@@ -94,6 +104,7 @@ struct ResearchLabView: View {
 private struct ResearchExperimentView: View {
     var model: MonitorModel
     @State private var restoringSettings = false
+    @State private var showStudyPicker = false
     @State private var submitting = false
     @State private var captureSource = "serving"
     @State private var servingPort: UInt16?
@@ -113,6 +124,18 @@ private struct ResearchExperimentView: View {
     @State private var advanced = false
     private var lab: ResearchLab { model.researchLab }
     private var runBlockedReason: String? {
+        if operation == "probe", parameters["source_study_id"] != nil {
+            let examples = parameters["examples"] as? [[String: Any]] ?? []
+            if examples.contains(where: { !["train", "validation", "test"].contains($0["split"] as? String ?? "") }) {
+                return "Complete the source-study dataset: assign each scenario group to train, validation or test in Edit layers, settings & examples."
+            }
+            for split in ["train", "validation", "test"] {
+                let rows = examples.filter { $0["split"] as? String == split }
+                if rows.count < 4 || Set(rows.compactMap { $0["label"] as? Int }) != Set([0, 1]) {
+                    return "The \(split) split needs at least four examples and both labels. Add independent scenarios; do not duplicate this study's repeated runs."
+                }
+            }
+        }
         if model.researchLab.runtime.available.isEmpty { return "Start a model in Models or a pool in Pools before running an analysis. Saved results remain available." }
         if (usingServing || usingPoolExperiment) && !model.researchLab.runtime.ready(servingPort) { return "The selected endpoint is offline or still starting. Check its connection or select a running endpoint." }
         if submitting || lab.capturing { return "An experiment is being submitted or captured." }
@@ -140,12 +163,17 @@ private struct ResearchExperimentView: View {
                 Text(usingServing ? (captureAvailable ? "Resident model · no extra copy" : (capabilityError == nil ? "Checking capture support" : "Capture unavailable")) : (lab.connected ? "Local API :\(String(lab.port))" : "Service stopped")).font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 if !usingServing && !lab.connected { Button("Start lab") { Task { await lab.start(); await lab.refresh() } } }
+                Button("Use a saved study…") { showStudyPicker = true }
                 JournalAttachButton(value: displayJob, title: "Lab experiment")
                 Button("Export experiment") { lab.export(displayJob) }.disabled(displayJob.isEmpty)
             }.padding(14)
             Text(usingPoolExperiment ? "Pool research · resident LLM weights · local training and saved artifacts" : usingServing ? "Read-only serving capture · raw text · automatically saved on this Mac" : "Isolated experiments · raw text inputs · results saved locally · measurements, not safety certifications")
                 .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14).padding(.bottom, 10)
+            if let source = parameters["source_study_title"] as? String {
+                Label("Source study: " + source, systemImage: "link").font(.callout).padding(10)
+                if operation == "probe" { Text("Dataset draft: assign scenario groups to train, validation and test before running. Review the label definitions before running; copied prompts are not automatically labeled behavioral evidence.").font(.caption).foregroundStyle(.orange).padding(.horizontal) }
+            }
             if let error = lab.error { Text(error).foregroundStyle(.red).font(.caption).padding(8) }
             Divider()
             HSplitView {
@@ -191,6 +219,12 @@ private struct ResearchExperimentView: View {
                             Text("Choose a downloaded model above or use Models to stop serving when ready. Dyno will not stop an endpoint automatically.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
+                        if operation == "probe" {
+                            Toggle("Validate on separate case groups", isOn: Binding(get: { parameters["probe_validation"] as? Bool ?? false }, set: { setParameter("probe_validation", $0) }))
+                            if parameters["probe_validation"] as? Bool == true {
+                                Text("Import examples with group IDs and train, validation and test splits. Each split needs at least four examples and both labels. Layers and regularization are selected on validation only; the test report includes shuffled-label, majority and text-length controls.").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
                         if operation == "sae" {
                             Picker("SAE architecture", selection: Binding(get: { parameters["sae_architecture"] as? String ?? "relu" }, set: { setParameter("sae_architecture", $0) })) {
                                 Text("ReLU / L1").tag("relu"); Text("TopK").tag("topk")
@@ -200,23 +234,27 @@ private struct ResearchExperimentView: View {
                         resourceStatus
                         Text(description).font(.caption).foregroundStyle(.secondary)
                         if operation == "inspect" || operation == "compare" || operation == "patch_sweep" {
-                            TextField("Prompt", text: Binding(get: { parameters["prompt"] as? String ?? "" }, set: { setParameter("prompt", $0) }), axis: .vertical)
+                            DynoFormField("Prompt", text: Binding(get: { parameters["prompt"] as? String ?? "" }, set: { setParameter("prompt", $0) }), axis: .vertical)
                                 .lineLimit(3...5).textFieldStyle(.roundedBorder)
                             if operation == "patch_sweep" {
-                                TextField("Clean prompt", text: Binding(get: { parameters["clean_prompt"] as? String ?? "" }, set: { setParameter("clean_prompt", $0) })).textFieldStyle(.roundedBorder)
-                                TextField("Target token", text: Binding(get: { parameters["target_token"] as? String ?? "" }, set: { setParameter("target_token", $0) })).textFieldStyle(.roundedBorder)
-                                TextField("Foil token", text: Binding(get: { parameters["foil_token"] as? String ?? "" }, set: { setParameter("foil_token", $0) })).textFieldStyle(.roundedBorder)
+                                DynoFormField("Clean prompt", text: Binding(get: { parameters["clean_prompt"] as? String ?? "" }, set: { setParameter("clean_prompt", $0) })).textFieldStyle(.roundedBorder)
+                                DynoFormField("Target token", text: Binding(get: { parameters["target_token"] as? String ?? "" }, set: { setParameter("target_token", $0) })).textFieldStyle(.roundedBorder)
+                                DynoFormField("Foil token", text: Binding(get: { parameters["foil_token"] as? String ?? "" }, set: { setParameter("foil_token", $0) })).textFieldStyle(.roundedBorder)
                             }
                             if operation == "compare" {
+                                Toggle("Include intervention controls", isOn: Binding(get: { parameters["intervention_controls"] as? Bool ?? false }, set: { setParameter("intervention_controls", $0) }))
+                                if parameters["intervention_controls"] as? Bool == true {
+                                    Text("Adds no-op, restored baseline and three magnitude-matched random directions. Controls compare the same input prefix; they add forward passes and do not generate continuations.").font(.caption).foregroundStyle(.secondary)
+                                }
                                 Picker("Intervention", selection: Binding(get: { parameters["intervention"] as? String ?? "scale" }, set: { setParameter("intervention", $0) })) {
                                     Text("Scale").tag("scale"); Text("Ablate").tag("ablate"); Text("Patch").tag("patch"); Text("Steer").tag("steer")
                                 }
                                 if parameters["intervention"] as? String == "patch" {
-                                    TextField("Donor prompt", text: Binding(get: { parameters["donor_prompt"] as? String ?? "" }, set: { setParameter("donor_prompt", $0) })).textFieldStyle(.roundedBorder)
+                                    DynoFormField("Donor prompt", text: Binding(get: { parameters["donor_prompt"] as? String ?? "" }, set: { setParameter("donor_prompt", $0) })).textFieldStyle(.roundedBorder)
                                 }
                                 if parameters["intervention"] as? String == "steer" {
-                                    TextField("Positive example", text: Binding(get: { parameters["positive"] as? String ?? "" }, set: { setParameter("positive", $0) })).textFieldStyle(.roundedBorder)
-                                    TextField("Negative example", text: Binding(get: { parameters["negative"] as? String ?? "" }, set: { setParameter("negative", $0) })).textFieldStyle(.roundedBorder)
+                                    DynoFormField("Positive example", text: Binding(get: { parameters["positive"] as? String ?? "" }, set: { setParameter("positive", $0) })).textFieldStyle(.roundedBorder)
+                                    DynoFormField("Negative example", text: Binding(get: { parameters["negative"] as? String ?? "" }, set: { setParameter("negative", $0) })).textFieldStyle(.roundedBorder)
                                 }
                             }
                         }
@@ -227,7 +265,9 @@ private struct ResearchExperimentView: View {
                         }
                         DisclosureGroup("Edit layers, settings & examples", isExpanded: $advanced) {
                             TextEditor(text: $configuration).font(.system(size: 11, design: .monospaced))
-                                .frame(height: 260).border(Color.secondary.opacity(0.2))
+                                .scrollContentBackground(.hidden).padding(12).frame(height: 260)
+                                .background(DynoBrand.background, in: RoundedRectangle(cornerRadius: 9))
+                                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.primary.opacity(0.22)))
                         }
                         HStack {
                             Button(submitting ? "Starting…" : (!usingServing && !lab.connected ? "Start lab & run experiment" : "Run experiment")) {
@@ -362,7 +402,10 @@ private struct ResearchExperimentView: View {
                 if let match = model.localModels.first(where: { $0.name == lab.draftModel || $0.path == lab.draftModel }) { modelPath = match.path }
                 lab.draftPrompt = nil; lab.draftModel = nil
             }
+            applyInvestigation()
         }
+        .sheet(isPresented: $showStudyPicker) { StudyInvestigationPicker(lab: lab) { applyInvestigation() } }
+        .onChange(of: lab.investigationDraft?.configuration) { _, value in if value != nil { applyInvestigation() } }
         .onChange(of: usingServing) { _, _ in selectServingModel() }
         .onChange(of: model.localModels) { _, _ in selectServingModel() }
         .onChange(of: model.snapshot.models) { _, _ in
@@ -384,6 +427,18 @@ private struct ResearchExperimentView: View {
                 do { try await Task.sleep(for: .seconds(1)) } catch { break }
             }
         }
+    }
+    private func applyInvestigation() {
+        guard let draft = lab.investigationDraft else { return }
+        restoringSettings = operation != draft.operation
+        operation = draft.operation
+        var config = (try? JSONSerialization.jsonObject(with: Data(Self.template(draft.operation).utf8))) as? [String: Any] ?? [:]
+        let incoming = (try? JSONSerialization.jsonObject(with: Data(draft.configuration.utf8))) as? [String: Any] ?? [:]
+        config.merge(incoming) { _, new in new }
+        configuration = ResearchLab.pretty(config)
+        advanced = true
+        lab.selected = nil; lab.job = [:]
+        lab.investigationDraft = nil
     }
     private func loadCapability() async {
             capability = [:]; capabilityError = nil
@@ -509,6 +564,11 @@ private struct ResearchExperimentView: View {
                     Text("Trial \(i+1) · strength \(row["strength"] as? Double ?? 0) · target ‘\(row["target_token"] as? String ?? "")’").font(.headline)
                     Text(row["prompt"] as? String ?? "").font(.caption).foregroundStyle(.secondary)
                     HStack(alignment: .top) {
+                        if let controls = row["controls"] as? [String: Any] {
+                            DisclosureGroup("No-op, restoration and random-direction controls") {
+                                Text(ResearchLab.pretty(controls)).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                            }
+                        }
                         output("Baseline", row["baseline"] as? String ?? "")
                         output("Intervention", row["output"] as? String ?? "")
                     }
@@ -520,8 +580,20 @@ private struct ResearchExperimentView: View {
                 let report = reports[i]
                 Text("Layer \(report["layer"] as? Int ?? 0)").font(.headline)
                 if let scores = report["scores"] as? [[String: Any]] {
-                    Text(String(format: "Held-out accuracy %.2f · AUROC %.2f · Brier %.3f", report["accuracy"] as? Double ?? 0, report["auc"] as? Double ?? 0, report["brier"] as? Double ?? 0)).font(.callout)
-                    Text(String(format: "Controls: majority %.2f · shuffled labels %.2f", report["majority_accuracy"] as? Double ?? 0, report["shuffled_label_accuracy"] as? Double ?? 0)).font(.caption).foregroundStyle(.secondary)
+                    if let test = report["test"] as? [String: Any] {
+                        Text("Selected on validation only · \(test["n"] as? Int ?? 0) test examples").font(.headline)
+                        Text(String(format: "Test accuracy %.2f · AUROC %.2f · Brier %.3f", test["accuracy"] as? Double ?? 0, test["auc"] as? Double ?? 0, test["brier"] as? Double ?? 0))
+                        ForEach(["majority_control", "shuffled_label_control", "text_length_control"], id: \.self) { key in
+                            let control = report[key] as? [String: Any] ?? [:]
+                            Text(String(format: "%@: accuracy %.2f", key.replacingOccurrences(of: "_", with: " "), control["accuracy"] as? Double ?? 0)).font(.caption)
+                        }
+                        DisclosureGroup("Validation selection, case groups and domain results") {
+                            Text(ResearchLab.pretty(report)).font(.caption.monospaced()).textSelection(.enabled)
+                        }
+                    } else {
+                        Text(String(format: "Held-out accuracy %.2f · AUROC %.2f · Brier %.3f", report["accuracy"] as? Double ?? 0, report["auc"] as? Double ?? 0, report["brier"] as? Double ?? 0)).font(.callout)
+                        Text(String(format: "Controls: majority %.2f · shuffled labels %.2f", report["majority_accuracy"] as? Double ?? 0, report["shuffled_label_accuracy"] as? Double ?? 0)).font(.caption).foregroundStyle(.secondary)
+                    }
                     Chart(scores.indices, id: \.self) { j in
                         BarMark(x: .value("Example", String(j+1)), y: .value("Probe score", scores[j]["score"] as? Double ?? 0))
                             .foregroundStyle(by: .value("Split", scores[j]["split"] as? String ?? ""))

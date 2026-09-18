@@ -11,6 +11,7 @@ public final class DownloadManager: @unchecked Sendable {
     public struct Progress: Sendable, Equatable {
         public var repository: String
         public var displayName: String?
+        public var updatedAt: Double?
         public var detail: String?
         public var isExternal = false
         public var isStale = false

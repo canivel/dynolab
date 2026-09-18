@@ -25,9 +25,9 @@ struct DynoApp: App {
     }
 
     /// The interface is the status item and the window, both AppKit-managed.
-    /// This scene exists because an App needs one; it is never shown.
+    /// Settings uses a standard macOS window alongside the AppKit main window.
     var body: some Scene {
-        Settings { EmptyView() }
+        Settings { AppSettingsView() }
             .commands {
                 CommandGroup(replacing: .appInfo) {
                     Button("About Dyno Lab") { AppIdentity.showAbout() }

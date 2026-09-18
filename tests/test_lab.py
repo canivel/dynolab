@@ -8,7 +8,7 @@ from dyno.lab.server import Jobs, validate
 class LabTests(unittest.TestCase):
     def test_invalid_settings_fail_before_loading_model(self):
         for config in [{}, {'operation':'exec','model':'m'}, {'operation':'inspect','model':'m','layers':[-1]},
-                       {'operation':'inspect','model':'m','max_tokens':10000}]:
+                       {'operation':'inspect','model':'m','max_tokens':10000}, {'operation':'probe','model':'m','probe_validation':'yes'}, {'operation':'compare','model':'m','intervention_controls':True,'control_repeats':0}, {'operation':'inspect','model':'m','intervention_controls':True}]:
             with self.assertRaises(ValueError): validate(config)
 
     def test_restart_marks_interrupted_and_ids_cannot_escape_store(self):

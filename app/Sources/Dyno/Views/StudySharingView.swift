@@ -29,12 +29,9 @@ struct StudySharingView: View {
                             Toggle("\(entry.kind.capitalized) · \(entry.title)", isOn: Binding(get: { selected.contains(entry.id) }, set: { if $0 { selected.insert(entry.id) } else { selected.remove(entry.id) } }))
                         }
                         Toggle("Include model-emitted thinking", isOn: $thinking)
-                        Text("Method").font(.headline)
-                        TextField("What did you test and how?", text: $method, axis: .vertical)
-                        Text("Finding").font(.headline)
-                        TextField("What did you observe? An inconclusive result is OK.", text: $finding, axis: .vertical)
-                        Text("Limitations").font(.headline)
-                        TextField("What can this experiment not establish?", text: $limitations, axis: .vertical)
+                        DynoFormField("Method", text: $method, axis: .vertical, hint: "Describe the procedure and settings.")
+                        DynoFormField("Finding", text: $finding, axis: .vertical, hint: "Report what you observed, including inconclusive results.")
+                        DynoFormField("Limitations", text: $limitations, axis: .vertical, hint: "Explain what this experiment cannot establish.")
                         Text("License: CC BY 4.0. Review prompts, context and notes for private information. Only share content you have the right to distribute.").font(.caption)
                     }
                 }
@@ -63,7 +60,7 @@ struct StudySharingView: View {
                 }
             }
             if !error.isEmpty { Text(error).font(.callout).textSelection(.enabled) }
-        }.padding(24).frame(width: 740, height: 650, alignment: .topLeading).background(DynoBrand.background).textFieldStyle(.roundedBorder)
+        }.padding(24).frame(width: 740, height: 650, alignment: .topLeading).background(DynoBrand.background).dynoTheme().textFieldStyle(.roundedBorder)
     }
 }
 
@@ -89,7 +86,7 @@ struct StudyImportView: View {
                 }
             }
             if loading { ProgressView("Downloading the published study…") }
-            TextField("Original study URL (optional, kept for attribution)", text: $source)
+            DynoFormField("Original study URL (optional, kept for attribution)", text: $source)
             if let p = package, let data {
                 ScrollView { VStack(alignment: .leading, spacing: 12) { Text(p.title).font(.title2); Text(p.question); Text("\(p.entries.count) entries · \(p.model.name) · \(p.license)"); Text("Limitations").bold(); Text(p.limitations); Text("Omissions").bold(); Text(p.omissions.joined(separator: "\n")) } }
                 Text("Creates a separate local study. Imported prompts remain inactive until you select a running endpoint and explicitly run them. Source bytes and a checksum are kept locally.").font(.caption)
@@ -101,7 +98,7 @@ struct StudyImportView: View {
                 if journal.running || !journal.pendingWrites.isEmpty { Text("Finish the current run and save pending entries before importing.").font(.caption).foregroundStyle(.orange) }
             }
             if !error.isEmpty { Text(error).foregroundStyle(.orange) }
-        }.padding(24).frame(width: 660, height: 530, alignment: .topLeading).background(DynoBrand.background).textFieldStyle(.roundedBorder)
+        }.padding(24).frame(width: 660, height: 530, alignment: .topLeading).background(DynoBrand.background).dynoTheme().textFieldStyle(.roundedBorder)
         .task(id: journal.incomingCommunityStudy) {
             guard let id = journal.incomingCommunityStudy else { return }
             loading = true; package = nil; data = nil

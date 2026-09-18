@@ -7,8 +7,14 @@ if [ -n "${DYNO_NOTARY_PROFILE:-}" ] && [ "${DYNO_SIGN_IDENTITY:--}" = - ]; then
   echo "Notarization requires DYNO_SIGN_IDENTITY." >&2
   exit 1
 fi
-./build.sh
+case "${1:-}" in
+  "") ./build.sh ;;
+  --package-existing) test -d build/Dyno.app ;;
+  *) echo "Usage: $0 [--package-existing]" >&2; exit 2 ;;
+esac
 VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' build/Dyno.app/Contents/Info.plist)
+SOURCE_VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' ../pyproject.toml | head -1)
+[ "$VERSION" = "$SOURCE_VERSION" ] || { echo 'Bundle version differs from source; rebuild before packaging.' >&2; exit 1; }
 STAGING=$(mktemp -d "${TMPDIR:-/tmp}/dyno-dmg.XXXXXX")
 trap 'rm -rf "$STAGING"' EXIT
 cp -R build/Dyno.app "$STAGING/Dyno.app"

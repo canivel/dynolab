@@ -65,15 +65,7 @@ struct MainWindow: View {
                 .frame(width: 550)
                 Spacer()
                 AppUpdatesButton()
-                if case let .running(name, port) = model.serverState {
-                    HStack(spacing: 5) {
-                        Circle().fill(Color.green).frame(width: 6, height: 6)
-                        Text("\(name) · :\(String(port))")
-                            .font(.system(size: 10)).foregroundStyle(.secondary)
-                            .lineLimit(1).truncationMode(.middle)
-                    }
-                    .padding(.trailing, 6)
-                }
+                RuntimeOverview(model: model, pool: poolSession)
 
                 // Chat opens beside this window rather than replacing a tab,
                 // so a conversation and the router's decisions can be watched

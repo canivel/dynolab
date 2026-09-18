@@ -21,7 +21,7 @@ Archive hides a query and its result. Show archived queries and Restore bring it
 
 1. [Install the Apple Silicon app](#1-download-and-install), then [download a compatible MLX language model](#3-discover-and-download-a-model). Choose one that leaves room for runtime workspace as well as its weights.
 2. Start the model in **Models**, try a prompt in **Chat**, and inspect its input and output in **Execution**.
-3. Open **Lab → Experiments → Activations → Inspect serving model**, select the running endpoint and enter a short prompt. Select layers that exist in the model, read the readiness guidance, and run the capture. Resident capture reuses loaded weights but still needs workspace.
+3. Open **Lab → Analyze → Activations → Inspect serving model**, select the running endpoint and enter a short prompt. Select layers that exist in the model, read the readiness guidance, and run the capture. Resident capture reuses loaded weights but still needs workspace.
 4. Reopen the saved result. Change one input and run another capture. Color measures activation magnitude; it does not explain what a neuron means. The raw-text capture is a fresh forward pass, not a trace of your earlier templated Chat request.
 5. Ready for a research question? [Reproduce the reference-corruption probe](https://dynolab.dev/probe-example.html#try-it). It includes an importable configuration, recorded results, baselines and limitations.
 
@@ -57,8 +57,8 @@ Version 0.2.1 introduces Developer ID signing and Apple notarization. Download t
 
 | Place | Use it for |
 |---|---|
-| **Lab → Experiments** | Activations, interventions, labeled probes and small SAE experiments |
-| **Lab → Token analysis** | Generated token probabilities and comparisons between two endpoints |
+| **Lab → Analyze** | Activations, interventions, labeled probes and small SAE experiments |
+| **Lab → Analyze → Token probabilities** | Generated token probabilities and comparisons between two endpoints |
 | **Execution** | Inspect inputs, model-emitted thinking, output and tool-call data for requests |
 | **Models** | Select downloaded weights, set launch options, start or stop Dyno endpoints |
 | **Discover** | Find and download MLX models |
@@ -151,7 +151,7 @@ The following sections include downloadable settings for the small Qwen model. S
 
 **Question:** what does the model predict after `The capital of France is`, and how do its hidden-state magnitudes differ across tokens and layers?
 
-1. Open **Lab → Experiments** and choose **Activations**.
+1. Open **Lab → Analyze** and choose **Activations**.
 2. Set **Capture mode → Inspect serving model**, then select the serving endpoint. This reuses its loaded weights.
 3. Enter `The capital of France is`.
 4. Expand **Edit layers, settings & examples**. For the example model, use layers `[4, 8]` and `max_input_tokens: 128`. Layer indices start at zero; use indices that exist in your model.
@@ -229,7 +229,7 @@ Training loss alone is not sufficient: inspect held-out reconstruction and spars
 
 ## 10. Analyze generated tokens
 
-1. Open **Lab → Token analysis**.
+1. Open **Lab → Analyze → Token probabilities**.
 2. Select a running model and enter `Explain in two sentences why B-tree indexes suit range queries.`
 3. Choose a token budget and seed. Select **Thinking: Off** for a concise supported-model test, or On when specifically studying emitted reasoning.
 4. Click **Analyze tokens**. Click a token to inspect its probability and alternatives. Review the lowest-probability tokens rather than reading a single average as quality.
@@ -337,3 +337,30 @@ Lime buttons identify primary actions; outlined buttons are secondary actions. V
 ### Experiment readiness
 
 Isolated Lab experiments require a downloaded MLX language model and sufficient memory. **Start lab & run experiment** starts the local research service automatically before submitting. When Run is disabled, the reason appears beneath it. GPU active time includes desktop/browser rendering and is not a saturation measure, so it does not block experiments. Measured active inference requests, missing/stale memory information and insufficient headroom still prevent admission. For a running GGUF pool with research runtime v2, choose **Running GPU pool** under Execution backend. Interventions, causal patching, probes and SAE experiments reuse its resident weights. Probe/SAE fitting runs on the coordinator; see [pool research](pool-lab-capture.md) for limits.
+
+## Local preview: controlled comparisons
+
+The local development app adds **Lab → Studies → Controlled comparisons**. Prepare a frozen protocol, run matched conditions on a selected endpoint, review the saved answers and export evidence. See [the controlled-study guide](controlled-studies.md) for steps and limits. This is not in the published 0.4.3 release.
+
+
+### Context-masked response review (local preview)
+
+Saved controlled-study responses can now be reviewed in a shuffled queue with condition and model labels hidden, append-only judgments, self-reported prior exposure, and an explicit permanent reveal. See [the workflow and API examples](controlled-studies.md#review-with-conditions-hidden-local-preview). No running model is required. This is a review aid, not authenticated or guaranteed blind review.
+
+
+## Response monitor evaluations (local preview)
+
+Compare model scores with frozen reference labels, review separate development/test metrics, and inspect disagreements. See the [monitor evaluation walkthrough](monitor-evaluations.md) for UI, SDK, HTTP and MCP instructions and limits.
+
+Grouped probes now have a [validation workflow](probe-validation.md) with separate training, validation and test groups, and baseline controls (local preview).
+
+## Additional local research workflows
+
+- [Regression reports](regression-reports.md): Compare paired labeled outcomes and inspect exclusions.
+- [Artifact compatibility](compatibility-checks.md): Check a saved artifact contract before considering reuse.
+- [Checkpoint comparisons](checkpoint-comparisons.md): Compare saved runs with the same protocol across checkpoints.
+- [Simulated agent tasks](simulated-agent-tasks.md): Inspect bounded actions and verification claims.
+- [Community reproductions](community-reproductions.md): Connect a new attempt to the exact shared study version.
+- [Monitor threshold selection](monitor-evaluations.md): select on development predictions before evaluating held-out data.
+
+These features are local previews. Guides separate measured evidence, user-supplied metadata and unsupported operations.

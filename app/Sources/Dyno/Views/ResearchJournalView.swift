@@ -6,6 +6,9 @@ struct ResearchJournalView: View {
     var model: MonitorModel
     private var journal: ResearchJournal { model.researchLab.journal }
     @State private var creating = false
+    @State private var controlledStudies = false
+    @State private var investigating = false
+    @State private var investigationEntry: UUID?
     @State private var sharing = false
     @State private var importing = false
     @State private var title = ""
@@ -27,6 +30,7 @@ struct ResearchJournalView: View {
                 Button("New study", systemImage: "plus") { creating = true }.disabled(journal.running || voice.recording || voice.transcribing || voice.requestingMicrophone || voice.audio != nil)
                 Button("Import study", systemImage: "square.and.arrow.down") { importing = true }.disabled(journal.running)
                 Button("Refresh studies") { journal.reload() }
+                Button("Controlled comparisons", systemImage: "square.split.2x2") { controlledStudies = true }
                 ScrollView {
                     ForEach(journal.studies) { item in
                         Button { journal.select(item.id) } label: {
@@ -44,18 +48,27 @@ struct ResearchJournalView: View {
             if let study {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        HStack { Text(study.title).font(.largeTitle.bold()); Spacer(); Button("Share study", systemImage: "square.and.arrow.up") { sharing = true }; Menu("More") { Button("Export full private notebook") { journal.export() } } }
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text(study.title).font(.largeTitle.bold()).fixedSize(horizontal: false, vertical: true)
+                            HStack {
+                                Button("Investigate further…", systemImage: "flask") { investigationEntry = nil; investigating = true }
+                                Button("Share study", systemImage: "square.and.arrow.up") { sharing = true }
+                                Menu("More") { Button("Export full private notebook") { journal.export() } }
+                            }
+                        }
                         Text(study.question).font(.title3)
                         if !study.hypothesis.isEmpty { Text("Initial hypothesis: \(study.hypothesis)") }
                         Text("Keep observations separate from interpretations. Record disconfirming examples, output limits and alternative explanations.").font(.caption).foregroundStyle(.secondary)
-                        if let error = journal.error { Text(error).foregroundStyle(.orange).textSelection(.enabled) }
+                        if let error = journal.error {
+                            RecoveryNotice(error: error) { model.requestedTab = .run }
+                        }
                         if !journal.pendingWrites.isEmpty {
                             Text("Unsaved entries: \(journal.pendingWrites.count). Keep this app open until saving succeeds.").foregroundStyle(.red)
                             Button("Retry saving entries") { journal.retryWrites() }
                             ForEach(Array(journal.pendingWrites.values)) { entry in entryCard(entry) }
                         }
-                        GroupBox("Prompt iteration") { iterationForm }
-                        GroupBox("Journal entry") { noteForm }
+                        GroupBox { iterationForm } label: { Label("Try a prompt", systemImage: "text.bubble") }.groupBoxStyle(DynoFormGroupStyle())
+                        GroupBox { noteForm } label: { Label("Record an observation", systemImage: "square.and.pencil") }.groupBoxStyle(DynoFormGroupStyle())
                         HStack { Text("Timeline").font(.title2); Spacer(); TextField("Search entries", text: $search).frame(maxWidth: 230) }
                         Text("Select an entry to attach observations to it. Revise starts a separate test; Follow up includes the saved conversation and answer.").font(.caption).foregroundStyle(.secondary)
                         Toggle("Show archived queries", isOn: $showArchived).toggleStyle(.switch)
@@ -64,7 +77,12 @@ struct ResearchJournalView: View {
                             entryCard(entry)
                         }
                         if journal.entries.isEmpty { ContentUnavailableView("Start with your question", systemImage: "book", description: Text("Save a baseline prompt or a planning note. Each later result and observation stays in this timeline.")) }
-                    }.padding(22)
+                    }.padding(24).frame(maxWidth: 940, alignment: .leading).frame(maxWidth: .infinity, alignment: .topLeading)
+                }.safeAreaInset(edge: .bottom) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Current prompt iteration").font(.caption).foregroundStyle(.secondary)
+                        iterationActions
+                    }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(DynoBrand.surface)
                 }.frame(minWidth: 600, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 ContentUnavailableView("Your research starts here", systemImage: "book.closed", description: Text("Create a study with a question and initial hypothesis. Save each prompt, result and observation as the investigation develops."))
@@ -88,22 +106,21 @@ struct ResearchJournalView: View {
         .onChange(of: journal.incomingCommunityStudy) { _, id in if id != nil { importing = true } }
         .onDisappear { voice.stop(); voice.cancelTranscription() }
         .sheet(isPresented: $sharing) { if let study { StudySharingView(journal: journal, study: study) } }
+        .sheet(isPresented: $investigating) { StudyInvestigationPicker(lab: model.researchLab, initialStudyID: journal.selected.map { "notebook:" + $0.uuidString }, initialEntryID: investigationEntry) }
+        .sheet(isPresented: $controlledStudies) { ControlledStudiesView(model: model) }
         .sheet(isPresented: $importing) { StudyImportView(journal: journal) }
         .sheet(isPresented: $creating) {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Start a research study").font(.title2)
-                TextField("Study title", text: $title)
-                TextField("Research question", text: $question)
-                TextField("Initial hypothesis (optional)", text: $hypothesis)
-                Text("What result would change your mind? You can record a plan and success criteria as your first journal entry.").font(.caption)
-                HStack { Button("Cancel") { creating = false }; Spacer(); Button("Create study") { journal.create(title: title, question: question, hypothesis: hypothesis); title = ""; question = ""; hypothesis = ""; creating = false }.disabled(title.trimmingCharacters(in: .whitespaces).isEmpty || question.trimmingCharacters(in: .whitespaces).isEmpty) }
-            }.padding(24).frame(width: 520)
+            NewResearchStudyForm(title: $title, question: $question, hypothesis: $hypothesis,
+                                 cancel: { creating = false }, create: {
+                journal.create(title: title, question: question, hypothesis: hypothesis)
+                title = ""; question = ""; hypothesis = ""; creating = false
+            })
         }
     }
     private var iterationForm: some View {
         @Bindable var journal = journal
         return VStack(alignment: .leading, spacing: 10) {
-            TextField("Iteration title", text: $journal.runTitle)
+            DynoFormField("Iteration name", text: $journal.runTitle, hint: "Identify this prompt version in the timeline.", example: "e.g. Baseline")
             Picker("Running model", selection: Binding(get: { journal.input.port }, set: { port in
                 journal.input.port = port; journal.input.model = servers.first { $0.port == port }?.identifier ?? ""
             })) {
@@ -113,25 +130,28 @@ struct ResearchJournalView: View {
             if !runtimeReady { Text("Execution locked until this prompt’s selected model or pool is running and reachable. You can still read history and save planning notes.").font(.caption).foregroundStyle(.orange) }
             if servers.isEmpty { Text("Start a model in Models or a pool in Pools. You can write and save prompts without running a model.").font(.caption).foregroundStyle(.secondary) }
             if let parent = journal.parent { HStack { Text("Branches from \(parent.uuidString.prefix(8)) · \(journal.input.context.count) prior messages").font(.caption); Button("New independent prompt") { journal.parent = nil; journal.input.context = [] } } }
-            TextEditor(text: $journal.input.prompt).font(.body).frame(height: 100).border(Color.secondary.opacity(0.2))
+            DynoFormField("Prompt", text: $journal.input.prompt, axis: .vertical, hint: "The message sent to the selected model. Save a draft or run it as a new iteration.", example: "Enter the question and relevant facts…")
             if journal.running || !journal.liveThinking.isEmpty || !journal.liveAnswer.isEmpty {
                 Button { showLive = true } label: { Label(journal.running ? "Show live thinking and answer" : "View last streamed response", systemImage: "waveform") }.buttonStyle(.dynoPrimary)
                 if journal.running { Text(journal.liveStatus).font(.caption).foregroundStyle(.secondary) }
             }
             generationControls
             DisclosureGroup("Advanced · system instruction, temperature and conversation") {
-                TextField("System instruction", text: $journal.input.system)
-                HStack { Text("Temperature"); TextField("Temperature", value: $journal.input.temperature, format: .number).frame(width: 70); Text("Seed"); TextField("Seed", value: $journal.input.seed, format: .number).frame(width: 100) }
+                DynoFormField("System instruction", text: $journal.input.system, axis: .vertical, hint: "Instructions applied before your prompt. Changes affect the experimental conditions.")
+                HStack { Text("Temperature"); TextField("Temperature", value: $journal.input.temperature, format: .number).textFieldStyle(.roundedBorder).frame(width: 90); Text("Seed"); TextField("Seed", value: $journal.input.seed, format: .number).textFieldStyle(.roundedBorder).frame(width: 120) }
                 Text("Thinking support depends on the endpoint. Emitted reasoning is model output, not a verified account of computation. This request does not capture activations.").font(.caption).foregroundStyle(.secondary)
                 ForEach(Array(journal.input.context.enumerated()), id: \.offset) { _, message in Text("\(message.role): \(message.content)").font(.caption).textSelection(.enabled) }
             }
-            HStack {
+
+            Text("Prompt and note working copies are saved automatically. Save a draft entry to freeze a version in the timeline. Runs are recorded before submission, then receive a separate result, cancellation or error entry. No earlier entry is overwritten.").font(.caption).foregroundStyle(.secondary)
+        }.padding(0)
+    }
+    private var iterationActions: some View {
+        HStack {
                 Button("Save prompt draft") { _ = journal.save(ResearchEntry(kind: "draft", title: journal.runTitle, parent: journal.parent, iteration: journal.input)) }.disabled(journal.input.prompt.isEmpty)
                 Button { if runtimeReady { journal.run() } } label: { Label(journal.running ? "Running…" : "Run and save iteration", systemImage: "play.fill") }.buttonStyle(.dynoPrimary).controlSize(.large).disabled(!runtimeReady || journal.running || !journal.pendingWrites.isEmpty || journal.input.port == 0 || journal.input.prompt.isEmpty || !journal.input.temperature.isFinite || !(0...2).contains(journal.input.temperature))
                 if journal.running { ProgressView().controlSize(.small); Button("Cancel request") { journal.task?.cancel() } }
             }
-            Text("Prompt and note working copies are saved automatically. Save a draft entry to freeze a version in the timeline. Runs are recorded before submission, then receive a separate result, cancellation or error entry. No earlier entry is overwritten.").font(.caption).foregroundStyle(.secondary)
-        }.padding(8)
     }
     private var generationControls: some View {
         @Bindable var journal = journal
@@ -151,8 +171,8 @@ struct ResearchJournalView: View {
                 Spacer()
                 Text("\(journal.input.maxTokens.formatted()) tokens").font(.headline.monospacedDigit()).foregroundStyle(DynoBrand.accent)
             }
-            Slider(value: Binding(get: { Double(journal.input.maxTokens) }, set: { journal.input.maxTokens = Int($0) }), in: 128...16384, step: 128)
-                .accessibilityLabel("Output token limit").accessibilityValue("\(journal.input.maxTokens) tokens")
+            Slider(value: Binding(get: { Double(journal.input.maxTokens) }, set: { journal.input.maxTokens = Int(($0 / 128).rounded()) * 128 }), in: 128...16384)
+                .accessibilityLabel("Output token limit in tokens")
             HStack {
                 Text("128 · shorter"); Spacer(); Text("16,384 · more room")
             }.font(.caption).foregroundStyle(.secondary)
@@ -181,9 +201,9 @@ struct ResearchJournalView: View {
                 Picker("Entry type", selection: $journal.noteKind) { ForEach(["Plan", "Observation", "Interpretation", "Alternative explanation", "Next step", "Conclusion", "Correction"], id: \.self) { Text($0) } }
                 if journal.focus != nil { Button("Link: \(journal.focus!.uuidString.prefix(8)) · clear") { journal.focus = nil } }
             }
-            TextEditor(text: $journal.note).frame(height: 85).border(Color.secondary.opacity(0.2))
+            DynoFormField("Journal note", text: $journal.note, axis: .vertical, hint: "Separate what you observed from your interpretation.", example: "What happened, and what should you test next?")
             HStack {
-                Button("Save entry") { if journal.save(ResearchEntry(kind: "note", title: journal.noteKind, body: journal.note, parent: journal.focus)) { journal.note = "" } }.disabled(journal.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Save entry") { if journal.save(ResearchEntry(kind: "note", title: journal.noteKind, body: journal.note, parent: journal.focus)) { journal.note = "" } }.buttonStyle(.dynoPrimary).disabled(journal.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button("Attach result or file…") { attachFile() }
             }
             DisclosureGroup("Voice note · local transcription") {
@@ -199,7 +219,7 @@ struct ResearchJournalView: View {
                     Text("Save or discard this audio draft before switching studies.").font(.caption).foregroundStyle(.secondary)
                 }
                 if let error = voice.error { Text(error).foregroundStyle(.orange).font(.caption) }
-                TextEditor(text: $voice.transcript).frame(height: 80)
+                DynoFormField("Transcription", text: $voice.transcript, axis: .vertical, hint: "Review the transcription before adding it to your notebook.")
                 Button("Save audio and reviewed transcript") { saveVoice() }.disabled(voice.audio == nil || voice.recording || voice.transcribing || voice.requestingMicrophone)
                 Text("Uses macOS on-device speech recognition in your current language when available. No cloud fallback. Review transcription errors before saving. Audio is copied into this study.").font(.caption).foregroundStyle(.secondary)
             }
@@ -222,7 +242,7 @@ struct ResearchJournalView: View {
             if let settings = entry.iteration {
                 Text(settings.prompt).textSelection(.enabled)
                 Text("\(settings.model.isEmpty ? "No model selected" : settings.model) · thinking \(settings.thinking) · limit \(settings.maxTokens) · seed \(settings.seed)").font(.caption).foregroundStyle(.secondary)
-                HStack { Button("Revise prompt") { journal.revise(entry, followup: false) }; if entry.kind == "result" && entry.hasFinalAnswer && !entry.hitTokenLimit { Button("Follow up") { journal.revise(entry, followup: true) } } }.disabled(journal.running)
+                HStack { Button("Investigate further…") { investigationEntry = entry.id; investigating = true }; Button("Revise prompt") { journal.revise(entry, followup: false) }; if entry.kind == "result" && entry.hasFinalAnswer && !entry.hitTokenLimit { Button("Follow up") { journal.revise(entry, followup: true) } } }.disabled(journal.running)
             }
             if ["error", "cancelled"].contains(entry.kind) { Text("Incomplete run · any output below is partial, not a finished answer.").foregroundStyle(.orange) }
             if let reasoning = entry.thinking, !reasoning.isEmpty { DisclosureGroup("Model-emitted thinking · not verified reasoning") { Text(reasoning).textSelection(.enabled) } }

@@ -57,6 +57,7 @@ enum ViewSnapshot {
            let job = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             model.researchLab.servingResult = job
             model.researchLab.job = job
+            model.researchLab.journal.selected = nil
         } else if arguments.contains("--lab-only") {
             if let value = ProcessInfo.processInfo.environment["DYNO_LAB_PORT"], let port = UInt16(value) { model.researchLab.port = port }
             Task {
@@ -130,6 +131,30 @@ enum ViewSnapshot {
             while !checked && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
 
             targets = [("research-notebooks", { AnyView(MainWindow(model: model, initialTab: .lab)) }, CGSize(width: 1300, height: 1100))]
+        }
+        if arguments.contains("--runtime-only") {
+            targets = [("runtime-overview", { AnyView(RuntimeOverview(model: model, pool: PoolSession()).panel) }, CGSize(width: 460, height: 640))]
+        }
+        if arguments.contains("--monitor-only"), let sourceID = ProcessInfo.processInfo.environment["DYNO_STUDY_ID"] {
+            targets = [("monitor-evaluation", { AnyView(MonitorEvaluationView(model: model, sourceID: sourceID, initialEvaluationID: ProcessInfo.processInfo.environment["DYNO_MONITOR_ID"])) }, CGSize(width: 1300, height: 1100))]
+        }
+        if arguments.contains("--reports-only") {
+            targets = [("research-report", { AnyView(ResearchReportsView(model: model, initialReportID: ProcessInfo.processInfo.environment["DYNO_REPORT_ID"])) }, CGSize(width: 1300, height: 1050))]
+        }
+        if arguments.contains("--agent-only") {
+            targets = [("simulated-agent", { AnyView(AgentTasksView(model: model, initialID: ProcessInfo.processInfo.environment["DYNO_AGENT_ID"])) }, CGSize(width: 1300, height: 1050))]
+        }
+        if arguments.contains("--study-summary-only"),
+           let path = ProcessInfo.processInfo.environment["DYNO_SUMMARY_FILE"],
+           let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+           let summary = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            targets = [("study-results", { AnyView(StudyResultsOverview(summary: summary, review: {}).padding(24).frame(width: 900).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 900, height: 780))]
+        }
+        if arguments.contains("--new-study-only") {
+            targets = [("new-study-form", { AnyView(NewResearchStudyForm(title: .constant(""), question: .constant(""), hypothesis: .constant(""), cancel: {}, create: {})) }, CGSize(width: 700, height: 700))]
+        }
+        if arguments.contains("--controlled-only") {
+            targets = [("controlled-study", { AnyView(ControlledStudiesView(model: model, initialStudyID: ProcessInfo.processInfo.environment["DYNO_STUDY_ID"], initialEditorStep: Int(ProcessInfo.processInfo.environment["DYNO_STUDY_STEP"] ?? "0") ?? 0)) }, CGSize(width: 1300, height: 1000))]
         }
         if arguments.contains("--community-only") {
             let journal = model.researchLab.journal

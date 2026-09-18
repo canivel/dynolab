@@ -12,11 +12,16 @@ final class ResearchLab {
     var capturing = false
     var savedCaptures: [[String: Any]] = []
     var archiveError: String?
-    init() { reloadCaptures() }
+    init() {
+        if let value = ProcessInfo.processInfo.environment["DYNO_LAB_PORT"], let override = UInt16(value), override >= 1024 { port = override }
+        reloadCaptures()
+    }
     func reloadCaptures() {
         do { savedCaptures = try ResearchArchive().load(kind: "activation") }
         catch { archiveError = error.localizedDescription }
     }
+    struct InvestigationDraft { let operation: String; let configuration: String }
+    var investigationDraft: InvestigationDraft?
     var draftPrompt: String?
     var draftModel: String?
     var connected = false
@@ -38,7 +43,11 @@ final class ResearchLab {
             connected = true; error = nil; return
         }
         guard process?.isRunning != true else { return }
-        guard let command = Runtime.invocation(for: ["lab", "--port", String(port)]) else {
+        var arguments = ["lab", "--port", String(port)]
+        if let directory = ProcessInfo.processInfo.environment["DYNO_LAB_DATA_DIR"], !directory.isEmpty {
+            arguments += ["--data-dir", directory]
+        }
+        guard let command = Runtime.invocation(for: arguments) else {
             error = "No Python runtime available. Open a bundled Dyno build."; return
         }
         let task = Process()

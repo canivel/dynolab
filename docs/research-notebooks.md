@@ -17,6 +17,10 @@ Use **Save to study** on a result to connect analysis to your research record.
 
 ## Start a study
 
+The study form uses persistent labels, explanatory hints and example placeholders. Examples disappear on focus and are not saved as input. Create/Cancel remain visible while the fields scroll.
+
+![New study form in the local preview](assets/new-study-form.png)
+
 Choose **New study** and enter a title, a research question and an initial hypothesis. Start with a **Plan** journal entry: describe the evidence, the comparison you will make, and what would change your mind. You can write before any model is running.
 
 For example, investigate whether an assistant changes a release decision after a user expresses confidence without supplying new facts. Record a baseline, an incorrect-belief challenge and a correct-belief control. Keep those conditions explicit rather than treating every challenged answer as sycophancy.

@@ -53,7 +53,7 @@ For streamed responses set `stream: true` and use `curl -N`. Read SSE `data:` ev
 
 ## Isolated research: first request
 
-Start **Lab → Experiments → Start lab**. A source installation can use `dyno lab --port 8980`. Check health, then submit:
+Start **Lab → Analyze**. A source installation can use `dyno lab --port 8980`. Check health, then submit:
 
 ```bash
 curl http://127.0.0.1:8980/lab/v1/health
@@ -238,3 +238,36 @@ Pools use a separate loopback llama.cpp endpoint, normally `http://127.0.0.1:897
 ## Worked example: reference corruption
 
 The [Qwen3.8 identifier-fidelity experiment](https://dynolab.dev/probe-example.html) includes importable Lab JSON, exact prompts, generated outputs, saved weights, SDK submission and HTTP commands. It uses the existing jobs and artifacts APIs. The probe predicts literal reference absence, not harmfulness or deceptive intent.
+
+## Local development preview
+
+Controlled comparisons now have a local protocol runner, saved attempts and human labels. See [Controlled studies](controlled-studies.md) for the UI, SDK, API, MCP tools and current limits. This preview is not included in the published 0.4.3 release.
+
+
+### Context-masked response review (local preview)
+
+Saved controlled-study responses can now be reviewed in a shuffled queue with condition and model labels hidden, append-only judgments, self-reported prior exposure, and an explicit permanent reveal. See [the workflow and API examples](controlled-studies.md#review-with-conditions-hidden-local-preview). No running model is required. This is a review aid, not authenticated or guaranteed blind review.
+
+
+## Response monitor evaluations (local preview)
+
+Compare model scores with frozen reference labels, review separate development/test metrics, and inspect disagreements. See the [monitor evaluation walkthrough](monitor-evaluations.md) for UI, SDK, HTTP and MCP instructions and limits.
+
+Grouped probes now have a [validation workflow](probe-validation.md) with separate training, validation and test groups, and baseline controls (local preview).
+
+## Additional local research workflows
+
+- [Regression reports](regression-reports.md): Compare paired labeled outcomes and inspect exclusions.
+- [Artifact compatibility](compatibility-checks.md): Check a saved artifact contract before considering reuse.
+- [Checkpoint comparisons](checkpoint-comparisons.md): Compare saved runs with the same protocol across checkpoints.
+- [Simulated agent tasks](simulated-agent-tasks.md): Inspect bounded actions and verification claims.
+- [Community reproductions](community-reproductions.md): Connect a new attempt to the exact shared study version.
+- [Monitor threshold selection](monitor-evaluations.md): select on development predictions before evaluating held-out data.
+
+These features are local previews. Guides separate measured evidence, user-supplied metadata and unsupported operations.
+
+## From a saved study to deeper analysis
+
+The native app can prepare an analysis from a notebook study or a controlled comparison. This is a dataset draft, not an automatic scientific label. Review the copied text, labels, scenario groups and train/validation/test assignments before submitting a probe. Notebook prompts need explicit labels; condition labels in a controlled comparison identify the prompt condition, not whether the response was sycophantic.
+
+Use the same reviewed configuration through the job submission API, SDK or MCP tool. Keep source study and entry identifiers with your exported evidence. Saving an experiment does not publish it to the community. See the [worked probe tutorial](probe-tutorial.md) and [grouped validation guide](probe-validation.md).
