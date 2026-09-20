@@ -337,3 +337,7 @@ Lime buttons identify primary actions; outlined buttons are secondary actions. V
 ### Experiment readiness
 
 Isolated Lab experiments require a downloaded MLX language model and sufficient memory. **Start lab & run experiment** starts the local research service automatically before submitting. When Run is disabled, the reason appears beneath it. GPU active time includes desktop/browser rendering and is not a saturation measure, so it does not block experiments. Measured active inference requests, missing/stale memory information and insufficient headroom still prevent admission. For a running GGUF pool with research runtime v2, choose **Running GPU pool** under Execution backend. Interventions, causal patching, probes and SAE experiments reuse its resident weights. Probe/SAE fitting runs on the coordinator; see [pool research](pool-lab-capture.md) for limits.
+
+## Approval-monitor research example
+
+[Follow the approval-monitor investigation](https://dynolab.dev/approval-monitor.html) for actual model responses, a probe experiment and a fresh-wording challenge. The guide distinguishes development-build features from released 0.4.3 and includes a model-free audit of the published results.
