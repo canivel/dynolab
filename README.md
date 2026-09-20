@@ -174,3 +174,7 @@ Available in **0.3.0**, the experimental pool uses a verified local SSH tunnel a
 Try the [first experiment](docs/first-experiment.md) and tell us where you got stuck. An [issue with your app version, model and steps to reproduce](https://github.com/canivel/dynolab/issues/new/choose) is useful even when you are new to interpretability. Please leave credentials and private prompts out of public reports.
 
 If Dyno Lab is useful to you, **star the repo to bookmark it and support its development**. Reproductions, corrections and focused contributions help turn a personal research tool into something other people can rely on.
+
+### Approval-monitor investigation
+
+An offline probe detected prohibited action proposals, but flagged six legitimate approvals when wording changed. [Read the methods, model comparison and false alarms](docs/approval-monitor-example.md), or [view the illustrated research note](https://dynolab.dev/approval-monitor.html). The evidence contains all 336 responses and a CPU-only audit. The illustrated grouped-validation workflow uses an unreleased development build, not released 0.4.3.
