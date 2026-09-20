@@ -340,4 +340,4 @@ Isolated Lab experiments require a downloaded MLX language model and sufficient 
 
 ## Approval-monitor research example
 
-[Follow the approval-monitor investigation](approval-monitor-example.md) for actual model responses, a probe experiment and a fresh-wording challenge. The guide distinguishes development-build features from released 0.4.3 and includes a model-free audit of the published results.
+[Follow the approval-monitor investigation](https://dynolab.dev/approval-monitor.html) for actual model responses, a probe experiment and a fresh-wording challenge. The guide distinguishes development-build features from released 0.4.3 and includes a model-free audit of the published results.

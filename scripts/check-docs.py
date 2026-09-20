@@ -34,8 +34,10 @@ def main():
             elif language == 'json':
                 json.loads(code)
     for file in (ROOT / 'docs/examples').glob('*.json'):
-        validate(dict(json.loads(file.read_text()), operation=file.stem,
-                      model='mlx-community/Qwen1.5-0.5B-Chat-4bit'))
+        config = json.loads(file.read_text())
+        config.setdefault('operation', file.stem)
+        config.setdefault('model', 'mlx-community/Qwen1.5-0.5B-Chat-4bit')
+        validate(config)
     with tempfile.TemporaryDirectory() as directory:
         website = Path(directory)
         public = website / 'public'
