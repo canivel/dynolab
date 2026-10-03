@@ -156,6 +156,13 @@ def _load_task_spec(task_dir):
     return yaml.safe_load(raw)
 
 
+def _atomic_write(path, text):
+    """Readers poll these files while they're written; never let them see half a file."""
+    path = Path(path)
+    temp = path.with_name(f'.{path.name}.{uuid.uuid4().hex[:8]}.tmp')
+    temp.write_text(text); temp.replace(path)
+
+
 def _load(path):
     try: return json.loads(Path(path).read_text())
     except (OSError, ValueError): return {}
@@ -206,7 +213,7 @@ class SandboxRuns:
         if not folder.is_dir(): raise ValueError('Choose an existing runs folder')
         with self.lock:
             sources = sorted(set(self.sources()) | {str(folder)})
-            (self.root / 'sources.json').write_text(json.dumps(dict(sources=sources), indent=2))
+            _atomic_write(self.root / 'sources.json', json.dumps(dict(sources=sources), indent=2))
         threading.Thread(target=self.index.update, args=([folder],), daemon=True).start()
         return dict(sources=sources)
 
@@ -341,7 +348,7 @@ class SandboxRuns:
             if getattr(self, '_readiness_thread', None) and self._readiness_thread.is_alive():
                 return self.readiness()
             state_path = self.root / 'readiness.json'
-            state_path.write_text(json.dumps(dict(ok=None, checks=[], progress=[], started=time.time(), harness_dir=str(folder))))
+            _atomic_write(state_path, json.dumps(dict(ok=None, checks=[], progress=[], started=time.time(), harness_dir=str(folder))))
 
             def work():
                 started = time.time(); progress = []
@@ -354,13 +361,13 @@ class SandboxRuns:
                             except ValueError: continue
                             if isinstance(entry, dict) and 'name' in entry:
                                 progress.append(entry)
-                                state_path.write_text(json.dumps(dict(ok=None, checks=[], progress=progress, started=started, harness_dir=str(folder))))
+                                _atomic_write(state_path, json.dumps(dict(ok=None, checks=[], progress=progress, started=started, harness_dir=str(folder))))
                         out = process.stdout.read(); process.wait(timeout=180)
                     result = json.loads(out) if out.strip().startswith('{') else dict(ok=False, checks=progress, error='The harness did not report a result')
                 except (subprocess.SubprocessError, OSError, ValueError) as error:
                     result = dict(ok=False, checks=progress, error=str(error))
                 result.update(progress=progress, started=started, checked=time.time(), duration=round(time.time() - started, 1), harness_dir=str(folder))
-                state_path.write_text(json.dumps(result, indent=2))
+                _atomic_write(state_path, json.dumps(result, indent=2))
             self._readiness_thread = threading.Thread(target=work, daemon=True)
             self._readiness_thread.start()
         return self.readiness()
@@ -534,7 +541,7 @@ class SandboxRuns:
         with self.lock:
             record = _load(folder / 'review.json') or dict(history=[])
             record['history'].append(entry)  # reviews are appended, never overwritten
-            (folder / 'review.json').write_text(json.dumps(record, indent=2))
+            _atomic_write(folder / 'review.json', json.dumps(record, indent=2))
         return dict(review=entry, history=record['history'])
 
     def _run_harness(self, identifier):
