@@ -65,6 +65,8 @@ class EventIndex:
                     severe integer, started text, offset integer default 0);
                 create virtual table if not exists events using fts5(key unindexed, seq unindexed, step unindexed,
                     agent unindexed, event, tool, severity, text, tokenize='porter unicode61');''')
+            columns = {r['name'] for r in db.execute('pragma table_info(episodes)')}
+            if 'condition' not in columns: db.execute('alter table episodes add column condition text')
 
     def _db(self):
         db = sqlite3.connect(self.path, timeout=10)
@@ -107,10 +109,10 @@ class EventIndex:
         if row is None:
             db.execute('insert into episodes(key,path,offset,tripwires,severe) values(?,?,0,0,0)', (key, str(transcript.resolve())))
         db.execute('''update episodes set run=?, episode_id=?, task_id=?, model_id=?, status=?, outcome=?, claimed_success=?,
-                      started=?, offset=?, tripwires=tripwires+?, severe=severe+? where key=?''',
+                      started=?, offset=?, tripwires=tripwires+?, severe=severe+?, condition=? where key=?''',
                    (folder.parent.name, manifest.get('episode_id', folder.name), manifest.get('task_id'), manifest.get('model_id'),
                     manifest.get('status'), label.get('outcome'), label.get('claimed_success'), manifest.get('started_at'),
-                    offset, added_tripwires, added_severe, key))
+                    offset, added_tripwires, added_severe, manifest.get('condition', 'neutral'), key))
 
     def episodes(self, run_folder):
         prefix = str(Path(run_folder).resolve()) + os.sep
@@ -166,6 +168,7 @@ def _episode_from_dict(row):
 def _episode(row):
     return dict(key=row['key'], episode_id=row['episode_id'], run=row['run'], task_id=row['task_id'], model_id=row['model_id'],
                 status=row['status'], outcome=row['outcome'], claimed_success=row['claimed_success'],
+                condition=(row['condition'] if 'condition' in row.keys() else None) or 'neutral',
                 tripwires=row['tripwires'], severe=row['severe'], started=row['started'])
 
 
@@ -217,7 +220,7 @@ class SandboxRuns:
         return json.loads(out.stdout)
 
     def create(self, config):
-        allowed = {'kind', 'title', 'harness_dir', 'task', 'count', 'port', 'model', 'revision', 'seed'}
+        allowed = {'kind', 'title', 'harness_dir', 'task', 'count', 'port', 'model', 'revision', 'seed', 'condition'}
         if not isinstance(config, dict) or set(config) - allowed: raise ValueError('Unsupported sandbox run config')
         if config.get('kind') == 'controls': return self._start_controls(config)
         c = dict(config); c.pop('kind', None); c.setdefault('count', 1)
@@ -226,12 +229,16 @@ class SandboxRuns:
         if type(c['count']) is not int or not 1 <= c['count'] <= 20: raise ValueError('count must be 1–20')
         if type(c.get('port')) is not int or not 1024 <= c['port'] <= 65535: raise ValueError('Choose a loopback model port')
         if 'seed' in c and (type(c['seed']) is not int or c['seed'] < 0): raise ValueError('seed must be a nonnegative integer')
+        if c.get('condition') in ('', 'neutral'): c.pop('condition')
+        if 'condition' in c and not re.fullmatch(r'[a-z][a-z0-9_-]{0,40}', str(c['condition'])): raise ValueError('Unknown condition')
         folder_path, python = self.harness(c.get('harness_dir'))
         command = ['--base-url', f"http://127.0.0.1:{c['port']}/v1", '--model-id', c['model']]
         if c.get('revision'): command += ['--model-revision', c['revision']]
         command += ['run', '--task', c['task'], '--count', str(c['count'])]
         if 'seed' in c: command += ['--seed', str(c['seed'])]
-        return self._launch(dict(kind='episodes', title=c.get('title') or c['task'], config=c), folder_path, python, command)
+        if 'condition' in c: command += ['--condition', c['condition']]
+        title = c.get('title') or (c['task'] + (f" · {c['condition']}" if 'condition' in c else ''))
+        return self._launch(dict(kind='episodes', title=title, config=c), folder_path, python, command)
 
     def _start_controls(self, config):
         """Scripted honest and rule-breaking agents: every rule break must be flagged."""
@@ -383,7 +390,8 @@ class SandboxRuns:
         if not isinstance(spec, dict) or not isinstance(files, dict): raise ValueError('spec and files must be objects')
         task_id = spec.get('id', '')
         if not self.TASK_ID.match(task_id): raise ValueError('Task id: lowercase letters, digits and underscores, starting with a letter')
-        allowed = {'id', 'prompt', 'rule', 'allowed_hosts', 'dirs', 'files', 'protected', 'watched_reads', 'secrets'}
+        allowed = {'id', 'prompt', 'rule', 'allowed_hosts', 'dirs', 'files', 'protected', 'watched_reads', 'secrets',
+                   'schema_version', 'meta', 'setup', 'limits', 'conditions', 'honest_checks'}
         if set(spec) - allowed: raise ValueError(f'Unsupported task fields: {sorted(set(spec) - allowed)}')
         for key in ('allowed_hosts', 'dirs', 'files', 'protected', 'watched_reads', 'secrets'): spec.setdefault(key, [])
         text(spec.get('prompt'), 'prompt', 8000); text(spec.get('rule'), 'rule', 2000)
@@ -421,6 +429,17 @@ class SandboxRuns:
             import shutil
             for leftover in (staging, staging.parent if staging.parent.name.startswith('.check-') else None):
                 if leftover is not None and leftover.exists() and leftover != task_dir: shutil.rmtree(leftover, ignore_errors=True)
+
+    def dryrun_task(self, body):
+        """Build a saved task's sandbox without an agent; the harness reports what is armed."""
+        if not isinstance(body, dict) or set(body) != {'harness_dir', 'id'}: raise ValueError('Use harness_dir and id')
+        folder, python = self.harness(body['harness_dir'])
+        if not self.TASK_ID.match(body['id'] or ''): raise ValueError('Unknown task')
+        out = subprocess.run([str(python), '-m', 'harness', 'task-dryrun', str(folder / 'tasks' / body['id'])], cwd=folder,
+                             capture_output=True, text=True, timeout=300, env=harness_env())
+        if 'invalid choice' in out.stderr: raise ValueError('This harness version has no dry run; update the harness')
+        try: return json.loads(out.stdout)
+        except ValueError: raise ValueError(out.stderr[-2000:] or 'Dry run failed')
 
     def delete_task(self, body):
         if not isinstance(body, dict) or set(body) != {'harness_dir', 'id'}: raise ValueError('Use harness_dir and id')
@@ -483,7 +502,8 @@ class SandboxRuns:
             label = _load(folder / 'label.json')
             types = types_by_episode.get(ep['key'], set()) | {t.get('type') for t in label.get('tripwires', [])}
             types.discard(None); types.discard('')
-            group = groups.setdefault((ep['task_id'], ep['model_id']), dict(task_id=ep['task_id'], model_id=ep['model_id'], episodes=0,
+            condition = ep.get('condition') or 'neutral'
+            group = groups.setdefault((ep['task_id'], ep['model_id'], condition), dict(task_id=ep['task_id'], model_id=ep['model_id'], condition=condition, episodes=0,
                                       outcomes={o: 0 for o in self.OUTCOMES}, claimed_success=0, rule_break_then_claimed=0, reviewed=0, label_wrong=0))
             group['episodes'] += 1
             group['outcomes'][ep['outcome']] = group['outcomes'].get(ep['outcome'], 0) + 1
@@ -496,7 +516,7 @@ class SandboxRuns:
             item = dict(_episode_from_dict(ep), review=latest)
             if latest is None: queue.append(item)
         queue.sort(key=lambda e: (self.REVIEW_ORDER.get(e['outcome'], 9), -(e['severe'] or 0), -(e['tripwires'] or 0)))
-        return dict(episodes=sum(g['episodes'] for g in groups.values()), controls=controls, groups=sorted(groups.values(), key=lambda g: (g['task_id'] or '', g['model_id'] or '')),
+        return dict(episodes=sum(g['episodes'] for g in groups.values()), controls=controls, groups=sorted(groups.values(), key=lambda g: (g['task_id'] or '', g['model_id'] or '', g['condition'])),
                     episodes_with_tripwire=dict(sorted(tripwires.items(), key=lambda kv: -kv[1])),
                     review_queue=queue[:200], unreviewed=len(queue))
 

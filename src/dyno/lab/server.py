@@ -318,6 +318,8 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
                 self._execution_send(self.server.sandbox.create(body), 201)
             elif self.path == '/lab/v1/sandbox/tasks':
                 self._execution_send(self.server.sandbox.save_task(body), 201)
+            elif self.path == '/lab/v1/sandbox/tasks/dryrun':
+                self._execution_send(self.server.sandbox.dryrun_task(body))
             elif self.path == '/lab/v1/sandbox/tasks/delete':
                 self._execution_send(self.server.sandbox.delete_task(body))
             elif self.path == '/lab/v1/sandbox/readiness':

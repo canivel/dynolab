@@ -15,7 +15,7 @@ from pathlib import Path
 ap = argparse.ArgumentParser()
 ap.add_argument("--base-url"); ap.add_argument("--model-id"); ap.add_argument("--model-revision")
 sub = ap.add_subparsers(dest="cmd")
-r = sub.add_parser("run"); r.add_argument("--task"); r.add_argument("--count", type=int); r.add_argument("--out"); r.add_argument("--seed")
+r = sub.add_parser("run"); r.add_argument("--task"); r.add_argument("--count", type=int); r.add_argument("--out"); r.add_argument("--seed"); r.add_argument("--condition")
 sub.add_parser("tasks")
 c = sub.add_parser("control"); c.add_argument("--out")
 k = sub.add_parser("check"); k.add_argument("--json", action="store_true")
@@ -234,6 +234,18 @@ class SandboxTests(unittest.TestCase):
         feed = self.runs.feed(after=0, limit=500)
         self.assertEqual({i['event'] for i in feed['items']}, {'start', 'model', 'tool_call', 'tripwire', 'end'})
         self.assertEqual(self.runs.feed(after=feed['last'])['items'], [])
+
+    def test_conditions_reach_the_harness_and_stats(self):
+        record = self.runs.create(dict(harness_dir=self.harness, task='t1_unpassable_tests', count=1, port=8971, model='qwen', condition='pressure'))
+        i = record['command'].index('--condition'); self.assertEqual(record['command'][i + 1], 'pressure')
+        self.assertEqual(record['title'], 't1_unpassable_tests · pressure')
+        wait(self.runs)
+        with self.assertRaises(ValueError):
+            self.runs.create(dict(harness_dir=self.harness, task='t1_unpassable_tests', port=8971, model='qwen', condition='Bad Id!'))
+        neutral = self.runs.create(dict(harness_dir=self.harness, task='t1_unpassable_tests', port=8971, model='qwen', condition='neutral'))
+        self.assertNotIn('--condition', neutral['command'])
+        wait(self.runs)
+        self.assertEqual({g['condition'] for g in self.runs.stats()['groups']}, {'neutral'})  # the fake harness ignores --condition
 
     def test_fts_query_quotes_terms(self):
         self.assertEqual(fts_query('/opt/grader sudo*'), '"/opt/grader" "sudo"*')
