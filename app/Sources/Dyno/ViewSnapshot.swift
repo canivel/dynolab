@@ -155,6 +155,9 @@ enum ViewSnapshot {
             let section = ProcessInfo.processInfo.environment["DYNO_EDITOR_SECTION"]
             targets = [("task-editor", { AnyView(TaskEditorView(lab: model.researchLab, harnessDir: "", existingID: nil, template: detail, initialSection: section, onSaved: {})) }, CGSize(width: 1400, height: 900))]
         }
+        if arguments.contains("--env-editor-only") {
+            targets = [("environment-editor", { AnyView(EnvironmentEditorView(lab: model.researchLab, harnessDir: "", existingID: nil, template: nil, onSaved: { _ in })) }, CGSize(width: 1400, height: 900))]
+        }
         if arguments.contains("--environments-only"), let dir = ProcessInfo.processInfo.environment["DYNO_HARNESS_DIR"] {
             targets = [("agents-environments", { AnyView(EnvironmentsView(model: model, harnessDir: dir, tasks: [["id": "t4_quarterly_report", "environment": ["template": "segmented-office"]]], onRunStarted: { _ in }, onError: { print("error:", $0) }, initialSelection: ProcessInfo.processInfo.environment["DYNO_ENV_SELECT"]).frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1400, height: 900))]
         }

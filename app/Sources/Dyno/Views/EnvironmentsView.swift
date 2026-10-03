@@ -19,6 +19,8 @@ struct EnvironmentsView: View {
     @State private var runCount = 1
     @State private var endpoint = ""
     @State private var working = false
+    @State private var editor: EnvEditorRequest?
+    struct EnvEditorRequest: Identifiable { let id=UUID();var existing: String?;var template: [String:Any]? }
 
     private var templates: [[String:Any]] { data["templates"] as? [[String:Any]] ?? [] }
     private var instances: [[String:Any]] { data["instances"] as? [[String:Any]] ?? [] }
@@ -28,6 +30,8 @@ struct EnvironmentsView: View {
 
     var body: some View {
         HSplitView {
+            VStack(alignment:.leading,spacing:6) {
+            Button { editor=EnvEditorRequest(existing:nil,template:nil) } label: { Label("New environment",systemImage:"plus") }.buttonStyle(.dynoPrimary).padding([.top,.horizontal],8)
             List(selection:$selected) {
                 Section("Templates") {
                     ForEach(templates.compactMap { $0["id"] as? String },id:\.self) { id in
@@ -40,10 +44,12 @@ struct EnvironmentsView: View {
                             }
                             Spacer()
                             if on { Text("ON").font(.caption2.bold()).padding(.horizontal,6).padding(.vertical,1).background(Capsule().fill(DynoBrand.accent.opacity(0.3))) }
+                            if t["builtin"] as? Bool == false { Text("yours").font(.caption2).foregroundStyle(DynoBrand.violet) }
                             if !((t["errors"] as? [Any])?.isEmpty ?? true) { Image(systemName:"exclamationmark.triangle").foregroundStyle(.orange) }
                         }.tag(id)
                     }
                 }
+            }
             }.frame(minWidth:260,idealWidth:300,maxWidth:360)
             ScrollView {
                 if let t=template { detail(t).padding() } else { Text(templates.isEmpty ? "No environments yet. Check Agents → Readiness → Sandbox engine." : "Choose a template.").foregroundStyle(.secondary).padding() }
@@ -57,13 +63,26 @@ struct EnvironmentsView: View {
             }
         }
         .onChange(of:selected) { _,id in instanceName=id ?? "";events=[];runTask="" }
+        .sheet(item:$editor) { req in
+            EnvironmentEditorView(lab:model.researchLab,harnessDir:harnessDir,existingID:req.existing,template:req.template) { saved in
+                Task { await reload();selected=saved }
+            }
+        }
     }
 
     @ViewBuilder private func detail(_ t: [String:Any]) -> some View {
         let id=t["id"] as? String ?? ""
         let meta=t["meta"] as? [String:Any] ?? [:]
         VStack(alignment:.leading,spacing:14) {
-            Text(meta["title"] as? String ?? id).font(.title2.bold())
+            HStack {
+                Text(meta["title"] as? String ?? id).font(.title2.bold())
+                Spacer()
+                Button("Copy as new") { openEditor(id,edit:false) }
+                if t["builtin"] as? Bool == false {
+                    Button("Edit") { openEditor(id,edit:true) }
+                    Button("Delete",role:.destructive) { deleteTemplate(id) }.disabled(!running.isEmpty)
+                }
+            }.controlSize(.small)
             Text(meta["description"] as? String ?? "").foregroundStyle(.secondary)
             ForEach(t["errors"] as? [String] ?? [],id:\.self) { Label($0,systemImage:"exclamationmark.triangle").foregroundStyle(.orange).font(.caption) }
             Topology(template:t)
@@ -119,6 +138,20 @@ struct EnvironmentsView: View {
                     Text(e["client"] as? String ?? "").font(.caption2).foregroundStyle(.tertiary)
                 }
             }
+        }
+    }
+
+    private func openEditor(_ id: String,edit: Bool) {
+        var c=URLComponents();c.queryItems=harnessDir.isEmpty ? [] : [URLQueryItem(name:"harness_dir",value:harnessDir)]
+        Task {
+            do { editor=EnvEditorRequest(existing:edit ? id : nil,template:try await model.researchLab.request("/sandbox/environment-templates/\(id)?\(c.percentEncodedQuery ?? "")",timeout:30)) }
+            catch { onError(error.localizedDescription) }
+        }
+    }
+    private func deleteTemplate(_ id: String) {
+        Task {
+            do { _=try await model.researchLab.request("/sandbox/environment-templates/delete",body:["harness_dir":harnessDir,"id":id],timeout:30);selected=nil;await reload() }
+            catch { onError(error.localizedDescription) }
         }
     }
 
@@ -195,7 +228,7 @@ struct EnvironmentsView: View {
 }
 
 /// Workstation → gateway rules → segments with their nodes.
-private struct Topology: View {
+struct Topology: View {
     var template: [String:Any]
     var body: some View {
         let nodes=template["nodes"] as? [[String:Any]] ?? []

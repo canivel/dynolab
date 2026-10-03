@@ -544,6 +544,75 @@ class SandboxRuns:
         try: return json.loads(out.stdout)
         except ValueError: raise ValueError(out.stderr[-2000:] or 'Dry run failed')
 
+    # --- environment templates people create ----------------------------------
+
+    ENV_ID = re.compile(r'^[a-z][a-z0-9-]{1,30}$')
+
+    def _template(self, h, template_id):
+        for t in h.json(['env', 'list'], timeout=60).get('templates', []):
+            if t['id'] == template_id: return Path(t['path']), not t.get('builtin', True)
+        raise ValueError('Unknown environment')
+
+    def environment_detail(self, directory, template_id):
+        h = self.harness(directory)
+        if not self.ENV_ID.match(template_id or ''): raise ValueError('Unknown environment')
+        folder, editable = self._template(h, template_id)
+        raw = (folder / 'environment.yaml').read_text()
+        try: spec = json.loads(raw)
+        except ValueError:
+            import yaml
+            spec = yaml.safe_load(raw)
+        files = {}
+        for n in spec.get('nodes', []):
+            for f in n.get('files', []):
+                try: files[f['source']] = (folder / 'files' / f['source']).read_text(errors='replace')[:200_000]
+                except OSError: files[f['source']] = None
+        return dict(spec=spec, files=files, editable=editable, presets=h.json(['env', 'list'], timeout=60).get('presets', {}))
+
+    def save_environment(self, body):
+        if not isinstance(body, dict) or set(body) - {'harness_dir', 'spec', 'files', 'replace'}: raise ValueError('Use spec, files and replace')
+        h = self.harness(body.get('harness_dir'))
+        spec, files = body.get('spec'), body.get('files') or {}
+        if not isinstance(spec, dict) or not isinstance(files, dict): raise ValueError('spec and files must be objects')
+        env_id = spec.get('id', '')
+        if not self.ENV_ID.match(env_id): raise ValueError('Environment id: lowercase letters, digits and -, starting with a letter')
+        allowed = {'id', 'schema_version', 'meta', 'images', 'segments', 'nodes', 'gateway', 'agent'}
+        if set(spec) - allowed: raise ValueError(f'Unsupported environment fields: {sorted(set(spec) - allowed)}')
+        for name, content in files.items():
+            if not self.FILE_NAME.match(name or '') or not isinstance(content, str) or len(content) > 200_000: raise ValueError(f'Invalid file {name!r}')
+        home = Path(h.paths().get('user_environments') or h.home / 'environments'); home.mkdir(parents=True, exist_ok=True)
+        try: existing, editable = self._template(h, env_id)
+        except ValueError: existing = None
+        if existing is not None:
+            if not editable: raise ValueError('Built-in environments cannot be changed; copy it instead')
+            if not body.get('replace'): raise ValueError('An environment with this id exists; choose another id')
+        import shutil
+        check_root = home / f'.check-{uuid.uuid4().hex[:8]}'
+        staging = check_root / env_id
+        try:
+            (staging / 'files').mkdir(parents=True)
+            (staging / 'environment.yaml').write_text(json.dumps(spec, indent=2))  # JSON is valid YAML
+            for name, content in files.items():
+                target = staging / 'files' / name
+                target.parent.mkdir(parents=True, exist_ok=True); target.write_text(content)
+            result = h.json(['env', 'check', str(staging)], timeout=60)
+            if not result.get('ok'): raise ValueError('Environment is invalid: ' + '; '.join(result.get('errors', [])))
+            with self.lock:
+                final = home / env_id
+                if final.exists(): shutil.rmtree(final)
+                staging.rename(final)
+            return dict(saved=env_id, validation=result)
+        finally:
+            shutil.rmtree(check_root, ignore_errors=True)
+
+    def delete_environment(self, body):
+        if not isinstance(body, dict) or 'id' not in body or set(body) - {'harness_dir', 'id'}: raise ValueError('Use id')
+        h = self.harness(body.get('harness_dir'))
+        folder, editable = self._template(h, body['id'])
+        if not editable: raise ValueError('Built-in environments cannot be deleted')
+        import shutil; shutil.rmtree(folder)
+        return dict(deleted=body['id'])
+
     def delete_task(self, body):
         if not isinstance(body, dict) or set(body) - {'harness_dir', 'id'} or 'id' not in body: raise ValueError('Use id (and optionally harness_dir)')
         h = self.harness(body.get('harness_dir'))

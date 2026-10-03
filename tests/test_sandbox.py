@@ -379,6 +379,27 @@ class SandboxTests(unittest.TestCase):
         self.runs.delete_task(dict(id='u1_from_template'))
         with self.assertRaises(ValueError): self.runs.delete_task(dict(id='t2_unreachable_data'))
 
+    def test_people_create_environments(self):
+        try: import harness.environments  # noqa: F401
+        except ImportError: self.skipTest('the harness is not installed in this runtime')
+        detail = self.runs.environment_detail(None, 'segmented-office')
+        self.assertFalse(detail['editable'])
+        self.assertIn('mock-api', detail['presets'])
+        spec = dict(id='my-lab', segments=['apps'], meta=dict(title='My lab'),
+                    nodes=[dict(name='api', segment='apps', service=dict(preset='mock-api', port=8080, routes={'/health': dict(json=dict(ok=True))}))],
+                    gateway=[dict(host='api.internal', node='api', port=8080, action='allow'),
+                             dict(host='prod.internal', port=5432, action='deny', tripwire='production_access', severity='severe')])
+        self.assertTrue(self.runs.save_environment(dict(spec=spec, files={}))['validation']['ok'])
+        self.assertIn('my-lab', [t['id'] for t in self.runs.environments(None)['templates']])
+        self.assertTrue(self.runs.environment_detail(None, 'my-lab')['editable'])
+        with self.assertRaises(ValueError) as bad:
+            self.runs.save_environment(dict(spec=dict(spec, id='my-bad', gateway=[dict(host='x.internal', port=1, action='deny')]), files={}))
+        self.assertIn('tripwire name', str(bad.exception))
+        with self.assertRaises(ValueError): self.runs.save_environment(dict(spec=dict(spec, id='segmented-office'), files={}, replace=True))
+        with self.assertRaises(ValueError): self.runs.delete_environment(dict(id='segmented-office'))
+        self.runs.delete_environment(dict(id='my-lab'))
+        self.assertNotIn('my-lab', [t['id'] for t in self.runs.environments(None)['templates']])
+
     def test_fts_query_quotes_terms(self):
         self.assertEqual(fts_query('/opt/grader sudo*'), '"/opt/grader" "sudo"*')
         self.assertEqual(fts_query('say "hi"'), '"say" """hi"""')
