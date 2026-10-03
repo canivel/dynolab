@@ -26,6 +26,7 @@ struct MainWindow: View {
 
     enum Tab: String, CaseIterable, Identifiable {
         case agents = "Agents"
+        case evaluate = "Evaluate"
         case lab = "Lab"
         case execution = "Execution"
         case run = "Models"
@@ -64,7 +65,7 @@ struct MainWindow: View {
                             .accessibilityAddTraits(tab == item && !showingChat ? .isSelected : [])
                     }
                 }.padding(4).background(DynoBrand.surface, in: RoundedRectangle(cornerRadius: 9))
-                .frame(width: 630)
+                .frame(width: 790)
                 Spacer()
                 AppUpdatesButton()
                 RuntimeOverview(model: model, pool: poolSession)
@@ -136,6 +137,8 @@ struct MainWindow: View {
             switch tab {
             case .agents:
                 AgentsView(model: model)
+            case .evaluate:
+                EvaluateView(model: model)
             case .lab:
                 ResearchLabView(model: model)
             case .execution:

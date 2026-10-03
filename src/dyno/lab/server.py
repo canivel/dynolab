@@ -270,6 +270,8 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
         if parts == ['runs']: return {'runs': runs.list()}
         if parts == ['sources']: return {'sources': runs.sources()}
         if parts == ['readiness']: return runs.readiness()
+        if parts == ['stats']: return runs.stats()
+        if len(parts) == 3 and parts[0] == 'runs' and parts[2] == 'verify': return runs.verify(parts[1])
         if parts == ['tasks']: return runs.tasks(query.get('harness_dir'))
         if parts == ['search']:
             params = {k: query[k] for k in ('q', 'event', 'task', 'outcome', 'severity', 'limit') if query.get(k)}
@@ -317,6 +319,11 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
             elif self.path == '/lab/v1/sandbox/sources':
                 if set(body) != {'path'}: raise ValueError('Use path')
                 self._execution_send(self.server.sandbox.add_source(body['path']), 201)
+            elif self.path.startswith('/lab/v1/sandbox/runs/') and self.path.endswith('/seal'):
+                if body: raise ValueError('Seal expects an empty object')
+                self._execution_send(self.server.sandbox.seal(self.path.split('/')[-2]))
+            elif self.path.startswith('/lab/v1/sandbox/episodes/') and self.path.endswith('/review'):
+                self._execution_send(self.server.sandbox.review(self.path.split('/')[-2], body), 201)
             elif self.path.startswith('/lab/v1/sandbox/runs/') and self.path.endswith('/cancel'):
                 if body: raise ValueError('Cancel expects an empty object')
                 self._execution_send(self.server.sandbox.cancel(self.path.split('/')[-2]))

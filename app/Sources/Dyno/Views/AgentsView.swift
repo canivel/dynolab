@@ -248,7 +248,7 @@ struct AgentsView: View {
     private func perform(_ action: @escaping @MainActor () async throws -> Void) { guard !working else { return };working=true;Task { do { try await action();issue=nil } catch { issue=error.localizedDescription };working=false } }
 }
 
-private struct EpisodeRow: View {
+struct EpisodeRow: View {
     var episode: [String:Any]
     var body: some View {
         let trips=episode["tripwires"] as? Int ?? 0,severe=episode["severe"] as? Int ?? 0
