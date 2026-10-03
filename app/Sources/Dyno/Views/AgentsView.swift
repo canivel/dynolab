@@ -8,6 +8,7 @@ struct AgentsView: View {
     var model: MonitorModel
     /// Opens straight onto one episode's timeline (snapshots, deep links).
     var initialEpisode: String? = nil
+    var initialTripwiresOnly = false
     @AppStorage("sandboxHarnessDir") private var harnessDir = ""
     @AppStorage("agentsWorkspace") private var workspace = Workspace.runs.rawValue
     @State private var runs: [[String:Any]] = []
@@ -37,7 +38,7 @@ struct AgentsView: View {
             HStack(alignment:.firstTextBaseline) {
                 VStack(alignment:.leading,spacing:4) {
                     Text("Agents").font(.title2.bold())
-                    Text("Real commands in a sealed sandbox with no network route out. Every step is logged before it runs.").font(.callout).foregroundStyle(.secondary)
+                    Text("Real commands in an isolated sandbox with no network route out. Every command is logged before it runs.").font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Picker("",selection:$workspace) { ForEach(Workspace.allCases) { Text($0.rawValue).tag($0.rawValue) } }.pickerStyle(.segmented).frame(width:380)
@@ -48,7 +49,7 @@ struct AgentsView: View {
                 HSplitView {
                     Group { if current == .runs { runList } else { searchPane } }.frame(minWidth:280,idealWidth:340,maxWidth:440)
                     Group {
-                        if let episodeKey { EpisodeTimeline(lab:model.researchLab,key:episodeKey,onError:{ issue=$0 }).id(episodeKey) }
+                        if let episodeKey { EpisodeTimeline(lab:model.researchLab,key:episodeKey,onlyTripwires:initialTripwiresOnly && episodeKey == initialEpisode,onError:{ issue=$0 }).id(episodeKey) }
                         else if current == .runs && run.isEmpty { ScrollView { editor.padding() } }
                         else if current == .runs { ScrollView { runDetail.padding() } }
                         else { Text("Search reasoning, commands, outputs and tripwires across every run.").foregroundStyle(.secondary).frame(maxWidth:.infinity,maxHeight:.infinity) }
@@ -267,7 +268,12 @@ struct EpisodeTimeline: View {
     @State private var events: [[String:Any]] = []
     @State private var last = 0
     @State private var info: [String:Any] = [:]
-    @State private var onlyTripwires = false
+    @State private var onlyTripwires: Bool
+
+    init(lab: ResearchLab, key: String, onlyTripwires: Bool = false, onError: @escaping (String) -> Void) {
+        self.lab = lab; self.key = key; self.onError = onError
+        _onlyTripwires = State(initialValue: onlyTripwires)
+    }
     private var done: Bool { !((info["label"] as? [String:Any]) ?? [:]).isEmpty }
 
     var body: some View {

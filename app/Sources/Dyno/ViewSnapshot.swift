@@ -146,7 +146,7 @@ enum ViewSnapshot {
         if arguments.contains("--agents-only") {
             let episode = ProcessInfo.processInfo.environment["DYNO_EPISODE_KEY"]
             targets = [("window-agents", { AnyView(MainWindow(model: model, initialTab: .agents)) }, CGSize(width: 1400, height: 900))]
-            if let episode { targets = [("agents-episode", { AnyView(AgentsView(model: model, initialEpisode: episode).frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1400, height: 900))] }
+            if let episode { targets = [("agents-episode", { AnyView(AgentsView(model: model, initialEpisode: episode, initialTripwiresOnly: ProcessInfo.processInfo.environment["DYNO_ONLY_TRIPWIRES"] == "1").frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1400, height: 900))] }
         }
         if arguments.contains("--agent-only") {
             targets = [("simulated-agent", { AnyView(AgentTasksView(model: model, initialID: ProcessInfo.processInfo.environment["DYNO_AGENT_ID"])) }, CGSize(width: 1300, height: 1050))]
