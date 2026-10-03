@@ -76,14 +76,12 @@ if [ "$SLIM" -eq 0 ]; then
   # The sandbox harness (agent tests, environments, evaluators) ships inside the app so
   # nobody has to install it or choose a folder. DYNO_HARNESS_SOURCE is a wheel, a source
   # checkout or a git URL; release builds pin it.
-  if [ -n "${DYNO_HARNESS_SOURCE:-}" ]; then
-    echo "==> Installing the sandbox harness from $DYNO_HARNESS_SOURCE"
-    uv pip install --quiet \
-        --python "$PWD/$RESOURCES/python/bin/python$PYTHON_VERSION" \
-        --target "$PWD/$RESOURCES/pylib" "$DYNO_HARNESS_SOURCE"
-  else
-    echo "warning: DYNO_HARNESS_SOURCE is not set; the app will ask for a harness install" >&2
-  fi
+  # Default: the published harness, pinned to a reviewed commit.
+  HARNESS_SOURCE="${DYNO_HARNESS_SOURCE:-git+https://github.com/canivel/dynolab-harness@75ce938724ce0465819d9a5b8d0cd13684c9564e}"
+  echo "==> Installing the sandbox harness from $HARNESS_SOURCE"
+  uv pip install --quiet \
+      --python "$PWD/$RESOURCES/python/bin/python$PYTHON_VERSION" \
+      --target "$PWD/$RESOURCES/pylib" "$HARNESS_SOURCE"
   find "$RESOURCES/pylib" -name "__pycache__" -type d -prune -exec rm -rf {} + 2>/dev/null || true
 fi
 
