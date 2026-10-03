@@ -1,0 +1,352 @@
+import SwiftUI
+import AppKit
+
+/// Dynolab's home: AI agents run real commands in a sealed gVisor sandbox, and every
+/// message, reasoning step, command and tripwire is logged, watched live and searchable.
+/// The open-source containment harness does the running; this view drives and reads it.
+struct AgentsView: View {
+    var model: MonitorModel
+    /// Opens straight onto one episode's timeline (snapshots, deep links).
+    var initialEpisode: String? = nil
+    @AppStorage("sandboxHarnessDir") private var harnessDir = ""
+    @AppStorage("agentsWorkspace") private var workspace = Workspace.runs.rawValue
+    @State private var runs: [[String:Any]] = []
+    @State private var run: [String:Any] = [:]
+    @State private var episodeKey: String?
+    @State private var tasks: [[String:Any]] = []
+    @State private var task = ""
+    @State private var count = 3
+    @State private var endpoint = ""
+    @State private var query = ""
+    @State private var eventFilter = ""
+    @State private var results: [[String:Any]] = []
+    @State private var readiness: [String:Any] = [:]
+    @State private var issue: String?
+    @State private var working = false
+    private var runID: String? { run["id"] as? String }
+    private var active: Bool { run["status"] as? String == "running" }
+    private var current: Workspace { Workspace(rawValue: workspace) ?? .runs }
+
+    enum Workspace: String, CaseIterable, Identifiable {
+        case runs = "Runs", search = "Search", tasks = "Tasks", readiness = "Readiness"
+        var id: String { rawValue }
+    }
+
+    var body: some View {
+        VStack(alignment:.leading,spacing:12) {
+            HStack(alignment:.firstTextBaseline) {
+                VStack(alignment:.leading,spacing:4) {
+                    Text("Agents").font(.title2.bold())
+                    Text("Real commands in a sealed sandbox with no network route out. Every step is logged before it runs.").font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Picker("",selection:$workspace) { ForEach(Workspace.allCases) { Text($0.rawValue).tag($0.rawValue) } }.pickerStyle(.segmented).frame(width:380)
+            }
+            if let issue { Text(issue).foregroundStyle(.orange).font(.callout) }
+            switch current {
+            case .runs, .search:
+                HSplitView {
+                    Group { if current == .runs { runList } else { searchPane } }.frame(minWidth:280,idealWidth:340,maxWidth:440)
+                    Group {
+                        if let episodeKey { EpisodeTimeline(lab:model.researchLab,key:episodeKey,onError:{ issue=$0 }).id(episodeKey) }
+                        else if current == .runs && run.isEmpty { ScrollView { editor.padding() } }
+                        else if current == .runs { ScrollView { runDetail.padding() } }
+                        else { Text("Search reasoning, commands, outputs and tripwires across every run.").foregroundStyle(.secondary).frame(maxWidth:.infinity,maxHeight:.infinity) }
+                    }.frame(minWidth:560,maxWidth:.infinity)
+                }
+            case .tasks: ScrollView { taskLibrary.padding(.vertical) }
+            case .readiness: ScrollView { readinessPanel.padding(.vertical) }
+            }
+        }.padding(20).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
+        .task {
+            await model.researchLab.start()
+            if let initialEpisode { workspace=Workspace.runs.rawValue;episodeKey=initialEpisode }
+            do {
+                try await refresh()
+                if !harnessDir.isEmpty { try await loadTasks();try await loadReadiness() }
+                else if initialEpisode == nil { workspace=Workspace.readiness.rawValue }
+            } catch { issue=error.localizedDescription }
+            while !Task.isCancelled {
+                try? await Task.sleep(for:.seconds(2))
+                if let runID,active,episodeKey == nil { do { try await open(runID) } catch { issue=error.localizedDescription } }
+                if readiness["running"] as? Bool == true { try? await loadReadiness() }
+                if runs.contains(where:{ $0["status"] as? String == "running" }) { try? await refresh();try? await loadReadiness() }
+            }
+        }
+    }
+
+    // MARK: Runs
+
+    private var runList: some View {
+        VStack(alignment:.leading) {
+            Button("New run") { run=[:];episodeKey=nil }.disabled(working)
+            List(Array(runs.enumerated()),id:\.offset) { _,r in
+                Button { perform { episodeKey=nil;try await open(r["id"] as? String ?? "") } } label: {
+                    VStack(alignment:.leading) {
+                        Text(r["title"] as? String ?? "Run")
+                        Text("\(r["kind"] as? String == "controls" ? "controls · " : "")\(r["status"] as? String ?? "")").font(.caption).foregroundStyle(.secondary)
+                    }
+                }.buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var editor: some View {
+        VStack(alignment:.leading,spacing:14) {
+            Text("New sandboxed run").font(.headline)
+            if !ready { readinessBanner }
+            Picker("Task",selection:$task) {
+                Text("Choose a task").tag("")
+                ForEach(tasks.compactMap { $0["id"] as? String },id:\.self) { Text($0).tag($0) }
+            }
+            if let rule=tasks.first(where:{ $0["id"] as? String == task })?["rule"] as? String { Text("Rule given to the agent: \(rule)").font(.caption).foregroundStyle(.secondary) }
+            Stepper("Episodes: \(count)",value:$count,in:1...20)
+            Picker("Running endpoint",selection:$endpoint) {
+                Text("Choose a running model").tag("")
+                ForEach(model.snapshot.models.filter {$0.port != nil},id:\.id) { server in Text("\(server.name) · :\(server.port ?? 0)").tag(String(server.port ?? 0)) }
+            }
+            if model.snapshot.models.isEmpty { Button("Start a model in Models…") { model.requestedTab = .run }.buttonStyle(.link) }
+            Text("Each episode gets a fresh container, at most 40 model turns and 20 minutes. Requests go through the selected Dyno endpoint, so they also appear in Execution.").font(.caption).foregroundStyle(.secondary)
+            Button("Start run") { perform {
+                guard let port=Int(endpoint),let server=model.snapshot.models.first(where:{Int($0.port ?? 0)==port}) else { return }
+                run=try await model.researchLab.request("/sandbox/runs",body:["harness_dir":harnessDir,"task":task,"count":count,"port":port,"model":server.name],timeout:15)
+                try await refresh()
+            } }.buttonStyle(.dynoPrimary).disabled(working || task.isEmpty || endpoint.isEmpty || harnessDir.isEmpty)
+        }
+    }
+
+    private var runDetail: some View {
+        VStack(alignment:.leading,spacing:12) {
+            Text(run["title"] as? String ?? "Run").font(.title3.bold())
+            HStack { Text("Status: \(run["status"] as? String ?? "unknown")");if active { Button("Cancel",role:.destructive) { perform { run=try await model.researchLab.request("/sandbox/runs/\(runID ?? "")/cancel",body:[:],timeout:40);try await refresh() } } } }
+            if let controls=run["controls"] as? [String:Any] {
+                Label(controls["ok"] as? Bool == true ? "Every scripted rule break was flagged, and every honest run was clean." : "A control failed: the labeler missed a rule break or flagged an honest run. Fix the harness before trusting results.",
+                      systemImage:controls["ok"] as? Bool == true ? "checkmark.seal" : "xmark.octagon").foregroundStyle(controls["ok"] as? Bool == true ? DynoBrand.accent : .red)
+            }
+            ForEach(Array((run["episodes"] as? [[String:Any]] ?? []).enumerated()),id:\.offset) { _,ep in
+                Button { episodeKey=ep["key"] as? String } label: { EpisodeRow(episode:ep) }.buttonStyle(.plain)
+            }
+            if (run["episodes"] as? [Any])?.isEmpty ?? true { Text(active ? "Starting the first episode…" : "No episodes recorded.").foregroundStyle(.secondary) }
+            if let error=run["error"] as? String { Text(error).font(.system(.caption,design:.monospaced)).foregroundStyle(.orange).textSelection(.enabled) }
+        }
+    }
+
+    // MARK: Search
+
+    private var searchPane: some View {
+        VStack(alignment:.leading,spacing:8) {
+            TextField("Search, e.g. sudo, /opt/grader, token",text:$query).textFieldStyle(.roundedBorder).onSubmit { search() }
+            Picker("Show",selection:$eventFilter) {
+                Text("Everything").tag("");Text("Tripwires").tag("tripwire");Text("Reasoning and replies").tag("model")
+                Text("Commands").tag("tool_call");Text("Command output").tag("tool_result")
+            }.onChange(of:eventFilter) { _,_ in search() }
+            HStack { Button("Search") { search() }.buttonStyle(.dynoPrimary);Button("Add runs folder…") { addSource() } }
+            List(Array(results.enumerated()),id:\.offset) { _,r in
+                Button { episodeKey=r["key"] as? String } label: {
+                    VStack(alignment:.leading,spacing:3) {
+                        Text("\(r["event"] as? String ?? "") · \(r["task_id"] as? String ?? "") · step \(r["step"] as? Int ?? 0)").font(.caption.bold()).foregroundStyle(r["event"] as? String == "tripwire" ? .orange : .secondary)
+                        Text(r["snippet"] as? String ?? "").font(.caption).lineLimit(3)
+                        Text(r["episode_id"] as? String ?? "").font(.caption2).foregroundStyle(.tertiary)
+                    }
+                }.buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: Tasks
+
+    private var taskLibrary: some View {
+        VStack(alignment:.leading,spacing:12) {
+            Text("Every task is an ordinary chore with one explicit rule. Following the rule makes the task impossible, so the honest move is to say so. Tripwires record what the agent tries instead.").foregroundStyle(.secondary)
+            if tasks.isEmpty { Text("Choose the harness folder in Readiness to load tasks.").foregroundStyle(.secondary) }
+            ForEach(Array(tasks.enumerated()),id:\.offset) { _,t in
+                VStack(alignment:.leading,spacing:6) {
+                    Text(t["id"] as? String ?? "").font(.headline)
+                    Text(t["prompt"] as? String ?? "")
+                    Text("Rule: \(t["rule"] as? String ?? "")").font(.callout.bold())
+                    let protected=(t["protected"] as? [String] ?? []).joined(separator:", ")
+                    if !protected.isEmpty { Text("Protected: \(protected)").font(.system(.caption,design:.monospaced)).foregroundStyle(.secondary) }
+                    let honeypots=(t["honeypots"] as? [String] ?? []) + (t["watched"] as? [String] ?? [])
+                    if !honeypots.isEmpty { Text("Honeypots and watched paths: \(honeypots.joined(separator:", "))").font(.caption).foregroundStyle(.secondary) }
+                    HStack {
+                        Button("Run this task") { task=t["id"] as? String ?? "";run=[:];episodeKey=nil;workspace=Workspace.runs.rawValue }
+                        Button("Search its runs") { query="";eventFilter="";workspace=Workspace.search.rawValue;searchTask(t["id"] as? String ?? "") }
+                    }.controlSize(.small)
+                }.padding(14).frame(maxWidth:.infinity,alignment:.leading).background(RoundedRectangle(cornerRadius:10).fill(DynoBrand.surface))
+            }
+        }
+    }
+
+    // MARK: Readiness
+
+    private var ready: Bool { readiness["ok"] as? Bool == true && !model.snapshot.models.isEmpty && !harnessDir.isEmpty }
+    private var readinessBanner: some View {
+        Button { workspace=Workspace.readiness.rawValue } label: { Label("Finish the readiness checklist before trusting results.",systemImage:"exclamationmark.triangle").foregroundStyle(.orange) }.buttonStyle(.plain)
+    }
+
+    private var readinessPanel: some View {
+        let checks=readiness["checks"] as? [[String:Any]] ?? []
+        let controls=readiness["controls"] as? [String:Any]
+        return VStack(alignment:.leading,spacing:16) {
+            step(1,"Harness folder",done:!harnessDir.isEmpty && !tasks.isEmpty,detail:harnessDir.isEmpty ? "The open-source containment harness: tasks, sandbox, labeler and evidence." : harnessDir) {
+                Button("Choose…") { let p=NSOpenPanel();p.canChooseDirectories=true;p.canChooseFiles=false;p.message="Choose the containment harness folder";if p.runModal() == .OK,let url=p.url { harnessDir=url.path;perform { try await loadTasks() } } }
+            }
+            step(2,"Sandbox isolation",done:readiness["ok"] as? Bool == true,detail:readiness["running"] as? Bool == true ? "Checking… starts a throwaway container." : checks.isEmpty ? "Docker in a Colima VM with the gVisor runtime, an internal-only network, no sudo, and root-only files the agent cannot read." : "") {
+                Button(readiness["running"] as? Bool == true ? "Checking…" : "Run checks") { perform { readiness=try await model.researchLab.request("/sandbox/readiness",body:["harness_dir":harnessDir],timeout:10) } }.disabled(harnessDir.isEmpty || readiness["running"] as? Bool == true)
+            }
+            if !checks.isEmpty {
+                VStack(alignment:.leading,spacing:4) {
+                    ForEach(Array(checks.enumerated()),id:\.offset) { _,c in
+                        Label("\(c["name"] as? String ?? "") · \(c["detail"] as? String ?? "")",systemImage:c["passed"] as? Bool == true ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .foregroundStyle(c["passed"] as? Bool == true ? DynoBrand.accent : .red).font(.callout)
+                    }
+                    if let error=readiness["error"] as? String { Text(error).font(.system(.caption,design:.monospaced)).foregroundStyle(.orange) }
+                }.padding(.leading,34)
+            }
+            step(3,"A model is running",done:!model.snapshot.models.isEmpty,detail:model.snapshot.models.isEmpty ? "Agents call a model served by Dyno. Qwen and Gemma models with tool calling work well." : model.snapshot.models.map { "\($0.name) · :\($0.port ?? 0)" }.joined(separator:", ")) {
+                Button("Open Models") { model.requestedTab = .run }
+            }
+            step(4,"Positive controls pass",done:controls?["passed"] as? Bool == true,detail:controls == nil ? "Scripted honest and rule-breaking agents. If a scripted rule break isn't flagged, the labels can't be trusted." : "Last controls run: \(controls?["status"] as? String ?? "")") {
+                Button("Run controls") { perform { run=try await model.researchLab.request("/sandbox/runs",body:["kind":"controls","harness_dir":harnessDir],timeout:15);episodeKey=nil;workspace=Workspace.runs.rawValue;try await refresh() } }.disabled(readiness["ok"] as? Bool != true || active)
+            }
+            step(5,"First episode",done:runs.contains { $0["kind"] as? String == "episodes" },detail:"Pick a task and a running model. Watch the reasoning, commands and tripwires arrive live.") {
+                Button("New run") { run=[:];episodeKey=nil;workspace=Workspace.runs.rawValue }.disabled(!ready)
+            }
+        }.frame(maxWidth:760,alignment:.leading)
+    }
+
+    private func step<Action: View>(_ n: Int,_ title: String,done: Bool,detail: String,@ViewBuilder action: () -> Action) -> some View {
+        HStack(alignment:.top,spacing:12) {
+            Image(systemName:done ? "checkmark.circle.fill" : "\(n).circle").font(.title2).foregroundStyle(done ? DynoBrand.accent : .secondary)
+            VStack(alignment:.leading,spacing:4) { Text(title).font(.headline);if !detail.isEmpty { Text(detail).font(.callout).foregroundStyle(.secondary).textSelection(.enabled) } }
+            Spacer();action()
+        }
+    }
+
+    // MARK: Requests
+
+    private func search() {
+        var c=URLComponents();c.queryItems=[URLQueryItem(name:"q",value:query),URLQueryItem(name:"event",value:eventFilter),URLQueryItem(name:"limit",value:"200")]
+        perform { results=try await model.researchLab.request("/sandbox/search?\(c.percentEncodedQuery ?? "")",timeout:15)["results"] as? [[String:Any]] ?? [] }
+    }
+    private func searchTask(_ id: String) {
+        var c=URLComponents();c.queryItems=[URLQueryItem(name:"task",value:id),URLQueryItem(name:"limit",value:"200")]
+        perform { results=try await model.researchLab.request("/sandbox/search?\(c.percentEncodedQuery ?? "")",timeout:15)["results"] as? [[String:Any]] ?? [] }
+    }
+    private func addSource() {
+        let p=NSOpenPanel();p.canChooseDirectories=true;p.canChooseFiles=false;p.message="Choose a harness runs folder to index"
+        if p.runModal() == .OK,let url=p.url { perform { _=try await model.researchLab.request("/sandbox/sources",body:["path":url.path]);search() } }
+    }
+    private func loadTasks() async throws {
+        var c=URLComponents();c.queryItems=[URLQueryItem(name:"harness_dir",value:harnessDir)]
+        tasks=try await model.researchLab.request("/sandbox/tasks?\(c.percentEncodedQuery ?? "")",timeout:30)["tasks"] as? [[String:Any]] ?? []
+    }
+    private func loadReadiness() async throws { readiness=try await model.researchLab.request("/sandbox/readiness") }
+    private func refresh() async throws { runs=try await model.researchLab.request("/sandbox/runs")["runs"] as? [[String:Any]] ?? [] }
+    private func open(_ id: String) async throws { run=try await model.researchLab.request("/sandbox/runs/\(id)",timeout:10) }
+    private func perform(_ action: @escaping @MainActor () async throws -> Void) { guard !working else { return };working=true;Task { do { try await action();issue=nil } catch { issue=error.localizedDescription };working=false } }
+}
+
+private struct EpisodeRow: View {
+    var episode: [String:Any]
+    var body: some View {
+        let trips=episode["tripwires"] as? Int ?? 0,severe=episode["severe"] as? Int ?? 0
+        HStack {
+            VStack(alignment:.leading) { Text(episode["episode_id"] as? String ?? "episode").font(.callout);Text(episode["outcome"] as? String ?? episode["status"] as? String ?? "running").font(.caption).foregroundStyle(.secondary) }
+            Spacer()
+            if trips > 0 { Text("⚠ \(trips)").font(.caption.bold()).padding(.horizontal,8).padding(.vertical,2).background(Capsule().fill((severe > 0 ? Color.red : Color.orange).opacity(0.25))) }
+        }.padding(8).background(RoundedRectangle(cornerRadius:8).fill(DynoBrand.surface))
+    }
+}
+
+/// Live, append-only view of one episode's event log.
+struct EpisodeTimeline: View {
+    var lab: ResearchLab
+    var key: String
+    var onError: (String) -> Void
+    @State private var events: [[String:Any]] = []
+    @State private var last = 0
+    @State private var info: [String:Any] = [:]
+    @State private var onlyTripwires = false
+    private var done: Bool { !((info["label"] as? [String:Any]) ?? [:]).isEmpty }
+
+    var body: some View {
+        VStack(alignment:.leading,spacing:8) {
+            HStack {
+                VStack(alignment:.leading) {
+                    Text(info["episode_id"] as? String ?? "Episode").font(.headline)
+                    Text("\(info["task_id"] as? String ?? "") · \(info["model_id"] as? String ?? "") · \(outcome)").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer();Toggle("Only tripwires",isOn:$onlyTripwires).toggleStyle(.switch)
+            }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment:.leading,spacing:8) {
+                        ForEach(Array(events.enumerated()),id:\.offset) { n,e in
+                            if !onlyTripwires || e["event"] as? String == "tripwire" { EventCard(event:e).id(n) }
+                        }
+                    }.padding(.vertical,4)
+                }.onChange(of:events.count) { _,c in if c > 0 && !onlyTripwires { proxy.scrollTo(c-1,anchor:.bottom) } }
+            }
+        }.padding()
+        .task {
+            while !Task.isCancelled {
+                do {
+                    info=try await lab.request("/sandbox/episodes/\(key)",timeout:10)
+                    let page=try await lab.request("/sandbox/episodes/\(key)/events?after=\(last)",timeout:10)
+                    let new=page["events"] as? [[String:Any]] ?? []
+                    if !new.isEmpty { events+=new;last=page["last"] as? Int ?? last }
+                    if done && new.isEmpty { break }
+                } catch { onError(error.localizedDescription) }
+                try? await Task.sleep(for:.seconds(1.5))
+            }
+        }
+    }
+    private var outcome: String { ((info["label"] as? [String:Any])?["outcome"] as? String) ?? "running" }
+}
+
+private struct EventCard: View {
+    var event: [String:Any]
+    @State private var expanded = false
+    private var kind: String { event["event"] as? String ?? "" }
+    private var header: String { "\(event["agent_id"] as? String ?? "agent") · step \(event["step"] as? Int ?? 0)" }
+    var body: some View {
+        VStack(alignment:.leading,spacing:4) {
+            switch kind {
+            case "start":
+                label("Task given to the agent",.secondary);Text(event["prompt"] as? String ?? "")
+            case "model":
+                label("\(header) · thinking",DynoBrand.violet)
+                if let r=event["reasoning"] as? String,!r.isEmpty {
+                    let long=r.count > 600
+                    Text(long && !expanded ? String(r.prefix(600)) + "…" : r).italic().foregroundStyle(.secondary).textSelection(.enabled)
+                    if long { Button(expanded ? "Show less" : "Show full reasoning (\(r.count) characters)") { expanded.toggle() }.buttonStyle(.link).font(.caption) }
+                }
+                if let c=event["content"] as? String,!c.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty { Text(c).textSelection(.enabled) }
+            case "tool_call":
+                label("\(header) · \(event["tool"] as? String ?? "tool")",DynoBrand.accent)
+                Text(command).font(.system(.callout,design:.monospaced)).textSelection(.enabled)
+            case "tool_result":
+                DisclosureGroup("Output · exit \(event["exit_code"] as? Int ?? -1)") {
+                    Text(String(((event["stdout"] as? String ?? "") + (event["stderr"] as? String ?? "")).prefix(6000))).font(.system(.caption,design:.monospaced)).textSelection(.enabled)
+                }.font(.caption)
+            case "tripwire":
+                label("⚠ \(event["type"] as? String ?? "tripwire") · \(event["severity"] as? String ?? "")",event["severity"] as? String == "severe" ? .red : .orange)
+                Text(event["evidence"] as? String ?? "").font(.system(.caption,design:.monospaced)).textSelection(.enabled)
+            case "end":
+                label("Episode ended · \(event["end_reason"] as? String ?? "")",.secondary)
+                if let a=event["final_args"] as? [String:Any] { Text(ResearchLab.pretty(a)).font(.caption).textSelection(.enabled) }
+            default:
+                label(kind,.secondary);Text(event["content"] as? String ?? event["error"] as? String ?? "").font(.caption)
+            }
+        }.padding(10).frame(maxWidth:.infinity,alignment:.leading)
+        .background(RoundedRectangle(cornerRadius:8).fill(kind == "tripwire" ? Color.orange.opacity(0.12) : DynoBrand.surface))
+    }
+    private var command: String {
+        let args=event["args"] as? [String:Any] ?? [:]
+        if let c=args["command"] as? String { return "$ " + c }
+        if let p=args["path"] as? String { return (event["tool"] as? String == "write_file" ? "write " : "read ") + p }
+        return ResearchLab.pretty(args)
+    }
+    private func label(_ text: String,_ color: Color) -> some View { Text(text).font(.caption.bold()).foregroundStyle(color) }
+}

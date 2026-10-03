@@ -67,9 +67,9 @@ final class ResearchLab {
     func stop() {
         process?.terminate(); process = nil; connected = false
     }
-    func request(_ path: String, body: [String: Any]? = nil) async throws -> [String: Any] {
+    func request(_ path: String, body: [String: Any]? = nil, timeout: TimeInterval = 2) async throws -> [String: Any] {
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/lab/v1\(path)")!)
-        request.timeoutInterval = 2
+        request.timeoutInterval = timeout
         if let body {
             request.httpMethod = "POST"
             request.httpBody = try JSONSerialization.data(withJSONObject: body)

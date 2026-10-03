@@ -81,6 +81,8 @@ enum ViewSnapshot {
                 model.shareRouterOnNetwork = true
                 return AnyView(MainWindow(model: model, initialTab: .router))
             }, CGSize(width: 980, height: 620)),
+            ("window-agents", { AnyView(MainWindow(model: model, initialTab: .agents)) },
+             CGSize(width: 1300, height: 900)),
             ("window-lab", { AnyView(MainWindow(model: model, initialTab: .lab)) },
              CGSize(width: 1200, height: 850)),
             ("window-execution", { AnyView(MainWindow(model: model, initialTab: .execution)) },
@@ -140,6 +142,11 @@ enum ViewSnapshot {
         }
         if arguments.contains("--reports-only") {
             targets = [("research-report", { AnyView(ResearchReportsView(model: model, initialReportID: ProcessInfo.processInfo.environment["DYNO_REPORT_ID"])) }, CGSize(width: 1300, height: 1050))]
+        }
+        if arguments.contains("--agents-only") {
+            let episode = ProcessInfo.processInfo.environment["DYNO_EPISODE_KEY"]
+            targets = [("window-agents", { AnyView(MainWindow(model: model, initialTab: .agents)) }, CGSize(width: 1400, height: 900))]
+            if let episode { targets = [("agents-episode", { AnyView(AgentsView(model: model, initialEpisode: episode).frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1400, height: 900))] }
         }
         if arguments.contains("--agent-only") {
             targets = [("simulated-agent", { AnyView(AgentTasksView(model: model, initialID: ProcessInfo.processInfo.environment["DYNO_AGENT_ID"])) }, CGSize(width: 1300, height: 1050))]
@@ -281,8 +288,10 @@ enum ViewSnapshot {
         hosting.layoutSubtreeIfNeeded()
         print("    [\((path as NSString).lastPathComponent)] natural size: "
               + "\(Int(hosting.fittingSize.width))x\(Int(hosting.fittingSize.height))")
-        // Give SwiftUI a couple of runloop turns to settle its layout.
-        RunLoop.main.run(until: Date().addingTimeInterval(0.6))
+        // Give SwiftUI a couple of runloop turns to settle its layout. Views that
+        // load from a local service can ask for longer with DYNO_SNAPSHOT_SETTLE.
+        let settle = Double(ProcessInfo.processInfo.environment["DYNO_SNAPSHOT_SETTLE"] ?? "") ?? 0.6
+        RunLoop.main.run(until: Date().addingTimeInterval(settle))
         hosting.layoutSubtreeIfNeeded()
 
         guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {

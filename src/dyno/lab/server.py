@@ -269,6 +269,7 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
         runs = self.server.sandbox
         if parts == ['runs']: return {'runs': runs.list()}
         if parts == ['sources']: return {'sources': runs.sources()}
+        if parts == ['readiness']: return runs.readiness()
         if parts == ['tasks']: return runs.tasks(query.get('harness_dir'))
         if parts == ['search']:
             params = {k: query[k] for k in ('q', 'event', 'task', 'outcome', 'severity', 'limit') if query.get(k)}
@@ -310,6 +311,9 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
             if not isinstance(body, dict): raise ValueError('Request must be an object')
             if self.path == '/lab/v1/sandbox/runs':
                 self._execution_send(self.server.sandbox.create(body), 201)
+            elif self.path == '/lab/v1/sandbox/readiness':
+                if set(body) != {'harness_dir'}: raise ValueError('Use harness_dir')
+                self._execution_send(self.server.sandbox.check_readiness(body['harness_dir']), 202)
             elif self.path == '/lab/v1/sandbox/sources':
                 if set(body) != {'path'}: raise ValueError('Use path')
                 self._execution_send(self.server.sandbox.add_source(body['path']), 201)

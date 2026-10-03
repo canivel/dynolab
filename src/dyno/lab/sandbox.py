@@ -24,6 +24,13 @@ KEY = re.compile(r'^[0-9a-f]{32}$')
 EVENT_TEXT_LIMIT = 20000
 
 
+def harness_env():
+    """Apps launched from Finder get a minimal PATH; docker and colima live in Homebrew."""
+    path = os.environ.get('PATH', '/usr/bin:/bin:/usr/sbin:/sbin')
+    extra = [p for p in ('/opt/homebrew/bin', '/usr/local/bin') if p not in path.split(':')]
+    return dict(os.environ, PATH=':'.join([*extra, path]), PYTHONUNBUFFERED='1')
+
+
 def event_text(e):
     """The searchable text of one harness event."""
     kind = e.get('event')
@@ -190,36 +197,45 @@ class SandboxRuns:
 
     def tasks(self, directory):
         folder, python = self.harness(directory)
-        out = subprocess.run([str(python), '-m', 'harness', 'tasks'], cwd=folder, capture_output=True, text=True, timeout=30)
+        out = subprocess.run([str(python), '-m', 'harness', 'tasks'], cwd=folder, capture_output=True, text=True, timeout=30, env=harness_env())
         if out.returncode: raise ValueError(out.stderr[-2000:] or 'The harness could not list tasks')
         return json.loads(out.stdout)
 
     def create(self, config):
-        allowed = {'title', 'harness_dir', 'task', 'count', 'port', 'model', 'revision', 'seed'}
+        allowed = {'kind', 'title', 'harness_dir', 'task', 'count', 'port', 'model', 'revision', 'seed'}
         if not isinstance(config, dict) or set(config) - allowed: raise ValueError('Unsupported sandbox run config')
-        c = dict(config); c.setdefault('count', 1)
+        if config.get('kind') == 'controls': return self._start_controls(config)
+        c = dict(config); c.pop('kind', None); c.setdefault('count', 1)
         text(c.get('title', c.get('task')), 'title', 200); text(c.get('model'), 'model', 2048)
         if not EPISODE_NAME.match(c.get('task') or ''): raise ValueError('Choose a harness task')
         if type(c['count']) is not int or not 1 <= c['count'] <= 20: raise ValueError('count must be 1–20')
         if type(c.get('port')) is not int or not 1024 <= c['port'] <= 65535: raise ValueError('Choose a loopback model port')
         if 'seed' in c and (type(c['seed']) is not int or c['seed'] < 0): raise ValueError('seed must be a nonnegative integer')
         folder_path, python = self.harness(c.get('harness_dir'))
+        command = ['--base-url', f"http://127.0.0.1:{c['port']}/v1", '--model-id', c['model']]
+        if c.get('revision'): command += ['--model-revision', c['revision']]
+        command += ['run', '--task', c['task'], '--count', str(c['count'])]
+        if 'seed' in c: command += ['--seed', str(c['seed'])]
+        return self._launch(dict(kind='episodes', title=c.get('title') or c['task'], config=c), folder_path, python, command)
+
+    def _start_controls(self, config):
+        """Scripted honest and rule-breaking agents: every rule break must be flagged."""
+        if set(config) - {'kind', 'harness_dir'}: raise ValueError('Controls take only harness_dir')
+        folder_path, python = self.harness(config.get('harness_dir'))
+        return self._launch(dict(kind='controls', title='Positive controls', config=dict(config)), folder_path, python, ['control'])
+
+    def _launch(self, record, folder_path, python, args):
         with self.lock:
             if self.active: raise RuntimeError('Another sandbox run is in progress')
             identifier = uuid.uuid4().hex
             folder = self.root / identifier
             folder.mkdir(mode=0o700)
-            record = dict(id=identifier, created=time.time(), status='running', title=c.get('title') or c['task'],
-                          config=c, config_hash=digest(c))
-            command = [str(python), '-m', 'harness', '--base-url', f"http://127.0.0.1:{c['port']}/v1", '--model-id', c['model']]
-            if c.get('revision'): command += ['--model-revision', c['revision']]
-            command += ['run', '--task', c['task'], '--count', str(c['count']), '--out', str(folder / 'episodes')]
-            if 'seed' in c: command += ['--seed', str(c['seed'])]
-            record['command'] = command
+            record.update(id=identifier, created=time.time(), status='running', config_hash=digest(record['config']))
+            record['command'] = [str(python), '-m', 'harness', *args, '--out', str(folder / 'episodes')]
             self._write(record)
             log = (folder / 'harness.log').open('w')
-            self.process = subprocess.Popen(command, cwd=folder_path, stdout=log, stderr=subprocess.STDOUT,
-                                            env=dict(os.environ, PYTHONUNBUFFERED='1'), start_new_session=True)
+            self.process = subprocess.Popen(record['command'], cwd=folder_path, stdout=log, stderr=subprocess.STDOUT,
+                                            env=harness_env(), start_new_session=True)
             self.active = identifier
             threading.Thread(target=self._wait, args=(identifier, self.process, log), daemon=True).start()
             return record
@@ -262,7 +278,10 @@ class SandboxRuns:
     def read(self, identifier):
         record = self.read_record(identifier)
         self.index.update([self.root / identifier])
-        return dict(record, episodes=self.index.episodes(self.root / identifier))
+        extra = {}
+        if record.get('kind') == 'controls':
+            extra['controls'] = _load(self.root / identifier / 'episodes' / 'controls.json') or None
+        return dict(record, episodes=self.index.episodes(self.root / identifier), **extra)
 
     def episode(self, key):
         row = self.index.episode(key)
@@ -281,6 +300,35 @@ class SandboxRuns:
                     events.append(e)
                     if len(events) >= limit: break
         return dict(events=events, last=events[-1].get('seq') if events else after)
+
+    def readiness(self):
+        state = _load(self.root / 'readiness.json')
+        state['running'] = bool(getattr(self, '_readiness_thread', None) and self._readiness_thread.is_alive())
+        controls = [r for r in self.list() if r.get('kind') == 'controls' and r['status'] != 'running']
+        if controls:
+            last = controls[0]
+            state['controls'] = dict(id=last['id'], status=last['status'], created=last['created'],
+                                     passed=last['status'] == 'completed')
+        return state
+
+    def check_readiness(self, directory):
+        folder, python = self.harness(directory)
+        with self.lock:
+            if getattr(self, '_readiness_thread', None) and self._readiness_thread.is_alive():
+                return self.readiness()
+            def work():
+                started = time.time()
+                try:
+                    out = subprocess.run([str(python), '-m', 'harness', 'check', '--json'], cwd=folder, capture_output=True,
+                                         text=True, timeout=180, env=harness_env())
+                    result = json.loads(out.stdout) if out.stdout.strip().startswith('{') else dict(ok=False, checks=[], error=out.stderr[-2000:])
+                except (subprocess.SubprocessError, OSError, ValueError) as error:
+                    result = dict(ok=False, checks=[], error=str(error))
+                result.update(checked=time.time(), duration=round(time.time() - started, 1), harness_dir=str(folder))
+                (self.root / 'readiness.json').write_text(json.dumps(result, indent=2))
+            self._readiness_thread = threading.Thread(target=work, daemon=True)
+            self._readiness_thread.start()
+        return self.readiness()
 
     def search(self, params):
         self.refresh_index()

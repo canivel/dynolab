@@ -39,7 +39,6 @@ struct ControlledStudiesView: View {
     @State private var showMonitor = false
     @State private var showReports = false
     @State private var showAgentTasks = false
-    @State private var showSandbox = false
     private var lab: ResearchLab { model.researchLab }
     private var id: String? { selected["id"] as? String }
     private var status: String { selected["status"] as? String ?? "" }
@@ -59,7 +58,7 @@ struct ControlledStudiesView: View {
                 Spacer()
                 Menu("Research tools") {
                     Button("Simulated tasks…") { showAgentTasks = true }
-                    Button("Sandboxed agents…") { showSandbox = true }
+                    Button("Sandboxed agents") { model.requestedTab = .agents; dismiss() }
                     Button("Research reports…") { showReports = true }
                 }
                 Button("Close") { dismiss() }
@@ -104,7 +103,6 @@ struct ControlledStudiesView: View {
             if let id { BlindStudyReviewView(lab: lab, studyID: id) }
         }
         .sheet(isPresented: $showAgentTasks) { AgentTasksView(model:model) }
-        .sheet(isPresented: $showSandbox) { SandboxRunsView(model:model) }
         .sheet(isPresented: $showReports) { ResearchReportsView(model:model) }
         .sheet(isPresented: $showMonitor) {
             if let id { MonitorEvaluationView(model: model, sourceID: id) }
