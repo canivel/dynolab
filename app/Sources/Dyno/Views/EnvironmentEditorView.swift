@@ -8,6 +8,7 @@ struct EnvironmentEditorView: View {
     var existingID: String?
     var template: [String:Any]?
     var onSaved: (String) -> Void
+    var initialSection: String? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var d = EnvDraft()
     @State private var section = Section.overview
@@ -21,119 +22,190 @@ struct EnvironmentEditorView: View {
     }
 
     var body: some View {
-        VStack(alignment:.leading,spacing:12) {
+        VStack(alignment:.leading,spacing:14) {
             HStack {
                 Text(existingID == nil ? "New environment" : "Edit \(existingID!)").font(.title2.bold())
                 Spacer()
-                if let issue { Text(issue).foregroundStyle(.orange).font(.callout).lineLimit(3) }
                 Button("Close") { dismiss() }
             }
-            HSplitView {
-                HStack(alignment:.top,spacing:0) {
-                    List(Section.allCases,selection:Binding(get:{ section },set:{ section=$0 ?? .overview })) { Text($0.rawValue).tag($0) }.frame(width:170)
-                    ScrollView { VStack(alignment:.leading,spacing:10) { form }.padding(16).frame(maxWidth:.infinity,alignment:.leading) }
-                }.frame(minWidth:640)
+            // Numbered steps instead of a sidebar, so the whole width goes to the form.
+            HStack(spacing:6) {
+                ForEach(Array(Section.allCases.enumerated()),id:\.offset) { i,sec in
+                    Button { section=sec } label: {
+                        HStack(spacing:6) {
+                            Text("\(i+1)").font(.caption.bold()).frame(width:20,height:20).background(Circle().fill(section == sec ? DynoBrand.lime : Color.primary.opacity(0.12))).foregroundStyle(section == sec ? DynoBrand.ink : .primary)
+                            Text(sec.rawValue).font(.callout).lineLimit(1)
+                        }.padding(.horizontal,10).padding(.vertical,6)
+                        .background(RoundedRectangle(cornerRadius:8).fill(section == sec ? DynoBrand.surface : Color.clear))
+                    }.buttonStyle(.plain)
+                }
+            }
+            if let issue { Label(issue,systemImage:"exclamationmark.triangle").foregroundStyle(.orange).font(.callout) }
+            HStack(alignment:.top,spacing:16) {
                 ScrollView {
-                    VStack(alignment:.leading,spacing:12) {
+                    VStack(alignment:.leading,spacing:14) { form }.padding(.vertical,4).padding(.trailing,8).frame(maxWidth:.infinity,alignment:.leading)
+                }.frame(maxWidth:.infinity)
+                ScrollView {
+                    VStack(alignment:.leading,spacing:10) {
                         Text("Preview").font(.headline)
-                        Topology(template:d.previewTemplate())
-                        ForEach(d.warnings(),id:\.self) { Label($0,systemImage:"exclamationmark.triangle").foregroundStyle(.orange).font(.caption) }
+                        Topology(template:d.previewTemplate(),vertical:true)
+                        ForEach(d.warnings(),id:\.self) { Label($0,systemImage:"exclamationmark.triangle").foregroundStyle(.orange).font(.caption).fixedSize(horizontal:false,vertical:true) }
                         if let saved { Label(saved,systemImage:"checkmark.seal").foregroundStyle(DynoBrand.accent).font(.callout) }
-                    }.padding(16)
-                }.frame(minWidth:380,idealWidth:460)
+                    }.padding(12)
+                }.frame(width:320).background(RoundedRectangle(cornerRadius:10).fill(DynoBrand.surface.opacity(0.6)))
             }
             HStack {
-                Text("Saved environments live in your Dyno data and are validated by the harness. Built-in environments can be copied but not changed. Turn an environment on from the Environments list to try it.").font(.caption).foregroundStyle(.secondary)
+                Button("Back") { move(-1) }.disabled(section == Section.allCases.first)
+                Button("Next") { move(1) }.disabled(section == Section.allCases.last)
                 Spacer()
+                Text(d.id.isEmpty ? "Give the environment an id in step 1 to save it." : "Validated by the harness when you save.").font(.caption).foregroundStyle(d.id.isEmpty ? .orange : .secondary)
                 Button(existingID == nil && saved == nil ? "Save environment" : "Save changes") { save() }.buttonStyle(.dynoPrimary).disabled(working || d.id.isEmpty)
             }
-        }.padding(20).frame(minWidth:1150,minHeight:760).background(DynoBrand.background).dynoTheme()
-        .onAppear { if let template { d=EnvDraft(detail:template,keepID:existingID != nil) } else { d=EnvDraft.starter() } }
+        }.padding(20).frame(minWidth:960,idealWidth:1150,minHeight:700,idealHeight:820).background(DynoBrand.background).dynoTheme()
+        .onAppear {
+            if let template { d=EnvDraft(detail:template,keepID:existingID != nil) } else { d=EnvDraft.starter() }
+            if let initialSection,let s=Section(rawValue:initialSection) { section=s }
+        }
+    }
+
+    private func move(_ step: Int) {
+        let all=Section.allCases,i=all.firstIndex(of:section) ?? 0
+        section=all[max(0,min(all.count-1,i+step))]
     }
 
     @ViewBuilder private var form: some View {
         switch section {
         case .overview:
-            field("Environment id","Lowercase letters, digits and -. It names the environment.") { TextField("my-lab",text:$d.id).disabled(existingID != nil) }
-            field("Title") { TextField("Short human name",text:$d.title) }
-            field("Description","What the network is and what the agent may and may not reach") { TextField("",text:$d.description,axis:.vertical).lineLimit(2...5) }
-            field("Tags","Comma-separated") { TextField("network-segmentation, data-boundary",text:$d.tags) }
+            intro("Name the environment and say what it represents. People choosing an environment for their tasks read this.")
+            field("Environment id","Lowercase letters, digits and -. Used to refer to it from tasks.") { TextField("my-lab",text:$d.id).textFieldStyle(.roundedBorder).disabled(existingID != nil) }
+            field("Title") { TextField("Short human name",text:$d.title).textFieldStyle(.roundedBorder) }
+            field("Description","What the network is, and what the agent may and may not reach") { TextField("",text:$d.description,axis:.vertical).textFieldStyle(.roundedBorder).lineLimit(3...6) }
+            field("Tags","Comma-separated") { TextField("network-segmentation, data-boundary",text:$d.tags).textFieldStyle(.roundedBorder) }
         case .segments:
-            Text("Segments are separate internal networks for services. The agent's workstation never joins them; it reaches services only through the gateway rules.").font(.callout).foregroundStyle(.secondary)
-            ForEach($d.segments) { $seg in
-                HStack { TextField("office",text:$seg.name);remove { d.segments.removeAll { $0.id == seg.id } } }
+            intro("Segments are separate internal networks. Put services that belong together on the same segment. The agent's workstation never joins a segment; it reaches services only through the gateway rules in step 4.")
+            ForEach(Array($d.segments.enumerated()),id:\.element.id) { i,$seg in
+                card("Segment \(i+1)",onRemove:{ d.segments.removeAll { $0.id == seg.id } }) {
+                    field("Name","For example office, prod, mgmt") { TextField("office",text:$seg.name).textFieldStyle(.roundedBorder) }
+                    let used=d.nodes.filter { $0.segment == seg.name && !$0.name.isEmpty }.map(\.name)
+                    Text(used.isEmpty ? "No services on this segment yet." : "Services: \(used.joined(separator:", "))").font(.caption).foregroundStyle(.secondary)
+                }
             }
-            Button("Add segment") { d.segments.append(.init(name:"")) }
+            Button { d.segments.append(.init(name:"")) } label: { Label("Add segment",systemImage:"plus") }
         case .services:
-            Text("Each service runs in its own gVisor container on a segment. Pick a ready-made service or run your own command.").font(.callout).foregroundStyle(.secondary)
-            ForEach($d.nodes) { $n in
-                VStack(alignment:.leading,spacing:8) {
-                    HStack {
-                        TextField("name, e.g. reports",text:$n.name).frame(width:180)
-                        Picker("",selection:$n.segment) { Text("Segment").tag("");ForEach(d.segments.map(\.name).filter { !$0.isEmpty },id:\.self) { Text($0).tag($0) } }.labelsHidden().frame(width:150)
-                        Picker("",selection:$n.kind) {
-                            Text("Web server (files)").tag("http-files");Text("Mock API (JSON)").tag("mock-api")
-                            Text("Line service (TCP)").tag("line-service");Text("Custom command").tag("custom")
-                        }.labelsHidden().frame(width:190)
-                        Text("port").font(.caption);TextField("8080",text:$n.port).frame(width:70)
-                        Spacer();remove { d.nodes.removeAll { $0.id == n.id } }
+            intro("Each service runs in its own sandboxed container on a segment. Pick a ready-made type, or run your own command.")
+            ForEach(Array($d.nodes.enumerated()),id:\.element.id) { i,$n in
+                card(n.name.isEmpty ? "Service \(i+1)" : n.name,onRemove:{ d.nodes.removeAll { $0.id == n.id } }) {
+                    Grid(alignment:.leadingFirstTextBaseline,horizontalSpacing:12,verticalSpacing:6) {
+                        GridRow {
+                            label("Name");label("Segment");label("Type");label("Port")
+                        }
+                        GridRow {
+                            TextField("reports",text:$n.name).textFieldStyle(.roundedBorder)
+                            Picker("",selection:$n.segment) { Text("Choose").tag("");ForEach(d.segments.map(\.name).filter { !$0.isEmpty },id:\.self) { Text($0).tag($0) } }.labelsHidden()
+                            Picker("",selection:$n.kind) {
+                                Text("Web server (files)").tag("http-files");Text("Mock API (JSON)").tag("mock-api")
+                                Text("Line service (TCP)").tag("line-service");Text("Custom command").tag("custom")
+                            }.labelsHidden()
+                            TextField("8080",text:$n.port).textFieldStyle(.roundedBorder).frame(width:80)
+                        }
                     }
+                    Text(typeHelp(n.kind)).font(.caption).foregroundStyle(.secondary)
                     switch n.kind {
                     case "mock-api":
-                        Text("Routes as JSON: path → status and JSON reply.").font(.caption).foregroundStyle(.secondary)
-                        editor($n.routes,height:90)
+                        field("Routes (JSON)","Each path gets a status and a JSON reply") { editor($n.routes,height:110) }
                     case "line-service":
-                        HStack { Text("Greeting").font(.caption);TextField("ready",text:$n.greeting) }
-                        Text("Replies, one per line as  input = reply").font(.caption).foregroundStyle(.secondary)
-                        editor($n.replies,height:70)
+                        field("Greeting","Sent when a client connects") { TextField("ready",text:$n.greeting).textFieldStyle(.roundedBorder) }
+                        field("Replies","One per line, as  input = reply") { editor($n.replies,height:80) }
                     case "custom":
-                        HStack { Text("Command").font(.caption);TextField("python3 /srv/app.py 8080",text:$n.command) }
-                    default:
-                        Text("Serves the files below from /srv/www.").font(.caption).foregroundStyle(.secondary)
+                        field("Command","Runs as root when the environment starts") { TextField("python3 /srv/app.py 8080",text:$n.command).textFieldStyle(.roundedBorder) }
+                    default: EmptyView()
                     }
                     if n.kind == "http-files" || n.kind == "custom" {
-                        ForEach($n.files) { $f in
-                            VStack(alignment:.leading) {
-                                HStack { TextField(n.kind == "http-files" ? "/srv/www/report.csv" : "/srv/app.py",text:$f.path);remove { n.files.removeAll { $0.id == f.id } } }
-                                editor($f.content,height:70)
+                        ForEach(Array($n.files.enumerated()),id:\.element.id) { j,$f in
+                            VStack(alignment:.leading,spacing:4) {
+                                HStack {
+                                    Text("File \(j+1)").font(.caption.bold())
+                                    TextField(n.kind == "http-files" ? "/srv/www/report.csv" : "/srv/app.py",text:$f.path).textFieldStyle(.roundedBorder)
+                                    remove { n.files.removeAll { $0.id == f.id } }
+                                }
+                                editor($f.content,height:80)
                             }
                         }
-                        Button("Add file") { n.files.append(.init(path:n.kind == "http-files" ? "/srv/www/" : "/srv/",content:"")) }.controlSize(.small)
+                        Button { n.files.append(.init(path:n.kind == "http-files" ? "/srv/www/" : "/srv/",content:"")) } label: { Label("Add file",systemImage:"doc.badge.plus") }.controlSize(.small)
                     }
-                }.padding(10).background(RoundedRectangle(cornerRadius:8).fill(DynoBrand.surface))
+                }
             }
-            Button("Add service") { d.nodes.append(.init(name:"",segment:d.segments.first?.name ?? "",kind:"http-files",port:"8080")) }
+            Button { d.nodes.append(.init(name:"",segment:d.segments.first?.name ?? "",kind:"http-files",port:"8080")) } label: { Label("Add service",systemImage:"plus") }
         case .gateway:
-            Text("The workstation reaches services only by these hostnames. Allow forwards the connection. Deny refuses it. Flag forwards it but records a tripwire. Every attempt is logged outside the agent's reach.").font(.callout).foregroundStyle(.secondary)
-            ForEach($d.rules) { $r in
-                VStack(alignment:.leading,spacing:6) {
-                    HStack {
-                        TextField("reports.internal",text:$r.host).frame(width:200)
-                        Text(":");TextField("8080",text:$r.port).frame(width:70)
-                        Picker("",selection:$r.action) { Text("allow").tag("allow");Text("deny").tag("deny");Text("flag").tag("flag") }.pickerStyle(.segmented).frame(width:180)
-                        Picker("",selection:$r.node) { Text("no service").tag("");ForEach(d.nodes.map(\.name).filter { !$0.isEmpty },id:\.self) { Text($0).tag($0) } }.labelsHidden().frame(width:150)
-                        Spacer();remove { d.rules.removeAll { $0.id == r.id } }
-                    }
-                    if r.action != "allow" {
-                        HStack {
-                            TextField("tripwire name, e.g. production_access",text:$r.tripwire)
-                            Picker("",selection:$r.severity) { Text("moderate").tag("moderate");Text("severe").tag("severe") }.labelsHidden().frame(width:120)
+            intro("The agent's workstation reaches services only through these rules, by hostname. Every connection attempt is logged outside the agent's reach.")
+            HStack(spacing:14) {
+                legend("allow","forwards the connection",DynoBrand.accent)
+                legend("deny","refuses it and records a tripwire",.red)
+                legend("flag","forwards it and records a tripwire",.orange)
+            }
+            ForEach(Array($d.rules.enumerated()),id:\.element.id) { i,$r in
+                card("Rule \(i+1)",onRemove:{ d.rules.removeAll { $0.id == r.id } }) {
+                    Grid(alignment:.leadingFirstTextBaseline,horizontalSpacing:12,verticalSpacing:6) {
+                        GridRow { label("Hostname the agent uses");label("Port");label("Goes to service") }
+                        GridRow {
+                            TextField("reports.internal",text:$r.host).textFieldStyle(.roundedBorder)
+                            TextField("8080",text:$r.port).textFieldStyle(.roundedBorder).frame(width:80)
+                            Picker("",selection:$r.node) { Text("none").tag("");ForEach(d.nodes.map(\.name).filter { !$0.isEmpty },id:\.self) { Text($0).tag($0) } }.labelsHidden()
                         }
                     }
-                }.padding(8).background(RoundedRectangle(cornerRadius:8).fill(DynoBrand.surface))
+                    Picker("Action",selection:$r.action) { Text("Allow").tag("allow");Text("Deny").tag("deny");Text("Flag").tag("flag") }.pickerStyle(.segmented).frame(maxWidth:320)
+                    if r.action != "allow" {
+                        Grid(alignment:.leadingFirstTextBaseline,horizontalSpacing:12,verticalSpacing:6) {
+                            GridRow { label("Tripwire name");label("Severity") }
+                            GridRow {
+                                TextField("production_access",text:$r.tripwire).textFieldStyle(.roundedBorder)
+                                Picker("",selection:$r.severity) { Text("moderate").tag("moderate");Text("severe").tag("severe") }.labelsHidden().frame(width:130)
+                            }
+                        }
+                    }
+                    Text(summary(r)).font(.callout).foregroundStyle(r.action == "allow" ? DynoBrand.accent : r.action == "deny" ? .red : .orange).fixedSize(horizontal:false,vertical:true)
+                }
             }
-            Button("Add rule") { d.rules.append(.init(host:"",port:"80",action:"allow",node:"",tripwire:"",severity:"moderate")) }
+            Button { d.rules.append(.init(host:"",port:"80",action:"allow",node:"",tripwire:"",severity:"moderate")) } label: { Label("Add rule",systemImage:"plus") }
         case .workstation:
-            field("Hostname","What the agent's machine is called. Use an ordinary name; it shouldn't announce a test.") { TextField("devbox",text:$d.hostname) }
-            Text("Tasks place their own files on the workstation, so this environment can be reused by many tasks.").font(.caption).foregroundStyle(.secondary)
+            intro("The workstation is where the agent works. Tasks place their own files there, so one environment can be reused by many tasks.")
+            field("Hostname","What the agent's machine is called. Use an ordinary name; it shouldn't announce a test.") { TextField("devbox",text:$d.hostname).textFieldStyle(.roundedBorder).frame(maxWidth:300) }
         }
     }
 
+    private func typeHelp(_ kind: String) -> String {
+        switch kind {
+        case "mock-api": return "Answers HTTP requests with the JSON you define per path. Unknown paths get 404."
+        case "line-service": return "A TCP service: sends the greeting, then answers each line the agent sends."
+        case "custom": return "Runs your command. Add any files it needs below."
+        default: return "Serves the files you add under /srv/www over HTTP."
+        }
+    }
+    private func summary(_ r: EnvDraft.Rule) -> String {
+        let target=r.host.isEmpty ? "this hostname" : "\(r.host):\(r.port)"
+        let to=r.node.isEmpty ? "" : " (service \(r.node))"
+        switch r.action {
+        case "deny": return "Connections to \(target)\(to) are refused and recorded as \(r.tripwire.isEmpty ? "a tripwire you still need to name" : r.tripwire) (\(r.severity))."
+        case "flag": return "The agent can reach \(target)\(to), and every connection is recorded as \(r.tripwire.isEmpty ? "a tripwire you still need to name" : r.tripwire) (\(r.severity))."
+        default: return "The agent can reach \(target)\(to)."
+        }
+    }
+    private func intro(_ text: String) -> some View { Text(text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true) }
+    private func label(_ text: String) -> some View { Text(text).font(.caption.bold()).foregroundStyle(.secondary) }
+    private func legend(_ name: String,_ text: String,_ color: Color) -> some View {
+        HStack(spacing:4) { Text(name).font(.caption.bold()).padding(.horizontal,6).padding(.vertical,1).background(Capsule().fill(color.opacity(0.25)));Text(text).font(.caption).foregroundStyle(.secondary) }
+    }
+    private func card<C: View>(_ title: String,onRemove: @escaping () -> Void,@ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment:.leading,spacing:8) {
+            HStack { Text(title).font(.headline);Spacer();Button(role:.destructive,action:onRemove) { Label("Remove",systemImage:"trash").foregroundStyle(.red) }.buttonStyle(.borderless).controlSize(.small) }
+            content()
+        }.padding(12).frame(maxWidth:.infinity,alignment:.leading).background(RoundedRectangle(cornerRadius:10).fill(DynoBrand.surface))
+    }
     private func field<C: View>(_ title: String,_ help: String? = nil,@ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment:.leading,spacing:4) { Text(title).font(.callout.bold());if let help { Text(help).font(.caption).foregroundStyle(.secondary) };content() }.padding(.bottom,6)
+        VStack(alignment:.leading,spacing:4) { Text(title).font(.callout.bold());if let help { Text(help).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true) };content() }
     }
     private func editor(_ text: Binding<String>,height: CGFloat) -> some View {
-        TextEditor(text:text).font(.system(.callout,design:.monospaced)).frame(height:height).scrollContentBackground(.hidden).padding(4).background(RoundedRectangle(cornerRadius:6).fill(Color.primary.opacity(0.05)))
+        TextEditor(text:text).font(.system(.callout,design:.monospaced)).frame(height:height).scrollContentBackground(.hidden).padding(4).background(RoundedRectangle(cornerRadius:6).fill(Color.primary.opacity(0.06)))
     }
     private func remove(_ action: @escaping () -> Void) -> some View { Button(role:.destructive,action:action) { Image(systemName:"minus.circle") }.buttonStyle(.plain) }
 

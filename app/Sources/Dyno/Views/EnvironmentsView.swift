@@ -230,38 +230,45 @@ struct EnvironmentsView: View {
 /// Workstation → gateway rules → segments with their nodes.
 struct Topology: View {
     var template: [String:Any]
+    var vertical = false
     var body: some View {
         let nodes=template["nodes"] as? [[String:Any]] ?? []
         let rules=template["gateway"] as? [[String:Any]] ?? []
-        let segments=Array(Set(nodes.compactMap { $0["segment"] as? String })).sorted()
-        HStack(alignment:.top,spacing:18) {
-            box("Workstation",subtitle:"the agent · access network",color:DynoBrand.violet) { Text("reaches services only through the gateways").font(.caption2).foregroundStyle(.secondary) }
-            Image(systemName:"arrow.right").padding(.top,30).foregroundStyle(.secondary)
-            box("Gateways",subtitle:"every attempt is logged",color:.orange) {
+        let segments=Array(Set(nodes.compactMap { $0["segment"] as? String }.filter { !$0.isEmpty })).sorted()
+        let layout=vertical ? AnyLayout(VStackLayout(alignment:.leading,spacing:8)) : AnyLayout(HStackLayout(alignment:.top,spacing:14))
+        layout {
+            box("Workstation",subtitle:"the agent, on its own access network",color:DynoBrand.violet) { EmptyView() }
+            arrow
+            box("Gateway rules",subtitle:"every attempt is logged",color:.orange) {
+                if rules.isEmpty { Text("No rules yet").font(.caption).foregroundStyle(.secondary) }
                 ForEach(Array(rules.enumerated()),id:\.offset) { _,r in
-                    HStack(spacing:6) {
-                        let action=r["action"] as? String ?? ""
-                        Text(action).font(.caption2.bold()).padding(.horizontal,5).background(Capsule().fill((action == "allow" ? DynoBrand.accent : action == "deny" ? Color.red : Color.orange).opacity(0.25)))
-                        Text("\(r["host"] as? String ?? ""):\(String(r["port"] as? Int ?? 0))").font(.system(.caption,design:.monospaced))
-                        if let tw=r["tripwire"] as? String { Text("→ \(tw)").font(.caption2).foregroundStyle(.secondary) }
+                    let action=r["action"] as? String ?? ""
+                    VStack(alignment:.leading,spacing:1) {
+                        HStack(spacing:6) {
+                            Text(action).font(.caption2.bold()).padding(.horizontal,5).background(Capsule().fill((action == "allow" ? DynoBrand.accent : action == "deny" ? Color.red : Color.orange).opacity(0.25)))
+                            Text("\(r["host"] as? String ?? ""):\(String(r["port"] as? Int ?? 0))").font(.system(.caption,design:.monospaced)).lineLimit(1).truncationMode(.middle)
+                        }
+                        if let tw=r["tripwire"] as? String { Text("records \(tw)").font(.caption2).foregroundStyle(.secondary) }
                     }
                 }
             }
-            Image(systemName:"arrow.right").padding(.top,30).foregroundStyle(.secondary)
+            arrow
             VStack(alignment:.leading,spacing:8) {
+                if segments.isEmpty { box("Segments",subtitle:"none yet",color:DynoBrand.accent) { EmptyView() } }
                 ForEach(segments,id:\.self) { seg in
                     box("Segment: \(seg)",subtitle:"internal network",color:DynoBrand.accent) {
-                        ForEach(nodes.filter { $0["segment"] as? String == seg }.compactMap { $0["name"] as? String },id:\.self) { Label($0,systemImage:"server.rack").font(.caption) }
+                        ForEach(nodes.filter { $0["segment"] as? String == seg }.compactMap { $0["name"] as? String }.filter { !$0.isEmpty },id:\.self) { Label($0,systemImage:"server.rack").font(.caption) }
                     }
                 }
             }
         }
     }
+    private var arrow: some View { Image(systemName:vertical ? "arrow.down" : "arrow.right").foregroundStyle(.secondary).padding(vertical ? .leading : .top,vertical ? 20 : 30) }
     private func box<C: View>(_ title: String,subtitle: String,color: Color,@ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment:.leading,spacing:6) {
             Text(title).font(.callout.bold())
-            Text(subtitle).font(.caption2).foregroundStyle(.secondary)
+            Text(subtitle).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
             content()
-        }.padding(10).frame(minWidth:170,alignment:.leading).background(RoundedRectangle(cornerRadius:10).stroke(color.opacity(0.5)))
+        }.padding(10).frame(minWidth:vertical ? nil : 180,maxWidth:vertical ? .infinity : 280,alignment:.leading).background(RoundedRectangle(cornerRadius:10).stroke(color.opacity(0.5)))
     }
 }

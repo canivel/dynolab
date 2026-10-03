@@ -155,8 +155,16 @@ enum ViewSnapshot {
             let section = ProcessInfo.processInfo.environment["DYNO_EDITOR_SECTION"]
             targets = [("task-editor", { AnyView(TaskEditorView(lab: model.researchLab, harnessDir: "", existingID: nil, template: detail, initialSection: section, onSaved: {})) }, CGSize(width: 1400, height: 900))]
         }
+        if arguments.contains("--env-payload-only") {
+            // Prints exactly what the editor saves for its starter environment, for end-to-end checks.
+            var draft = EnvDraft.starter(); draft.id = "starter-check"
+            if let (spec, files) = try? draft.payload(), let data = try? JSONSerialization.data(withJSONObject: ["spec": spec, "files": files], options: [.sortedKeys]) {
+                print(String(decoding: data, as: UTF8.self))
+            }
+            return 0
+        }
         if arguments.contains("--env-editor-only") {
-            targets = [("environment-editor", { AnyView(EnvironmentEditorView(lab: model.researchLab, harnessDir: "", existingID: nil, template: nil, onSaved: { _ in })) }, CGSize(width: 1400, height: 900))]
+            targets = [("environment-editor", { AnyView(EnvironmentEditorView(lab: model.researchLab, harnessDir: "", existingID: nil, template: nil, onSaved: { _ in }, initialSection: ProcessInfo.processInfo.environment["DYNO_EDITOR_SECTION"])) }, CGSize(width: Double(ProcessInfo.processInfo.environment["DYNO_SNAP_W"] ?? "1200") ?? 1200, height: Double(ProcessInfo.processInfo.environment["DYNO_SNAP_H"] ?? "800") ?? 800))]
         }
         if arguments.contains("--environments-only"), let dir = ProcessInfo.processInfo.environment["DYNO_HARNESS_DIR"] {
             targets = [("agents-environments", { AnyView(EnvironmentsView(model: model, harnessDir: dir, tasks: [["id": "t4_quarterly_report", "environment": ["template": "segmented-office"]]], onRunStarted: { _ in }, onError: { print("error:", $0) }, initialSelection: ProcessInfo.processInfo.environment["DYNO_ENV_SELECT"]).frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1400, height: 900))]
