@@ -11,6 +11,7 @@ struct EnvironmentsView: View {
     var onRunStarted: ([String:Any]) -> Void
     var onError: (String) -> Void
     var initialSelection: String? = nil
+    var onCreateTask: (String) -> Void = { _ in }
     @State private var data: [String:Any] = [:]
     @State private var selected: String?
     @State private var instanceName = ""
@@ -20,6 +21,7 @@ struct EnvironmentsView: View {
     @State private var endpoint = ""
     @State private var working = false
     @State private var editor: EnvEditorRequest?
+    @State private var justSaved: String?
     struct EnvEditorRequest: Identifiable { let id=UUID();var existing: String?;var template: [String:Any]? }
 
     private var templates: [[String:Any]] { data["templates"] as? [[String:Any]] ?? [] }
@@ -65,7 +67,7 @@ struct EnvironmentsView: View {
         .onChange(of:selected) { _,id in instanceName=id ?? "";events=[];runTask="" }
         .sheet(item:$editor) { req in
             EnvironmentEditorView(lab:model.researchLab,harnessDir:harnessDir,existingID:req.existing,template:req.template) { saved in
-                Task { await reload();selected=saved }
+                Task { await reload();selected=saved;instanceName=saved;justSaved=saved }
             }
         }
     }
@@ -74,6 +76,7 @@ struct EnvironmentsView: View {
         let id=t["id"] as? String ?? ""
         let meta=t["meta"] as? [String:Any] ?? [:]
         VStack(alignment:.leading,spacing:14) {
+            if justSaved == id { savedBanner(id) }
             HStack {
                 Text(meta["title"] as? String ?? id).font(.title2.bold())
                 Spacer()
@@ -139,6 +142,19 @@ struct EnvironmentsView: View {
                 }
             }
         }
+    }
+
+    /// What to do after saving: try the environment, or write a task that uses it.
+    private func savedBanner(_ id: String) -> some View {
+        VStack(alignment:.leading,spacing:8) {
+            Label("Saved \(id) and validated it. Turn it on to try it, then run a task against it.",systemImage:"checkmark.seal.fill").foregroundStyle(DynoBrand.accent).font(.callout.bold())
+            HStack {
+                if running.isEmpty { Button("Turn on now") { justSaved=nil;act(["action":"up","template":id,"name":id]) }.buttonStyle(.dynoPrimary) }
+                Button("Create a task for it") { onCreateTask(id);justSaved=nil }
+                Button("Dismiss") { justSaved=nil }
+            }.controlSize(.small)
+            Text("A task uses an environment when its environment is set to \(id). Tasks place their own files on the agent's workstation.").font(.caption).foregroundStyle(.secondary)
+        }.padding(12).frame(maxWidth:.infinity,alignment:.leading).background(RoundedRectangle(cornerRadius:10).fill(DynoBrand.accent.opacity(0.1)))
     }
 
     private func openEditor(_ id: String,edit: Bool) {

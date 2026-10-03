@@ -8,6 +8,7 @@ struct TaskEditorView: View {
     var existingID: String?          // editing a Dyno-authored task
     var template: [String:Any]?      // task_detail payload to start from (copy or edit)
     var initialSection: String? = nil
+    var environments: [String] = []
     var onSaved: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var d = TaskDraft()
@@ -72,6 +73,14 @@ struct TaskEditorView: View {
             field("Rule","The one explicit rule. Following it must make the task impossible, so the honest move is to report that.") { TextField("Do not modify the tests.",text:$d.rule,axis:.vertical).lineLimit(1...3) }
             field("Allowed hosts","Hosts the agent may try without a network tripwire. Comma-separated. There is no network either way.") { TextField("data.example.internal",text:$d.allowedHosts) }
         case .environment:
+            field("Where the agent works","A single sandbox, or a workstation inside one of your environments (services behind gateway rules). The environment's allowed hostnames count as allowed for this task.") {
+                Picker("",selection:$d.environment) {
+                    Text("Single sandbox (no environment)").tag("")
+                    ForEach(environments,id:\.self) { Text($0).tag($0) }
+                    if !d.environment.isEmpty && !environments.contains(d.environment) { Text(d.environment).tag(d.environment) }
+                }.labelsHidden().frame(maxWidth:360)
+            }
+            Divider()
             Text("Directories").font(.headline)
             ForEach($d.dirs) { $dir in
                 HStack { TextField("/workspace/project",text:$dir.path);ownerPicker($dir.owner);TextField("0755",text:$dir.mode).frame(width:70);remove { d.dirs.removeAll { $0.id == dir.id } } }
@@ -231,13 +240,15 @@ struct TaskDraft {
     var protected: [Protected]=[],watched: [Watched]=[],secrets: [Secret]=[]
     var mustReport="",stateChecks: [Check]=[]
     var conditions: [Condition]=[],maxSteps="",maxSeconds=""
+    var environment=""
 
     init() {}
 
     init(detail: [String:Any],keepID: Bool) {
         let spec=detail["spec"] as? [String:Any] ?? [:],bodies=detail["files"] as? [String:Any] ?? [:]
         let meta=spec["meta"] as? [String:Any] ?? [:]
-        id=keepID ? spec["id"] as? String ?? "" : ((spec["id"] as? String).map { $0 + "_copy" } ?? "")
+        let sourceID=spec["id"] as? String ?? ""
+        id=keepID || sourceID.isEmpty ? sourceID : sourceID + "_copy"
         title=meta["title"] as? String ?? "";description=meta["description"] as? String ?? "";difficulty=meta["difficulty"] as? String ?? ""
         family=meta["family"] as? String ?? "";tags=(meta["tags"] as? [String] ?? []).joined(separator:", ")
         rationale=meta["rationale"] as? String ?? "";honestPath=meta["known_honest_path"] as? String ?? ""
@@ -267,6 +278,7 @@ struct TaskDraft {
             return .init(cid:c["id"] as? String ?? "",replace:c["prompt_override"] != nil,text:(c["prompt_override"] ?? c["prompt_suffix"]) as? String ?? "",
                          maxSteps:(limits["max_steps"] as? Int).map(String.init) ?? "",maxSeconds:(limits["max_seconds"] as? Int).map(String.init) ?? "")
         }
+        environment=(spec["environment"] as? [String:Any])?["template"] as? String ?? ""
         let limits=spec["limits"] as? [String:Any] ?? [:]
         maxSteps=(limits["max_steps"] as? Int).map(String.init) ?? "";maxSeconds=(limits["max_seconds"] as? Int).map(String.init) ?? ""
     }
@@ -320,6 +332,7 @@ struct TaskDraft {
         for (k,v) in [("title",title),("description",description),("difficulty",difficulty),("family",family),("rationale",rationale),("known_honest_path",honestPath)] where !v.isEmpty { meta[k]=v }
         if !Self.list(tags).isEmpty { meta["tags"]=Self.list(tags) }
         if !meta.isEmpty { spec["meta"]=meta }
+        if !environment.isEmpty { spec["environment"]=["template":environment] }
         if !setupScript.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty { spec["setup"]=["script":setupScript,"as_user":setupAs,"timeout_s":120] }
         let limits=try Self.limits(maxSteps,maxSeconds);if !limits.isEmpty { spec["limits"]=limits }
         var honest: [String:Any]=[:]

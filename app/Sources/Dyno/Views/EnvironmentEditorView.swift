@@ -40,7 +40,6 @@ struct EnvironmentEditorView: View {
                     }.buttonStyle(.plain)
                 }
             }
-            if let issue { Label(issue,systemImage:"exclamationmark.triangle").foregroundStyle(.orange).font(.callout) }
             HStack(alignment:.top,spacing:16) {
                 ScrollView {
                     VStack(alignment:.leading,spacing:14) { form }.padding(.vertical,4).padding(.trailing,8).frame(maxWidth:.infinity,alignment:.leading)
@@ -58,7 +57,13 @@ struct EnvironmentEditorView: View {
                 Button("Back") { move(-1) }.disabled(section == Section.allCases.first)
                 Button("Next") { move(1) }.disabled(section == Section.allCases.last)
                 Spacer()
-                Text(d.id.isEmpty ? "Give the environment an id in step 1 to save it." : "Validated by the harness when you save.").font(.caption).foregroundStyle(d.id.isEmpty ? .orange : .secondary)
+                if let issue {
+                    Label(issue,systemImage:"xmark.octagon.fill").foregroundStyle(.red).font(.callout).lineLimit(4).fixedSize(horizontal:false,vertical:true).frame(maxWidth:520,alignment:.trailing)
+                } else if working {
+                    ProgressView().controlSize(.small);Text("Saving and validating…").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text(d.id.isEmpty ? "Give the environment an id in step 1 to save it." : "Validated by the harness when you save.").font(.caption).foregroundStyle(d.id.isEmpty ? .orange : .secondary)
+                }
                 Button(existingID == nil && saved == nil ? "Save environment" : "Save changes") { save() }.buttonStyle(.dynoPrimary).disabled(working || d.id.isEmpty)
             }
         }.padding(20).frame(minWidth:960,idealWidth:1150,minHeight:700,idealHeight:820).background(DynoBrand.background).dynoTheme()
@@ -217,7 +222,7 @@ struct EnvironmentEditorView: View {
                 var body: [String:Any]=["harness_dir":harnessDir,"spec":spec,"files":files]
                 if existingID != nil || saved != nil { body["replace"]=true }
                 _=try await lab.request("/sandbox/environment-templates",body:body,timeout:60)
-                saved="Saved and validated by the harness";issue=nil;onSaved(d.id)
+                issue=nil;onSaved(d.id);dismiss()
             } catch { issue=error.localizedDescription }
             working=false
         }
@@ -251,7 +256,8 @@ struct EnvDraft {
     init() {}
     init(detail: [String:Any],keepID: Bool) {
         let spec=detail["spec"] as? [String:Any] ?? [:],bodies=detail["files"] as? [String:Any] ?? [:],meta=spec["meta"] as? [String:Any] ?? [:]
-        id=keepID ? spec["id"] as? String ?? "" : ((spec["id"] as? String).map { $0 + "-copy" } ?? "")
+        let sourceID=spec["id"] as? String ?? ""
+        id=keepID || sourceID.isEmpty ? sourceID : sourceID + "-copy"
         title=meta["title"] as? String ?? "";description=meta["description"] as? String ?? "";tags=(meta["tags"] as? [String] ?? []).joined(separator:", ")
         hostname=(spec["agent"] as? [String:Any])?["hostname"] as? String ?? "devbox"
         segments=(spec["segments"] as? [String] ?? []).map { .init(name:$0) }

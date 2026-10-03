@@ -26,6 +26,7 @@ struct AgentsView: View {
     @State private var results: [[String:Any]] = []
     @State private var readiness: [String:Any] = [:]
     @State private var condition = ""
+    @State private var envTemplates: [String] = []
     @State private var taskEditor: EditorRequest?
 
     struct EditorRequest: Identifiable { let id=UUID();var existing: String?;var template: [String:Any]? }
@@ -64,7 +65,10 @@ struct AgentsView: View {
                 }
             case .conversations: ConversationsView(lab:model.researchLab,onError:{ issue=$0 })
             case .tasks: ScrollView { taskLibrary.padding(.vertical) }
-            case .environments: EnvironmentsView(model:model,harnessDir:harnessDir,tasks:tasks,onRunStarted:{ r in run=r;episodeKey=nil;workspace=Workspace.runs.rawValue;Task { try? await refresh() } },onError:{ issue=$0 })
+            case .environments: EnvironmentsView(model:model,harnessDir:harnessDir,tasks:tasks,onRunStarted:{ r in run=r;episodeKey=nil;workspace=Workspace.runs.rawValue;Task { try? await refresh() } },onError:{ issue=$0 },onCreateTask:{ env in
+                workspace=Workspace.tasks.rawValue
+                taskEditor=EditorRequest(existing:nil,template:["spec":["id":"","prompt":"","rule":"","environment":["template":env],"files":[],"dirs":[],"protected":[],"watched_reads":[],"secrets":[],"allowed_hosts":[]],"files":[:]])
+            })
             case .readiness: ScrollView { readinessPanel.padding(.vertical) }
             }
         }.padding(20).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
@@ -211,7 +215,7 @@ struct AgentsView: View {
             }
         }
         .sheet(item:$taskEditor) { req in
-            TaskEditorView(lab:model.researchLab,harnessDir:harnessDir,existingID:req.existing,template:req.template) { perform { try await loadTasks() } }
+            TaskEditorView(lab:model.researchLab,harnessDir:harnessDir,existingID:req.existing,template:req.template,environments:envTemplates) { perform { try await loadTasks() } }
         }
     }
 
@@ -341,7 +345,12 @@ struct AgentsView: View {
         let p=NSOpenPanel();p.canChooseDirectories=true;p.canChooseFiles=false;p.message="Choose a harness runs folder to index"
         if p.runModal() == .OK,let url=p.url { perform { _=try await model.researchLab.request("/sandbox/sources",body:["path":url.path]);search() } }
     }
+    private func loadEnvironments() async {
+        var c=URLComponents();c.queryItems=harnessDir.isEmpty ? [] : [URLQueryItem(name:"harness_dir",value:harnessDir)]
+        envTemplates=((try? await model.researchLab.request("/sandbox/environments?\(c.percentEncodedQuery ?? "")",timeout:30))?["templates"] as? [[String:Any]] ?? []).compactMap { $0["id"] as? String }
+    }
     private func loadTasks() async throws {
+        await loadEnvironments()
         var c=URLComponents();c.queryItems=harnessDir.isEmpty ? [] : [URLQueryItem(name:"harness_dir",value:harnessDir)]
         tasks=try await model.researchLab.request("/sandbox/tasks?\(c.percentEncodedQuery ?? "")",timeout:30)["tasks"] as? [[String:Any]] ?? []
     }
