@@ -150,6 +150,11 @@ enum ViewSnapshot {
             targets = [("window-agents", { AnyView(MainWindow(model: model, initialTab: .agents)) }, CGSize(width: 1400, height: 900))]
             if let episode { targets = [("agents-episode", { AnyView(AgentsView(model: model, initialEpisode: episode, initialTripwiresOnly: ProcessInfo.processInfo.environment["DYNO_ONLY_TRIPWIRES"] == "1").frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1400, height: 900))] }
         }
+        if arguments.contains("--task-editor-only"), let path = ProcessInfo.processInfo.environment["DYNO_TASK_TEMPLATE"],
+           let data = try? Data(contentsOf: URL(fileURLWithPath: path)), let detail = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let section = ProcessInfo.processInfo.environment["DYNO_EDITOR_SECTION"]
+            targets = [("task-editor", { AnyView(TaskEditorView(lab: model.researchLab, harnessDir: "", existingID: nil, template: detail, initialSection: section, onSaved: {})) }, CGSize(width: 1400, height: 900))]
+        }
         if arguments.contains("--conversations-only") {
             targets = [("agents-conversations", { AnyView(ConversationsView(lab: model.researchLab, onError: { print("error:", $0) }).frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1400, height: 900))]
         }

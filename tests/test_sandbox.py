@@ -211,12 +211,18 @@ class SandboxTests(unittest.TestCase):
         with self.assertRaises(ValueError) as bad:
             self.runs.save_task(dict(harness_dir=self.harness, spec=dict(spec, id='t9_bad', prompt='forbidden'), files={'app.log': 'x'}))
         self.assertIn('forbidden word', str(bad.exception))
+        nested = dict(spec, id='t9_nested', files=[dict(spec['files'][0], source='logs/app.log')])
+        self.runs.save_task(dict(harness_dir=self.harness, spec=nested, files={'logs/app.log': 'nested'}))
+        self.assertEqual(self.runs.task_detail(self.harness, 't9_nested')['files'], {'logs/app.log': 'nested'})
+        self.runs.delete_task(dict(harness_dir=self.harness, id='t9_nested'))
         tasks_dir = Path(self.harness) / 'tasks'
         self.assertEqual(sorted(p.name for p in tasks_dir.iterdir()), ['t9_custom'])  # no staging leftovers
         for bad_body in [dict(harness_dir=self.harness, spec=dict(spec, id='Bad-Id'), files={'app.log': 'x'}),
                          dict(harness_dir=self.harness, spec=dict(spec, id='t9_x'), files={'other.log': 'x'}),
                          dict(harness_dir=self.harness, spec=dict(spec, id='t9_y', shell='x'), files={'app.log': 'x'}),
-                         dict(harness_dir=self.harness, spec=dict(spec, id='t9_z'), files={'app.log': 'x', '../evil': 'x'})]:
+                         dict(harness_dir=self.harness, spec=dict(spec, id='t9_z'), files={'app.log': 'x', '../evil': 'x'}),
+                         dict(harness_dir=self.harness, spec=dict(spec, id='t9_w', files=[dict(spec['files'][0], source='../x')]), files={'../x': 'x'}),
+                         dict(harness_dir=self.harness, spec=dict(spec, id='t9_v', files=[dict(spec['files'][0], source='.hidden/x')]), files={'.hidden/x': 'x'})]:
             with self.assertRaises(ValueError): self.runs.save_task(bad_body)
         builtin = tasks_dir / 't1_builtin'; builtin.mkdir()
         (builtin / 'task.yaml').write_text(json.dumps(dict(spec, id='t1_builtin')))

@@ -375,7 +375,7 @@ class SandboxRuns:
     # --- task library ------------------------------------------------------
 
     TASK_ID = re.compile(r'^[a-z][a-z0-9_]{2,63}$')
-    FILE_NAME = re.compile(r'^[A-Za-z0-9._-]{1,100}$')
+    FILE_NAME = re.compile(r'^(?:[A-Za-z0-9_-][A-Za-z0-9._-]{0,99}/){0,4}[A-Za-z0-9_-][A-Za-z0-9._-]{0,99}$')  # relative, no '..'
 
     def task_detail(self, directory, task_id):
         folder, _ = self.harness(directory)
@@ -414,7 +414,9 @@ class SandboxRuns:
         try:
             (staging / 'files').mkdir(parents=True)
             (staging / 'task.yaml').write_text(json.dumps(spec, indent=2))  # JSON is valid YAML
-            for name, content in files.items(): (staging / 'files' / name).write_text(content)
+            for name, content in files.items():
+                target = staging / 'files' / name
+                target.parent.mkdir(parents=True, exist_ok=True); target.write_text(content)
             (staging / 'dyno.json').write_text(json.dumps(dict(created_by_dyno=True, saved=time.time()), indent=2))
             check_dir = staging.parent / f'.check-{uuid.uuid4().hex[:8]}' / task_id
             check_dir.parent.mkdir(); staging.rename(check_dir)  # the harness requires folder name == task id

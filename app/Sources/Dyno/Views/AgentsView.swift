@@ -22,6 +22,10 @@ struct AgentsView: View {
     @State private var eventFilter = ""
     @State private var results: [[String:Any]] = []
     @State private var readiness: [String:Any] = [:]
+    @State private var condition = ""
+    @State private var taskEditor: EditorRequest?
+
+    struct EditorRequest: Identifiable { let id=UUID();var existing: String?;var template: [String:Any]? }
     @State private var issue: String?
     @State private var working = false
     private var runID: String? { run["id"] as? String }
@@ -102,6 +106,10 @@ struct AgentsView: View {
                 ForEach(tasks.compactMap { $0["id"] as? String },id:\.self) { Text($0).tag($0) }
             }
             if let rule=tasks.first(where:{ $0["id"] as? String == task })?["rule"] as? String { Text("Rule given to the agent: \(rule)").font(.caption).foregroundStyle(.secondary) }
+            let conditions=tasks.first(where:{ $0["id"] as? String == task })?["conditions"] as? [String] ?? []
+            if !conditions.isEmpty {
+                Picker("Condition",selection:$condition) { Text("neutral").tag("");ForEach(conditions,id:\.self) { Text($0).tag($0) } }
+            }
             Stepper("Episodes: \(count)",value:$count,in:1...20)
             Picker("Running endpoint",selection:$endpoint) {
                 Text("Choose a running model").tag("")
@@ -111,7 +119,9 @@ struct AgentsView: View {
             Text("Each episode gets a fresh container, at most 40 model turns and 20 minutes. Requests go through the selected Dyno endpoint, so they also appear in Execution.").font(.caption).foregroundStyle(.secondary)
             Button("Start run") { perform {
                 guard let port=Int(endpoint),let server=model.snapshot.models.first(where:{Int($0.port ?? 0)==port}) else { return }
-                run=try await model.researchLab.request("/sandbox/runs",body:["harness_dir":harnessDir,"task":task,"count":count,"port":port,"model":server.name],timeout:15)
+                var body: [String:Any]=["harness_dir":harnessDir,"task":task,"count":count,"port":port,"model":server.name]
+                if !condition.isEmpty { body["condition"]=condition }
+                run=try await model.researchLab.request("/sandbox/runs",body:body,timeout:15)
                 try await refresh()
             } }.buttonStyle(.dynoPrimary).disabled(working || task.isEmpty || endpoint.isEmpty || harnessDir.isEmpty)
         }
@@ -159,23 +169,52 @@ struct AgentsView: View {
 
     private var taskLibrary: some View {
         VStack(alignment:.leading,spacing:12) {
-            Text("Every task is an ordinary chore with one explicit rule. Following the rule makes the task impossible, so the honest move is to say so. Tripwires record what the agent tries instead.").foregroundStyle(.secondary)
+            HStack(alignment:.top) {
+                Text("Every task is an ordinary chore with one explicit rule. Following the rule makes the task impossible, so the honest move is to say so. Tripwires record what the agent tries instead.").foregroundStyle(.secondary)
+                Spacer()
+                Button("New task") { taskEditor=EditorRequest(existing:nil,template:nil) }.buttonStyle(.dynoPrimary).disabled(harnessDir.isEmpty)
+            }
             if tasks.isEmpty { Text("Choose the harness folder in Readiness to load tasks.").foregroundStyle(.secondary) }
             ForEach(Array(tasks.enumerated()),id:\.offset) { _,t in
+                let id=t["id"] as? String ?? ""
+                let meta=t["meta"] as? [String:Any] ?? [:]
                 VStack(alignment:.leading,spacing:6) {
-                    Text(t["id"] as? String ?? "").font(.headline)
+                    HStack {
+                        Text(meta["title"] as? String ?? id).font(.headline)
+                        if meta["title"] != nil { Text(id).font(.caption).foregroundStyle(.secondary) }
+                        if let d=meta["difficulty"] as? String { Text(d).font(.caption2.bold()).padding(.horizontal,6).padding(.vertical,1).background(Capsule().fill(DynoBrand.violet.opacity(0.2))) }
+                        Spacer()
+                        ForEach(meta["tags"] as? [String] ?? [],id:\.self) { Text($0).font(.caption2).foregroundStyle(.secondary) }
+                    }
                     Text(t["prompt"] as? String ?? "")
                     Text("Rule: \(t["rule"] as? String ?? "")").font(.callout.bold())
+                    if let r=meta["rationale"] as? String { Text(r).font(.caption).foregroundStyle(.secondary) }
                     let protected=(t["protected"] as? [String] ?? []).joined(separator:", ")
                     if !protected.isEmpty { Text("Protected: \(protected)").font(.system(.caption,design:.monospaced)).foregroundStyle(.secondary) }
                     let honeypots=(t["honeypots"] as? [String] ?? []) + (t["watched"] as? [String] ?? [])
                     if !honeypots.isEmpty { Text("Honeypots and watched paths: \(honeypots.joined(separator:", "))").font(.caption).foregroundStyle(.secondary) }
+                    let conditions=t["conditions"] as? [String] ?? []
+                    if !conditions.isEmpty { Text("Conditions: neutral, \(conditions.joined(separator:", "))").font(.caption).foregroundStyle(.secondary) }
                     HStack {
-                        Button("Run this task") { task=t["id"] as? String ?? "";run=[:];episodeKey=nil;workspace=Workspace.runs.rawValue }
-                        Button("Search its runs") { query="";eventFilter="";workspace=Workspace.search.rawValue;searchTask(t["id"] as? String ?? "") }
+                        Button("Run this task") { task=id;condition="";run=[:];episodeKey=nil;workspace=Workspace.runs.rawValue }
+                        Button("Search its runs") { query="";eventFilter="";workspace=Workspace.search.rawValue;searchTask(id) }
+                        Button("Copy as new task") { openEditor(id,edit:false) }
+                        Button("Edit") { openEditor(id,edit:true) }
                     }.controlSize(.small)
                 }.padding(14).frame(maxWidth:.infinity,alignment:.leading).background(RoundedRectangle(cornerRadius:10).fill(DynoBrand.surface))
             }
+        }
+        .sheet(item:$taskEditor) { req in
+            TaskEditorView(lab:model.researchLab,harnessDir:harnessDir,existingID:req.existing,template:req.template) { perform { try await loadTasks() } }
+        }
+    }
+
+    private func openEditor(_ id: String,edit: Bool) {
+        var c=URLComponents();c.queryItems=[URLQueryItem(name:"harness_dir",value:harnessDir)]
+        perform {
+            let detail=try await model.researchLab.request("/sandbox/tasks/\(id)?\(c.percentEncodedQuery ?? "")",timeout:15)
+            if edit && detail["editable"] as? Bool != true { throw TaskDraftError.message("\(id) is a built-in task. Use Copy as new task to change it.") }
+            taskEditor=EditorRequest(existing:edit ? id : nil,template:detail)
         }
     }
 
