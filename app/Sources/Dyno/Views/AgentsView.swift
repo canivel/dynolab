@@ -33,7 +33,7 @@ struct AgentsView: View {
     private var current: Workspace { Workspace(rawValue: workspace) ?? .runs }
 
     enum Workspace: String, CaseIterable, Identifiable {
-        case runs = "Runs", conversations = "Conversations", search = "Search", tasks = "Tasks", readiness = "Readiness"
+        case runs = "Runs", conversations = "Conversations", search = "Search", tasks = "Tasks", environments = "Environments", readiness = "Readiness"
         var id: String { rawValue }
     }
 
@@ -45,7 +45,7 @@ struct AgentsView: View {
                     Text("Real commands in an isolated sandbox with no network route out. Every command is logged before it runs.").font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Picker("",selection:$workspace) { ForEach(Workspace.allCases) { Text($0.rawValue).tag($0.rawValue) } }.pickerStyle(.segmented).frame(width:520)
+                Picker("",selection:$workspace) { ForEach(Workspace.allCases) { Text($0.rawValue).tag($0.rawValue) } }.pickerStyle(.segmented).frame(width:640)
             }
             if let issue { Text(issue).foregroundStyle(.orange).font(.callout) }
             switch current {
@@ -61,6 +61,7 @@ struct AgentsView: View {
                 }
             case .conversations: ConversationsView(lab:model.researchLab,onError:{ issue=$0 })
             case .tasks: ScrollView { taskLibrary.padding(.vertical) }
+            case .environments: EnvironmentsView(model:model,harnessDir:harnessDir,tasks:tasks,onRunStarted:{ r in run=r;episodeKey=nil;workspace=Workspace.runs.rawValue;Task { try? await refresh() } },onError:{ issue=$0 })
             case .readiness: ScrollView { readinessPanel.padding(.vertical) }
             }
         }.padding(20).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)

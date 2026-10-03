@@ -229,7 +229,7 @@ class SandboxRuns:
         return json.loads(out.stdout)
 
     def create(self, config):
-        allowed = {'kind', 'title', 'harness_dir', 'task', 'count', 'port', 'model', 'revision', 'seed', 'condition'}
+        allowed = {'kind', 'title', 'harness_dir', 'task', 'count', 'port', 'model', 'revision', 'seed', 'condition', 'instance'}
         if not isinstance(config, dict) or set(config) - allowed: raise ValueError('Unsupported sandbox run config')
         if config.get('kind') == 'controls': return self._start_controls(config)
         c = dict(config); c.pop('kind', None); c.setdefault('count', 1)
@@ -246,6 +246,9 @@ class SandboxRuns:
         command += ['run', '--task', c['task'], '--count', str(c['count'])]
         if 'seed' in c: command += ['--seed', str(c['seed'])]
         if 'condition' in c: command += ['--condition', c['condition']]
+        if c.get('instance'):
+            if not re.fullmatch(r'[a-z][a-z0-9-]{0,30}', c['instance']): raise ValueError('Unknown instance')
+            command += ['--instance', c['instance']]
         title = c.get('title') or (c['task'] + (f" · {c['condition']}" if 'condition' in c else ''))
         return self._launch(dict(kind='episodes', title=title, config=c), folder_path, python, command)
 
@@ -460,6 +463,55 @@ class SandboxRuns:
         if not _load(task_dir / 'dyno.json').get('created_by_dyno'): raise ValueError('Only tasks created in Dyno can be deleted here')
         import shutil; shutil.rmtree(task_dir)
         return dict(deleted=body['id'])
+
+    # --- environments ------------------------------------------------------
+
+    INSTANCE = re.compile(r'^[a-z][a-z0-9-]{0,30}$')
+
+    def _harness_json(self, directory, args, timeout=120):
+        folder, python = self.harness(directory)
+        out = subprocess.run([str(python), '-m', 'harness', *args], cwd=folder, capture_output=True, text=True,
+                             timeout=timeout, env=harness_env())
+        if 'invalid choice' in out.stderr: raise ValueError('This harness version has no environments; update the harness')
+        try: return json.loads(out.stdout)
+        except ValueError: raise ValueError(out.stderr[-2000:] or 'The harness did not return JSON')
+
+    def environments(self, directory):
+        data = self._harness_json(directory, ['env', 'list'])
+        ops = getattr(self, '_env_ops', {})
+        for inst in data.get('instances', []):
+            if inst['name'] in ops: inst['operation'] = ops[inst['name']]
+        data['operations'] = ops
+        return data
+
+    def environment_events(self, directory, name):
+        if not self.INSTANCE.match(name or ''): raise ValueError('Unknown instance')
+        return self._harness_json(directory, ['env', 'events', name], timeout=60)
+
+    def environment_action(self, body):
+        """Turn an instance on or off, or create/delete a devbox. Slow, so it runs in the background."""
+        if not isinstance(body, dict) or set(body) - {'harness_dir', 'action', 'template', 'name', 'size'}: raise ValueError('Use harness_dir, action, template, name, size')
+        action, name = body.get('action'), body.get('name') or ''
+        if action not in ('up', 'down', 'devbox', 'devbox_delete'): raise ValueError('action must be up, down, devbox or devbox_delete')
+        if not self.INSTANCE.match(name): raise ValueError('Instance name: lowercase letters, digits and -')
+        if action in ('up', 'devbox') and not self.INSTANCE.match((body.get('template') or '').replace('_', '-')): raise ValueError('Choose a template')
+        if body.get('size', 'm') not in ('s', 'm', 'l'): raise ValueError('size must be s, m or l')
+        self.harness(body.get('harness_dir'))
+        args = {'up': ['env', 'up', body.get('template', ''), '--name', name], 'down': ['env', 'down', name],
+                'devbox': ['devbox', 'create', name, '--template', body.get('template', ''), '--size', body.get('size', 'm')],
+                'devbox_delete': ['devbox', 'delete', name]}[action]
+        with self.lock:
+            if not hasattr(self, '_env_ops'): self._env_ops = {}
+            if self._env_ops.get(name, {}).get('status') == 'working': raise RuntimeError(f'{name} is already changing')
+            self._env_ops[name] = dict(action=action, status='working', started=time.time())
+        def work():
+            try:
+                result = self._harness_json(body['harness_dir'], args, timeout=900)
+                self._env_ops[name] = dict(action=action, status='done', ended=time.time(), result=result)
+            except Exception as error:  # noqa: BLE001 - reported to the app
+                self._env_ops[name] = dict(action=action, status='error', ended=time.time(), error=str(error)[-2000:])
+        threading.Thread(target=work, daemon=True).start()
+        return self._env_ops[name]
 
     # --- conversations -----------------------------------------------------
 
