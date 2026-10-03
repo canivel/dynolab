@@ -271,6 +271,9 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
         if parts == ['sources']: return {'sources': runs.sources()}
         if parts == ['readiness']: return runs.readiness()
         if parts == ['stats']: return runs.stats()
+        if parts == ['threads']: return runs.threads(int(query.get('limit', 200)))
+        if parts == ['feed']: return runs.feed(int(query.get('after', 0)), int(query.get('limit', 100)))
+        if len(parts) == 2 and parts[0] == 'tasks': return runs.task_detail(query.get('harness_dir'), parts[1])
         if len(parts) == 3 and parts[0] == 'runs' and parts[2] == 'verify': return runs.verify(parts[1])
         if parts == ['tasks']: return runs.tasks(query.get('harness_dir'))
         if parts == ['search']:
@@ -313,6 +316,10 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
             if not isinstance(body, dict): raise ValueError('Request must be an object')
             if self.path == '/lab/v1/sandbox/runs':
                 self._execution_send(self.server.sandbox.create(body), 201)
+            elif self.path == '/lab/v1/sandbox/tasks':
+                self._execution_send(self.server.sandbox.save_task(body), 201)
+            elif self.path == '/lab/v1/sandbox/tasks/delete':
+                self._execution_send(self.server.sandbox.delete_task(body))
             elif self.path == '/lab/v1/sandbox/readiness':
                 if set(body) != {'harness_dir'}: raise ValueError('Use harness_dir')
                 self._execution_send(self.server.sandbox.check_readiness(body['harness_dir']), 202)

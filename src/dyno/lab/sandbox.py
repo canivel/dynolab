@@ -143,6 +143,17 @@ class EventIndex:
         return [dict(r) for r in rows]
 
 
+def _load_task_spec(task_dir):
+    """task.yaml, which Dyno writes as JSON; built-in tasks are YAML and need PyYAML."""
+    raw = (Path(task_dir) / 'task.yaml').read_text()
+    try: return json.loads(raw)
+    except ValueError: pass
+    try:
+        import yaml
+    except ImportError: raise ValueError('This task is YAML; view it in the harness folder')
+    return yaml.safe_load(raw)
+
+
 def _load(path):
     try: return json.loads(Path(path).read_text())
     except (OSError, ValueError): return {}
@@ -312,8 +323,9 @@ class SandboxRuns:
         controls = [r for r in self.list() if r.get('kind') == 'controls' and r['status'] != 'running']
         if controls:
             last = controls[0]
+            results = _load(self.root / last['id'] / 'episodes' / 'controls.json').get('results', [])
             state['controls'] = dict(id=last['id'], status=last['status'], created=last['created'],
-                                     passed=last['status'] == 'completed')
+                                     passed=last['status'] == 'completed', results=results)
         return state
 
     def check_readiness(self, directory):
@@ -321,19 +333,127 @@ class SandboxRuns:
         with self.lock:
             if getattr(self, '_readiness_thread', None) and self._readiness_thread.is_alive():
                 return self.readiness()
+            state_path = self.root / 'readiness.json'
+            state_path.write_text(json.dumps(dict(ok=None, checks=[], progress=[], started=time.time(), harness_dir=str(folder))))
+
             def work():
-                started = time.time()
+                started = time.time(); progress = []
                 try:
-                    out = subprocess.run([str(python), '-m', 'harness', 'check', '--json'], cwd=folder, capture_output=True,
-                                         text=True, timeout=180, env=harness_env())
-                    result = json.loads(out.stdout) if out.stdout.strip().startswith('{') else dict(ok=False, checks=[], error=out.stderr[-2000:])
+                    with subprocess.Popen([str(python), '-m', 'harness', 'check', '--json'], cwd=folder, stdout=subprocess.PIPE,
+                                          stderr=subprocess.PIPE, text=True, env=harness_env()) as process:
+                        # Each finished check arrives on stderr as one JSON line; publish it immediately.
+                        for line in process.stderr:
+                            try: entry = json.loads(line)
+                            except ValueError: continue
+                            if isinstance(entry, dict) and 'name' in entry:
+                                progress.append(entry)
+                                state_path.write_text(json.dumps(dict(ok=None, checks=[], progress=progress, started=started, harness_dir=str(folder))))
+                        out = process.stdout.read(); process.wait(timeout=180)
+                    result = json.loads(out) if out.strip().startswith('{') else dict(ok=False, checks=progress, error='The harness did not report a result')
                 except (subprocess.SubprocessError, OSError, ValueError) as error:
-                    result = dict(ok=False, checks=[], error=str(error))
-                result.update(checked=time.time(), duration=round(time.time() - started, 1), harness_dir=str(folder))
-                (self.root / 'readiness.json').write_text(json.dumps(result, indent=2))
+                    result = dict(ok=False, checks=progress, error=str(error))
+                result.update(progress=progress, started=started, checked=time.time(), duration=round(time.time() - started, 1), harness_dir=str(folder))
+                state_path.write_text(json.dumps(result, indent=2))
             self._readiness_thread = threading.Thread(target=work, daemon=True)
             self._readiness_thread.start()
         return self.readiness()
+
+    # --- task library ------------------------------------------------------
+
+    TASK_ID = re.compile(r'^[a-z][a-z0-9_]{2,63}$')
+    FILE_NAME = re.compile(r'^[A-Za-z0-9._-]{1,100}$')
+
+    def task_detail(self, directory, task_id):
+        folder, _ = self.harness(directory)
+        if not self.TASK_ID.match(task_id or ''): raise ValueError('Unknown task')
+        task_dir = folder / 'tasks' / task_id
+        spec = _load_task_spec(task_dir)
+        files = {}
+        for f in spec.get('files', []):
+            path = task_dir / 'files' / f['source']
+            try: files[f['source']] = path.read_text(errors='replace')[:200_000]
+            except OSError: files[f['source']] = None
+        meta = _load(task_dir / 'dyno.json')
+        return dict(spec=spec, files=files, editable=bool(meta.get('created_by_dyno')), meta=meta)
+
+    def save_task(self, body):
+        if not isinstance(body, dict) or set(body) - {'harness_dir', 'spec', 'files', 'replace'}: raise ValueError('Use harness_dir, spec, files and replace')
+        folder, python = self.harness(body.get('harness_dir'))
+        spec, files = body.get('spec'), body.get('files') or {}
+        if not isinstance(spec, dict) or not isinstance(files, dict): raise ValueError('spec and files must be objects')
+        task_id = spec.get('id', '')
+        if not self.TASK_ID.match(task_id): raise ValueError('Task id: lowercase letters, digits and underscores, starting with a letter')
+        allowed = {'id', 'prompt', 'rule', 'allowed_hosts', 'dirs', 'files', 'protected', 'watched_reads', 'secrets'}
+        if set(spec) - allowed: raise ValueError(f'Unsupported task fields: {sorted(set(spec) - allowed)}')
+        for key in ('allowed_hosts', 'dirs', 'files', 'protected', 'watched_reads', 'secrets'): spec.setdefault(key, [])
+        text(spec.get('prompt'), 'prompt', 8000); text(spec.get('rule'), 'rule', 2000)
+        sources = {f.get('source') for f in spec['files'] if isinstance(f, dict)}
+        if set(files) != sources: raise ValueError('Provide exactly one file body for each file in the task')
+        for name, content in files.items():
+            if not self.FILE_NAME.match(name or '') or not isinstance(content, str) or len(content) > 200_000: raise ValueError(f'Invalid file {name!r}')
+        task_dir = folder / 'tasks' / task_id
+        if task_dir.exists():
+            if not body.get('replace'): raise ValueError('A task with this id exists; choose another id')
+            if not _load(task_dir / 'dyno.json').get('created_by_dyno'): raise ValueError('Built-in tasks cannot be changed from Dyno; duplicate it instead')
+        staging = folder / 'tasks' / f'.{task_id}.staging-{uuid.uuid4().hex[:8]}'
+        try:
+            (staging / 'files').mkdir(parents=True)
+            (staging / 'task.yaml').write_text(json.dumps(spec, indent=2))  # JSON is valid YAML
+            for name, content in files.items(): (staging / 'files' / name).write_text(content)
+            (staging / 'dyno.json').write_text(json.dumps(dict(created_by_dyno=True, saved=time.time()), indent=2))
+            check_dir = staging.parent / f'.check-{uuid.uuid4().hex[:8]}' / task_id
+            check_dir.parent.mkdir(); staging.rename(check_dir)  # the harness requires folder name == task id
+            staging = check_dir
+            out = subprocess.run([str(python), '-m', 'harness', 'task-check', str(check_dir)], cwd=folder, capture_output=True,
+                                 text=True, timeout=60, env=harness_env())
+            if 'invalid choice' in out.stderr:  # an older harness without task-check
+                result = dict(ok=True, errors=[], note='This harness version cannot validate tasks; it will be checked when it runs')
+            else:
+                try: result = json.loads(out.stdout)
+                except ValueError: result = dict(ok=False, errors=[out.stderr[-1000:] or 'Validation failed'])
+            if not result.get('ok'): raise ValueError('Task is invalid: ' + '; '.join(result.get('errors', [])))
+            with self.lock:
+                if task_dir.exists():
+                    import shutil; shutil.rmtree(task_dir)
+                check_dir.rename(task_dir)
+            return dict(saved=task_id, validation=result)
+        finally:
+            import shutil
+            for leftover in (staging, staging.parent if staging.parent.name.startswith('.check-') else None):
+                if leftover is not None and leftover.exists() and leftover != task_dir: shutil.rmtree(leftover, ignore_errors=True)
+
+    def delete_task(self, body):
+        if not isinstance(body, dict) or set(body) != {'harness_dir', 'id'}: raise ValueError('Use harness_dir and id')
+        folder, _ = self.harness(body['harness_dir'])
+        if not self.TASK_ID.match(body['id'] or ''): raise ValueError('Unknown task')
+        task_dir = folder / 'tasks' / body['id']
+        if not _load(task_dir / 'dyno.json').get('created_by_dyno'): raise ValueError('Only tasks created in Dyno can be deleted here')
+        import shutil; shutil.rmtree(task_dir)
+        return dict(deleted=body['id'])
+
+    # --- conversations -----------------------------------------------------
+
+    def threads(self, limit=200):
+        """Episodes as conversation threads, most recent activity first."""
+        self.refresh_index()
+        with self.index._db() as db:
+            rows = db.execute('''select ep.*, agg.last, agg.messages, agg.commands, agg.agents from episodes ep join
+                (select key, max(rowid) as last, sum(event='model') as messages, sum(event='tool_call') as commands,
+                 group_concat(distinct agent) as agents from events group by key) agg on agg.key = ep.key
+                order by agg.last desc limit ?''', (max(1, min(int(limit), 500)),)).fetchall()
+        return dict(threads=[dict(_episode(r), last=r['last'], messages=r['messages'], commands=r['commands'],
+                                  agents=sorted(filter(None, (r['agents'] or '').split(',')))) for r in rows])
+
+    def feed(self, after=0, limit=100):
+        """The latest messages, commands and tripwires across every episode."""
+        self.refresh_index()
+        with self.index._db() as db:
+            rows = db.execute('''select e.rowid as id, e.key, e.seq, e.step, e.agent, e.event, e.tool, e.severity,
+                substr(e.text, 1, 1200) as text, ep.task_id, ep.model_id, ep.episode_id, ep.outcome from events e
+                join episodes ep on ep.key = e.key where e.rowid > ? and e.event in ('start', 'model', 'tool_call', 'tripwire', 'end', 'nudge')
+                order by e.rowid desc limit ?''', (int(after), max(1, min(int(limit), 500)))).fetchall()
+        items = [dict(r) for r in rows]
+        return dict(items=items, last=max([i['id'] for i in items], default=int(after)))
 
     # --- evaluation ------------------------------------------------------
 

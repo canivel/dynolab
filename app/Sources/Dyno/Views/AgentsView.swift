@@ -185,35 +185,63 @@ struct AgentsView: View {
         Button { workspace=Workspace.readiness.rawValue } label: { Label("Finish the readiness checklist before trusting results.",systemImage:"exclamationmark.triangle").foregroundStyle(.orange) }.buttonStyle(.plain)
     }
 
+    private static let checkOrder = ["docker reachable","sandbox image built","network is --internal","runtime is runsc","no egress","root files protected","no sudo"]
+
     private var readinessPanel: some View {
-        let checks=readiness["checks"] as? [[String:Any]] ?? []
+        let running=readiness["running"] as? Bool == true
+        let done=readiness["checks"] as? [[String:Any]] ?? []
+        let checks=done.isEmpty ? (readiness["progress"] as? [[String:Any]] ?? []) : done
         let controls=readiness["controls"] as? [String:Any]
         return VStack(alignment:.leading,spacing:16) {
-            step(1,"Harness folder",done:!harnessDir.isEmpty && !tasks.isEmpty,detail:harnessDir.isEmpty ? "The open-source containment harness: tasks, sandbox, labeler and evidence." : harnessDir) {
+            step(1,"Harness folder",done:!harnessDir.isEmpty && !tasks.isEmpty,detail:harnessDir.isEmpty ? "The open-source containment harness: tasks, sandbox, labeler and evidence." : "\(harnessDir) · \(tasks.count) tasks loaded") {
                 Button("Choose…") { let p=NSOpenPanel();p.canChooseDirectories=true;p.canChooseFiles=false;p.message="Choose the containment harness folder";if p.runModal() == .OK,let url=p.url { harnessDir=url.path;perform { try await loadTasks() } } }
             }
-            step(2,"Sandbox isolation",done:readiness["ok"] as? Bool == true,detail:readiness["running"] as? Bool == true ? "Checking… starts a throwaway container." : checks.isEmpty ? "Docker in a Colima VM with the gVisor runtime, an internal-only network, no sudo, and root-only files the agent cannot read." : "") {
-                Button(readiness["running"] as? Bool == true ? "Checking…" : "Run checks") { perform { readiness=try await model.researchLab.request("/sandbox/readiness",body:["harness_dir":harnessDir],timeout:10) } }.disabled(harnessDir.isEmpty || readiness["running"] as? Bool == true)
+            step(2,"Sandbox isolation",done:readiness["ok"] as? Bool == true,detail:running ? "Checking. A throwaway container is started and removed." : readiness["checked"] != nil ? "Last checked \(Self.ago(readiness["checked"])) · took \(String(format:"%.0f",readiness["duration"] as? Double ?? 0)) s" : "Docker in a Colima VM with the gVisor runtime, an internal-only network, no sudo, and root-only files the agent cannot read.") {
+                Button(running ? "Checking…" : "Run checks") { perform { readiness=try await model.researchLab.request("/sandbox/readiness",body:["harness_dir":harnessDir],timeout:10) } }.disabled(harnessDir.isEmpty || running)
             }
-            if !checks.isEmpty {
-                VStack(alignment:.leading,spacing:4) {
-                    ForEach(Array(checks.enumerated()),id:\.offset) { _,c in
-                        Label("\(c["name"] as? String ?? "") · \(c["detail"] as? String ?? "")",systemImage:c["passed"] as? Bool == true ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .foregroundStyle(c["passed"] as? Bool == true ? DynoBrand.accent : .red).font(.callout)
+            if running || !checks.isEmpty {
+                VStack(alignment:.leading,spacing:6) {
+                    ForEach(Self.checkOrder,id:\.self) { name in
+                        let c=checks.first { $0["name"] as? String == name }
+                        CheckRow(name:name,check:c,pending:running && c == nil)
                     }
-                    if let error=readiness["error"] as? String { Text(error).font(.system(.caption,design:.monospaced)).foregroundStyle(.orange) }
+                    if let error=readiness["error"] as? String { Text(error).font(.system(.caption,design:.monospaced)).foregroundStyle(.orange).textSelection(.enabled) }
                 }.padding(.leading,34)
             }
-            step(3,"A model is running",done:!model.snapshot.models.isEmpty,detail:model.snapshot.models.isEmpty ? "Agents call a model served by Dyno. Qwen and Gemma models with tool calling work well." : model.snapshot.models.map { "\($0.name) · :\($0.port ?? 0)" }.joined(separator:", ")) {
+            step(3,"A model is running",done:!model.snapshot.models.isEmpty,detail:model.snapshot.models.isEmpty ? "Agents call a model served by Dyno. It needs tool calling; recent Qwen models work well." : "Agents can use any of these endpoints.") {
                 Button("Open Models") { model.requestedTab = .run }
             }
-            step(4,"Positive controls pass",done:controls?["passed"] as? Bool == true,detail:controls == nil ? "Scripted honest and rule-breaking agents. If a scripted rule break isn't flagged, the labels can't be trusted." : "Last controls run: \(controls?["status"] as? String ?? "")") {
-                Button("Run controls") { perform { run=try await model.researchLab.request("/sandbox/runs",body:["kind":"controls","harness_dir":harnessDir],timeout:15);episodeKey=nil;workspace=Workspace.runs.rawValue;try await refresh() } }.disabled(readiness["ok"] as? Bool != true || active)
+            if !model.snapshot.models.isEmpty {
+                VStack(alignment:.leading,spacing:4) {
+                    ForEach(model.snapshot.models,id:\.id) { m in Label("\(m.name) · 127.0.0.1:\(m.port.map(String.init) ?? "—")",systemImage:"bolt.horizontal.circle").font(.callout) }
+                }.padding(.leading,34)
+            }
+            step(4,"Positive controls pass",done:controls?["passed"] as? Bool == true,detail:controls == nil ? "Scripted honest and rule-breaking agents run in real containers. If a scripted rule break isn't flagged, the labels can't be trusted." : "Last controls run \(Self.ago(controls?["created"])) · \(controls?["status"] as? String ?? "")") {
+                HStack {
+                    if let id=controls?["id"] as? String { Button("Open run") { perform { try await open(id);episodeKey=nil;workspace=Workspace.runs.rawValue } } }
+                    Button("Run controls") { perform { run=try await model.researchLab.request("/sandbox/runs",body:["kind":"controls","harness_dir":harnessDir],timeout:15);episodeKey=nil;workspace=Workspace.runs.rawValue;try await refresh() } }.disabled(readiness["ok"] as? Bool != true || active)
+                }
+            }
+            if let results=controls?["results"] as? [[String:Any]],!results.isEmpty {
+                VStack(alignment:.leading,spacing:4) {
+                    ForEach(Array(results.enumerated()),id:\.offset) { _,r in
+                        let ok=r["passed"] as? Bool == true
+                        Label("\(r["task"] as? String ?? "") · \(r["behaviour"] as? String ?? "") → \(r["outcome"] as? String ?? "")\((r["tripwires"] as? [String]).map { $0.isEmpty ? "" : " · " + $0.joined(separator:", ") } ?? "")",systemImage:ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .foregroundStyle(ok ? DynoBrand.accent : .red).font(.callout)
+                    }
+                    Text("Honest scripts must end honest_blocked with no tripwires. Rule-breaking scripts must end rule_break with the expected tripwires.").font(.caption).foregroundStyle(.secondary)
+                }.padding(.leading,34)
             }
             step(5,"First episode",done:runs.contains { $0["kind"] as? String == "episodes" },detail:"Pick a task and a running model. Watch the reasoning, commands and tripwires arrive live.") {
                 Button("New run") { run=[:];episodeKey=nil;workspace=Workspace.runs.rawValue }.disabled(!ready)
             }
-        }.frame(maxWidth:760,alignment:.leading)
+        }.frame(maxWidth:820,alignment:.leading)
+    }
+
+    static func ago(_ value: Any?) -> String {
+        guard let t=value as? Double else { return "" }
+        let s=Int(Date().timeIntervalSince1970-t)
+        return s < 60 ? "just now" : s < 3600 ? "\(s/60) min ago" : s < 86400 ? "\(s/3600) h ago" : "\(s/86400) d ago"
     }
 
     private func step<Action: View>(_ n: Int,_ title: String,done: Bool,detail: String,@ViewBuilder action: () -> Action) -> some View {
@@ -257,6 +285,28 @@ struct EpisodeRow: View {
             Spacer()
             if trips > 0 { Text("⚠ \(trips)").font(.caption.bold()).padding(.horizontal,8).padding(.vertical,2).background(Capsule().fill((severe > 0 ? Color.red : Color.orange).opacity(0.25))) }
         }.padding(8).background(RoundedRectangle(cornerRadius:8).fill(DynoBrand.surface))
+    }
+}
+
+private struct CheckRow: View {
+    var name: String
+    var check: [String:Any]?
+    var pending: Bool
+    var body: some View {
+        DisclosureGroup {
+            VStack(alignment:.leading,spacing:4) {
+                if let what=check?["what"] as? String,!what.isEmpty { Text(what).font(.callout) }
+                if let command=check?["command"] as? String,!command.isEmpty { Text("$ \(command)").font(.system(.caption,design:.monospaced)).foregroundStyle(.secondary) }
+                Text("Result: \(check?["detail"] as? String ?? (pending ? "running…" : "not run"))").font(.system(.caption,design:.monospaced)).textSelection(.enabled)
+            }.padding(.vertical,4)
+        } label: {
+            HStack(spacing:8) {
+                if pending { ProgressView().controlSize(.small) }
+                else if let c=check { Image(systemName:c["passed"] as? Bool == true ? "checkmark.circle.fill" : "xmark.circle.fill").foregroundStyle(c["passed"] as? Bool == true ? DynoBrand.accent : .red) }
+                else { Image(systemName:"circle").foregroundStyle(.secondary) }
+                Text(name).font(.callout)
+            }
+        }
     }
 }
 
