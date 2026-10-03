@@ -18,7 +18,7 @@ struct EvaluateView: View {
     private var current: Workspace { Workspace(rawValue: workspace) ?? .results }
 
     enum Workspace: String, CaseIterable, Identifiable {
-        case results = "Results", review = "Review", evidence = "Evidence"
+        case results = "Results", review = "Review", evaluators = "Evaluators", evidence = "Evidence"
         var id: String { rawValue }
     }
     private static let outcomes: [(String,String,Color)] = [
@@ -33,12 +33,13 @@ struct EvaluateView: View {
                     Text("What agents did across every run, a hand review of each label, and sealed evidence.").font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Picker("",selection:$workspace) { ForEach(Workspace.allCases) { Text($0.rawValue).tag($0.rawValue) } }.pickerStyle(.segmented).frame(width:300)
+                Picker("",selection:$workspace) { ForEach(Workspace.allCases) { Text($0.rawValue).tag($0.rawValue) } }.pickerStyle(.segmented).frame(width:420)
             }
             if let issue { Text(issue).foregroundStyle(.orange).font(.callout) }
             switch current {
             case .results: ScrollView { results.padding(.vertical) }
             case .review: reviewPane
+            case .evaluators: ScrollView { EvaluatorsPane(model:model,onError:{ issue=$0 }).padding(.vertical) }
             case .evidence: ScrollView { evidencePane.padding(.vertical) }
             }
         }.padding(20).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
@@ -82,7 +83,7 @@ struct EvaluateView: View {
         let n=g["episodes"] as? Int ?? 0
         let outcomes=g["outcomes"] as? [String:Int] ?? [:]
         return VStack(alignment:.leading,spacing:10) {
-            HStack { Text(g["task_id"] as? String ?? "task").font(.headline);Text(g["model_id"] as? String ?? "").font(.caption).foregroundStyle(.secondary);Spacer();Text(n == 1 ? "1 episode" : "\(n) episodes").foregroundStyle(.secondary) }
+            HStack { Text(g["task_id"] as? String ?? "task").font(.headline);Text("\(g["model_id"] as? String ?? "") · \(g["condition"] as? String ?? "neutral")").font(.caption).foregroundStyle(.secondary);Spacer();Text(n == 1 ? "1 episode" : "\(n) episodes").foregroundStyle(.secondary) }
             GeometryReader { geo in
                 HStack(spacing:2) {
                     ForEach(Self.outcomes,id:\.0) { key,_,color in
@@ -101,6 +102,18 @@ struct EvaluateView: View {
                 stat("Rule break, then claimed success",g["rule_break_then_claimed"] as? Int ?? 0,n)
                 stat("Reviewed by hand",g["reviewed"] as? Int ?? 0,n)
                 stat("Labels marked wrong",g["label_wrong"] as? Int ?? 0,g["reviewed"] as? Int ?? 0)
+            }
+            let monitors=g["monitors"] as? [String:[String:Any]] ?? [:]
+            if !monitors.isEmpty {
+                HStack(spacing:24) {
+                    ForEach(monitors.keys.sorted(),id:\.self) { id in
+                        let m=monitors[id] ?? [:],scored=m["scored"] as? Int ?? 0
+                        VStack(alignment:.leading,spacing:2) {
+                            Text("\(m["flagged"] as? Int ?? 0) / \(scored) flagged · mean \(scored > 0 ? (m["total"] as? Int ?? 0)/scored : 0)").font(.callout.monospacedDigit())
+                            Label(m["name"] as? String ?? id,systemImage:"eye.slash").font(.caption).foregroundStyle(DynoBrand.violet)
+                        }
+                    }
+                }
             }
         }.padding(14).background(RoundedRectangle(cornerRadius:10).fill(DynoBrand.surface))
     }

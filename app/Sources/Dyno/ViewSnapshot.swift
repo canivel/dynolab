@@ -155,6 +155,12 @@ enum ViewSnapshot {
             let section = ProcessInfo.processInfo.environment["DYNO_EDITOR_SECTION"]
             targets = [("task-editor", { AnyView(TaskEditorView(lab: model.researchLab, harnessDir: "", existingID: nil, template: detail, initialSection: section, onSaved: {})) }, CGSize(width: 1400, height: 900))]
         }
+        if arguments.contains("--thread-only"), let key = ProcessInfo.processInfo.environment["DYNO_EPISODE_KEY"] {
+            targets = [("agents-thread", { AnyView(ConversationThread(lab: model.researchLab, key: key, onError: { print("error:", $0) }, onBack: {}).frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1400, height: 900))]
+        }
+        if arguments.contains("--evaluators-only") {
+            targets = [("evaluate-evaluators", { AnyView(ScrollView { EvaluatorsPane(model: model, onError: { print("error:", $0) }).padding(20) }.frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1100, height: 1000))]
+        }
         if arguments.contains("--conversations-only") {
             targets = [("agents-conversations", { AnyView(ConversationsView(lab: model.researchLab, onError: { print("error:", $0) }).frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1400, height: 900))]
         }

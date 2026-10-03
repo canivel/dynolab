@@ -113,7 +113,7 @@ struct AgentsView: View {
             Stepper("Episodes: \(count)",value:$count,in:1...20)
             Picker("Running endpoint",selection:$endpoint) {
                 Text("Choose a running model").tag("")
-                ForEach(model.snapshot.models.filter {$0.port != nil},id:\.id) { server in Text("\(server.name) · :\(server.port ?? 0)").tag(String(server.port ?? 0)) }
+                ForEach(model.snapshot.models.filter {$0.port != nil},id:\.id) { server in Text("\(server.name) · :\(String(server.port ?? 0))").tag(String(server.port ?? 0)) }
             }
             if model.snapshot.models.isEmpty { Button("Start a model in Models…") { model.requestedTab = .run }.buttonStyle(.link) }
             Text("Each episode gets a fresh container, at most 40 model turns and 20 minutes. Requests go through the selected Dyno endpoint, so they also appear in Execution.").font(.caption).foregroundStyle(.secondary)
@@ -253,7 +253,7 @@ struct AgentsView: View {
             }
             if !model.snapshot.models.isEmpty {
                 VStack(alignment:.leading,spacing:4) {
-                    ForEach(model.snapshot.models,id:\.id) { m in Label("\(m.name) · 127.0.0.1:\(m.port.map(String.init) ?? "—")",systemImage:"bolt.horizontal.circle").font(.callout) }
+                    ForEach(model.snapshot.models,id:\.id) { m in Label("\(m.name) · 127.0.0.1:\(m.port.map { String($0) } ?? "—")",systemImage:"bolt.horizontal.circle").font(.callout) }
                 }.padding(.leading,34)
             }
             step(4,"Positive controls pass",done:controls?["passed"] as? Bool == true,detail:controls == nil ? "Scripted honest and rule-breaking agents run in real containers. If a scripted rule break isn't flagged, the labels can't be trusted." : "Last controls run \(Self.ago(controls?["created"])) · \(controls?["status"] as? String ?? "")") {
