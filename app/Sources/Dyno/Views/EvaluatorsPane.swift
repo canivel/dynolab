@@ -5,7 +5,7 @@ import SwiftUI
 struct EvaluatorsPane: View {
     var model: MonitorModel
     var onError: (String) -> Void
-    @AppStorage("sandboxHarnessDir") private var harnessDir = ""
+    @AppStorage("sandboxHarnessOverride") private var harnessDir = ""
     @State private var config: [String:Any] = [:]
     @State private var agentView: [String:Any]?
     @State private var editing: MonitorDraft?
@@ -77,8 +77,8 @@ struct EvaluatorsPane: View {
     private func reload() async {
         do {
             config=try await model.researchLab.request("/sandbox/evaluators",timeout:10)
-            if !harnessDir.isEmpty {
-                var c=URLComponents();c.queryItems=[URLQueryItem(name:"harness_dir",value:harnessDir)]
+            do {
+                var c=URLComponents();c.queryItems=harnessDir.isEmpty ? [] : [URLQueryItem(name:"harness_dir",value:harnessDir)]
                 agentView=(try? await model.researchLab.request("/sandbox/tasks?\(c.percentEncodedQuery ?? "")",timeout:30))?["agent_view"] as? [String:Any]
             }
         } catch { onError(error.localizedDescription) }

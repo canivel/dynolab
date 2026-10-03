@@ -273,6 +273,7 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
         if parts == ['stats']: return runs.stats()
         if parts == ['evaluators']: return runs.evaluators()
         if parts == ['environments']: return runs.environments(query.get('harness_dir'))
+        if parts == ['engine']: return runs.engine(query.get('harness_dir'))
         if len(parts) == 3 and parts[0] == 'environments' and parts[2] == 'events': return runs.environment_events(query.get('harness_dir'), parts[1])
         if len(parts) == 3 and parts[0] == 'episodes' and parts[2] == 'evaluations': return runs.episode_evaluations(parts[1])
         if parts == ['threads']: return runs.threads(int(query.get('limit', 200)))
@@ -320,6 +321,8 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
             if not isinstance(body, dict): raise ValueError('Request must be an object')
             if self.path == '/lab/v1/sandbox/runs':
                 self._execution_send(self.server.sandbox.create(body), 201)
+            elif self.path == '/lab/v1/sandbox/engine/setup':
+                self._execution_send(self.server.sandbox.setup_engine(body), 202)
             elif self.path == '/lab/v1/sandbox/environments':
                 self._execution_send(self.server.sandbox.environment_action(body), 202)
             elif self.path == '/lab/v1/sandbox/evaluators':

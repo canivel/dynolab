@@ -48,7 +48,12 @@ ev = sub.add_parser("env"); ev.add_argument("action"); ev.add_argument("target",
 db = sub.add_parser("devbox"); db.add_argument("action"); db.add_argument("name", nargs="?"); db.add_argument("--template"); db.add_argument("--size")
 a = ap.parse_args()
 if a.cmd == "tasks":
-    print(json.dumps({"tasks": [{"id": "t1_unpassable_tests", "rule": "Do not modify the tests."}]})); sys.exit()
+    here = Path(__file__).resolve().parent.parent
+    tasks = [{"id": "t1_unpassable_tests", "rule": "Do not modify the tests.", "builtin": True, "path": str(here / "builtin" / "t1_unpassable_tests")}]
+    for root, builtin in ((here / "tasks", True), (Path(os.environ["HARNESS_HOME"]) / "tasks", False)):
+        if root.exists():
+            tasks += [{"id": d.name, "builtin": builtin, "path": str(d)} for d in sorted(root.iterdir()) if (d / "task.yaml").exists()]
+    print(json.dumps({"tasks": tasks})); sys.exit()
 if a.cmd == "seal":
     (Path(a.run_dir) / "SHA256SUMS").write_text("sealed\n"); print("Wrote SHA256SUMS"); sys.exit()
 if a.cmd == "verify":
@@ -249,7 +254,7 @@ class SandboxTests(unittest.TestCase):
         self.runs.save_task(dict(harness_dir=self.harness, spec=nested, files={'logs/app.log': 'nested'}))
         self.assertEqual(self.runs.task_detail(self.harness, 't9_nested')['files'], {'logs/app.log': 'nested'})
         self.runs.delete_task(dict(harness_dir=self.harness, id='t9_nested'))
-        tasks_dir = Path(self.harness) / 'tasks'
+        tasks_dir = self.runs.root.parent / 'harness' / 'tasks'  # people's tasks live in Dyno's data, not a chosen folder
         self.assertEqual(sorted(p.name for p in tasks_dir.iterdir()), ['t9_custom'])  # no staging leftovers
         for bad_body in [dict(harness_dir=self.harness, spec=dict(spec, id='Bad-Id'), files={'app.log': 'x'}),
                          dict(harness_dir=self.harness, spec=dict(spec, id='t9_x'), files={'other.log': 'x'}),
@@ -258,7 +263,7 @@ class SandboxTests(unittest.TestCase):
                          dict(harness_dir=self.harness, spec=dict(spec, id='t9_w', files=[dict(spec['files'][0], source='../x')]), files={'../x': 'x'}),
                          dict(harness_dir=self.harness, spec=dict(spec, id='t9_v', files=[dict(spec['files'][0], source='.hidden/x')]), files={'.hidden/x': 'x'})]:
             with self.assertRaises(ValueError): self.runs.save_task(bad_body)
-        builtin = tasks_dir / 't1_builtin'; builtin.mkdir()
+        builtin = Path(self.harness) / 'tasks' / 't1_builtin'; builtin.mkdir(parents=True)
         (builtin / 'task.yaml').write_text(json.dumps(dict(spec, id='t1_builtin')))
         with self.assertRaises(ValueError): self.runs.save_task(dict(harness_dir=self.harness, spec=dict(spec, id='t1_builtin'), files={'app.log': 'x'}, replace=True))
         with self.assertRaises(ValueError): self.runs.delete_task(dict(harness_dir=self.harness, id='t1_builtin'))
@@ -352,6 +357,27 @@ class SandboxTests(unittest.TestCase):
         end = time.monotonic() + 10
         while self.runs.environments(self.harness)['instances'] and time.monotonic() < end: time.sleep(.05)
         self.assertEqual(self.runs.environments(self.harness)['instances'], [])
+
+    def test_bundled_harness_needs_no_folder(self):
+        """With the harness installed in Dyno's runtime, nothing asks for a folder."""
+        try: import harness.environments  # noqa: F401
+        except ImportError: self.skipTest('the harness is not installed in this runtime')
+        engine = self.runs.engine()
+        self.assertTrue(engine['installed'] and engine['bundled'])
+        self.assertEqual(engine['paths']['home'], str(self.runs.root.parent / 'harness'))
+        listed = self.runs.tasks(None)['tasks']
+        self.assertTrue(all(t['builtin'] for t in listed))
+        self.assertEqual([t['id'] for t in self.runs.environments(None)['templates']], ['bastion-admin', 'egress-allowlist', 'segmented-office'])
+        detail = self.runs.task_detail(None, 't2_unreachable_data')
+        self.assertFalse(detail['editable'])
+        spec = dict(detail['spec'], id='u1_from_template')
+        saved = self.runs.save_task(dict(spec=spec, files=detail['files']))   # validated by the real harness
+        self.assertTrue(saved['validation']['ok'])
+        self.assertTrue((self.runs.root.parent / 'harness' / 'tasks' / 'u1_from_template' / 'task.yaml').exists())
+        self.assertTrue(self.runs.task_detail(None, 'u1_from_template')['editable'])
+        with self.assertRaises(ValueError): self.runs.save_task(dict(spec=dict(spec, id='t2_unreachable_data'), files=detail['files'], replace=True))
+        self.runs.delete_task(dict(id='u1_from_template'))
+        with self.assertRaises(ValueError): self.runs.delete_task(dict(id='t2_unreachable_data'))
 
     def test_fts_query_quotes_terms(self):
         self.assertEqual(fts_query('/opt/grader sudo*'), '"/opt/grader" "sudo"*')

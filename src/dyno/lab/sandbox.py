@@ -12,6 +12,7 @@ import re
 import signal
 import sqlite3
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -145,6 +146,39 @@ class EventIndex:
         return [dict(r) for r in rows]
 
 
+class Harness:
+    """How to invoke the harness, and where its data lives (HARNESS_HOME)."""
+
+    def __init__(self, argv, home, checkout=None):
+        self.argv, self.home = list(argv), Path(home)
+        self.env = dict(harness_env(), HARNESS_HOME=str(self.home))
+        if checkout:  # a source checkout runs from anywhere, installed or not
+            self.env['PYTHONPATH'] = os.pathsep.join(filter(None, [str(checkout), self.env.get('PYTHONPATH')]))
+        self._paths = None
+
+    def json(self, args, timeout=120):
+        out = subprocess.run([*self.argv, *args], cwd=self.home, capture_output=True, text=True, timeout=timeout, env=self.env)
+        if 'invalid choice' in out.stderr: raise ValueError('This harness version is too old for this feature; update it')
+        try: return json.loads(out.stdout)
+        except ValueError: raise ValueError(out.stderr[-2000:] or 'The harness did not return JSON')
+
+    def paths(self):
+        if self._paths is None:
+            try: self._paths = self.json(['paths'], timeout=30)
+            except ValueError: self._paths = dict(home=str(self.home), user_tasks=str(self.home / 'tasks'), keys=str(self.home / 'keys'))
+        return self._paths
+
+    def user_tasks(self):
+        d = Path(self.paths()['user_tasks']); d.mkdir(parents=True, exist_ok=True); return d
+
+    def task_dir(self, task_id):
+        """Where a task lives (built-in or user), from the harness's own listing."""
+        for t in self.json(['tasks'], timeout=60).get('tasks', []):
+            if t['id'] == task_id:
+                return Path(t['path']) if t.get('path') else self.user_tasks() / task_id, not t.get('builtin', False)
+        raise ValueError('Unknown task')
+
+
 def _load_task_spec(task_dir):
     """task.yaml, which Dyno writes as JSON; built-in tasks are YAML and need PyYAML."""
     raw = (Path(task_dir) / 'task.yaml').read_text()
@@ -198,14 +232,24 @@ class SandboxRuns:
         temp = path.with_suffix('.tmp')
         temp.write_text(json.dumps(record, ensure_ascii=False, indent=2)); os.chmod(temp, 0o600); temp.replace(path)
 
-    @staticmethod
-    def harness(directory):
-        if not isinstance(directory, str) or not directory.strip(): raise ValueError('Choose the harness folder')
-        folder = Path(directory).expanduser().resolve()
-        python = folder / '.venv' / 'bin' / 'python'
-        if not (folder / 'harness' / '__main__.py').is_file() or not python.is_file():
-            raise ValueError('The harness folder must contain harness/ and a .venv with the harness installed')
-        return folder, python
+    def harness(self, directory=None):
+        """The harness bundled with Dyno, or a source checkout given as an advanced override.
+
+        Either way its data (tasks and environments people create, runs, keys, instances)
+        lives in Dyno's data directory, so nobody has to choose a folder.
+        """
+        home = self.root.parent / 'harness'
+        home.mkdir(parents=True, exist_ok=True)
+        if isinstance(directory, str) and directory.strip():
+            folder = Path(directory).expanduser().resolve()
+            python = folder / '.venv' / 'bin' / 'python'
+            if not (folder / 'harness' / '__main__.py').is_file() or not python.is_file():
+                raise ValueError('A harness checkout needs harness/ and a .venv with the harness installed')
+            return Harness([str(python), '-m', 'harness'], home, checkout=folder)
+        import importlib.util
+        if importlib.util.find_spec('harness') is None or importlib.util.find_spec('harness.environments') is None:
+            raise ValueError('The sandbox harness is not installed in this Dyno runtime. Reinstall Dyno, or run: pip install claims-harness')
+        return Harness([sys.executable, '-m', 'harness'], home)
 
     def sources(self):
         return _load(self.root / 'sources.json').get('sources', [])
@@ -216,15 +260,18 @@ class SandboxRuns:
         with self.lock:
             sources = sorted(set(self.sources()) | {str(folder)})
             _atomic_write(self.root / 'sources.json', json.dumps(dict(sources=sources), indent=2))
-        threading.Thread(target=self.index.update, args=([folder],), daemon=True).start()
+        def index_source():
+            try: self.index.update([folder])
+            except (sqlite3.Error, OSError): pass  # indexed again on the next search
+        threading.Thread(target=index_source, daemon=True).start()
         return dict(sources=sources)
 
     def refresh_index(self):
         self.index.update([self.root, *[s for s in self.sources() if Path(s).is_dir()]])
 
     def tasks(self, directory):
-        folder, python = self.harness(directory)
-        out = subprocess.run([str(python), '-m', 'harness', 'tasks'], cwd=folder, capture_output=True, text=True, timeout=30, env=harness_env())
+        h = self.harness(directory)
+        out = subprocess.run([*h.argv, 'tasks'], cwd=h.home, capture_output=True, text=True, timeout=30, env=h.env)
         if out.returncode: raise ValueError(out.stderr[-2000:] or 'The harness could not list tasks')
         return json.loads(out.stdout)
 
@@ -240,7 +287,7 @@ class SandboxRuns:
         if 'seed' in c and (type(c['seed']) is not int or c['seed'] < 0): raise ValueError('seed must be a nonnegative integer')
         if c.get('condition') in ('', 'neutral'): c.pop('condition')
         if 'condition' in c and not re.fullmatch(r'[a-z][a-z0-9_-]{0,40}', str(c['condition'])): raise ValueError('Unknown condition')
-        folder_path, python = self.harness(c.get('harness_dir'))
+        h = self.harness(c.get('harness_dir'))
         command = ['--base-url', f"http://127.0.0.1:{c['port']}/v1", '--model-id', c['model']]
         if c.get('revision'): command += ['--model-revision', c['revision']]
         command += ['run', '--task', c['task'], '--count', str(c['count'])]
@@ -250,26 +297,26 @@ class SandboxRuns:
             if not re.fullmatch(r'[a-z][a-z0-9-]{0,30}', c['instance']): raise ValueError('Unknown instance')
             command += ['--instance', c['instance']]
         title = c.get('title') or (c['task'] + (f" · {c['condition']}" if 'condition' in c else ''))
-        return self._launch(dict(kind='episodes', title=title, config=c), folder_path, python, command)
+        return self._launch(dict(kind='episodes', title=title, config=c), h, command)
 
     def _start_controls(self, config):
         """Scripted honest and rule-breaking agents: every rule break must be flagged."""
         if set(config) - {'kind', 'harness_dir'}: raise ValueError('Controls take only harness_dir')
-        folder_path, python = self.harness(config.get('harness_dir'))
-        return self._launch(dict(kind='controls', title='Positive controls', config=dict(config)), folder_path, python, ['control'])
+        h = self.harness(config.get('harness_dir'))
+        return self._launch(dict(kind='controls', title='Positive controls', config=dict(config)), h, ['control'])
 
-    def _launch(self, record, folder_path, python, args):
+    def _launch(self, record, h, args):
         with self.lock:
             if self.active: raise RuntimeError('Another sandbox run is in progress')
             identifier = uuid.uuid4().hex
             folder = self.root / identifier
             folder.mkdir(mode=0o700)
             record.update(id=identifier, created=time.time(), status='running', config_hash=digest(record['config']))
-            record['command'] = [str(python), '-m', 'harness', *args, '--out', str(folder / 'episodes')]
+            record['command'] = [*h.argv, *args, '--out', str(folder / 'episodes')]
             self._write(record)
             log = (folder / 'harness.log').open('w')
-            self.process = subprocess.Popen(record['command'], cwd=folder_path, stdout=log, stderr=subprocess.STDOUT,
-                                            env=harness_env(), start_new_session=True)
+            self.process = subprocess.Popen(record['command'], cwd=h.home, stdout=log, stderr=subprocess.STDOUT,
+                                            env=h.env, start_new_session=True)
             self.active = identifier
             threading.Thread(target=self._wait, args=(identifier, self.process, log), daemon=True).start()
             return record
@@ -283,7 +330,8 @@ class SandboxRuns:
                 if code: record['error'] = (self.root / identifier / 'harness.log').read_text(errors='replace')[-4000:]
             record['ended'] = time.time(); self._write(record)
             if self.active == identifier: self.active = self.process = None
-        self.index.update([self.root / identifier])
+        try: self.index.update([self.root / identifier])
+        except (sqlite3.Error, OSError): pass  # the next read re-indexes; nothing is lost
 
     def cancel(self, identifier):
         with self.lock:
@@ -336,6 +384,45 @@ class SandboxRuns:
                     if len(events) >= limit: break
         return dict(events=events, last=events[-1].get('seq') if events else after)
 
+    def engine(self, directory=None):
+        """Is the sandbox engine (the harness) available, which version, and where its data lives."""
+        state = dict(setup=_load(self.root / 'engine-setup.json') or None)
+        state['setup_running'] = bool(getattr(self, '_setup_thread', None) and self._setup_thread.is_alive())
+        try:
+            h = self.harness(directory)
+            state.update(installed=True, bundled=not directory, command=' '.join(h.argv), paths=h.paths())
+        except ValueError as error:
+            state.update(installed=False, error=str(error))
+        return state
+
+    def setup_engine(self, body):
+        """Prepare this machine in the background: optional runtime install, sandbox image, network."""
+        if not isinstance(body, dict) or set(body) - {'harness_dir', 'install_runtime'}: raise ValueError('Use install_runtime')
+        h = self.harness(body.get('harness_dir'))
+        with self.lock:
+            if getattr(self, '_setup_thread', None) and self._setup_thread.is_alive(): return self.engine(body.get('harness_dir'))
+            path = self.root / 'engine-setup.json'
+            def work():
+                started, steps = time.time(), []
+                args = ['setup'] + (['--install-runtime'] if body.get('install_runtime') else [])
+                try:
+                    with subprocess.Popen([*h.argv, *args], cwd=h.home, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                          text=True, env=h.env) as process:
+                        for line in process.stderr:
+                            try: entry = json.loads(line)
+                            except ValueError: continue
+                            if isinstance(entry, dict) and 'name' in entry:
+                                steps.append(entry); _atomic_write(path, json.dumps(dict(ok=None, steps=steps, started=started)))
+                        out = process.stdout.read(); process.wait(timeout=1800)
+                    result = json.loads(out) if out.strip().startswith('{') else dict(ok=False, steps=steps)
+                except (subprocess.SubprocessError, OSError, ValueError) as error:
+                    result = dict(ok=False, steps=steps, error=str(error))
+                result.update(started=started, finished=time.time())
+                _atomic_write(path, json.dumps(result, indent=2))
+            _atomic_write(path, json.dumps(dict(ok=None, steps=[], started=time.time())))
+            self._setup_thread = threading.Thread(target=work, daemon=True); self._setup_thread.start()
+        return self.engine(body.get('harness_dir'))
+
     def readiness(self):
         state = _load(self.root / 'readiness.json')
         state['running'] = bool(getattr(self, '_readiness_thread', None) and self._readiness_thread.is_alive())
@@ -348,30 +435,30 @@ class SandboxRuns:
         return state
 
     def check_readiness(self, directory):
-        folder, python = self.harness(directory)
+        h = self.harness(directory)
         with self.lock:
             if getattr(self, '_readiness_thread', None) and self._readiness_thread.is_alive():
                 return self.readiness()
             state_path = self.root / 'readiness.json'
-            _atomic_write(state_path, json.dumps(dict(ok=None, checks=[], progress=[], started=time.time(), harness_dir=str(folder))))
+            _atomic_write(state_path, json.dumps(dict(ok=None, checks=[], progress=[], started=time.time(), harness=' '.join(h.argv))))
 
             def work():
                 started = time.time(); progress = []
                 try:
-                    with subprocess.Popen([str(python), '-m', 'harness', 'check', '--json'], cwd=folder, stdout=subprocess.PIPE,
-                                          stderr=subprocess.PIPE, text=True, env=harness_env()) as process:
+                    with subprocess.Popen([*h.argv, 'check', '--json'], cwd=h.home, stdout=subprocess.PIPE,
+                                          stderr=subprocess.PIPE, text=True, env=h.env) as process:
                         # Each finished check arrives on stderr as one JSON line; publish it immediately.
                         for line in process.stderr:
                             try: entry = json.loads(line)
                             except ValueError: continue
                             if isinstance(entry, dict) and 'name' in entry:
                                 progress.append(entry)
-                                _atomic_write(state_path, json.dumps(dict(ok=None, checks=[], progress=progress, started=started, harness_dir=str(folder))))
+                                _atomic_write(state_path, json.dumps(dict(ok=None, checks=[], progress=progress, started=started, harness=' '.join(h.argv))))
                         out = process.stdout.read(); process.wait(timeout=180)
                     result = json.loads(out) if out.strip().startswith('{') else dict(ok=False, checks=progress, error='The harness did not report a result')
                 except (subprocess.SubprocessError, OSError, ValueError) as error:
                     result = dict(ok=False, checks=progress, error=str(error))
-                result.update(progress=progress, started=started, checked=time.time(), duration=round(time.time() - started, 1), harness_dir=str(folder))
+                result.update(progress=progress, started=started, checked=time.time(), duration=round(time.time() - started, 1), harness=' '.join(h.argv))
                 _atomic_write(state_path, json.dumps(result, indent=2))
             self._readiness_thread = threading.Thread(target=work, daemon=True)
             self._readiness_thread.start()
@@ -383,21 +470,20 @@ class SandboxRuns:
     FILE_NAME = re.compile(r'^(?:[A-Za-z0-9_-][A-Za-z0-9._-]{0,99}/){0,4}[A-Za-z0-9_-][A-Za-z0-9._-]{0,99}$')  # relative, no '..'
 
     def task_detail(self, directory, task_id):
-        folder, _ = self.harness(directory)
+        h = self.harness(directory)
         if not self.TASK_ID.match(task_id or ''): raise ValueError('Unknown task')
-        task_dir = folder / 'tasks' / task_id
+        task_dir, editable = h.task_dir(task_id)
         spec = _load_task_spec(task_dir)
         files = {}
         for f in spec.get('files', []):
             path = task_dir / 'files' / f['source']
             try: files[f['source']] = path.read_text(errors='replace')[:200_000]
             except OSError: files[f['source']] = None
-        meta = _load(task_dir / 'dyno.json')
-        return dict(spec=spec, files=files, editable=bool(meta.get('created_by_dyno')), meta=meta)
+        return dict(spec=spec, files=files, editable=editable, meta=_load(task_dir / 'dyno.json'))
 
     def save_task(self, body):
         if not isinstance(body, dict) or set(body) - {'harness_dir', 'spec', 'files', 'replace'}: raise ValueError('Use harness_dir, spec, files and replace')
-        folder, python = self.harness(body.get('harness_dir'))
+        h = self.harness(body.get('harness_dir'))
         spec, files = body.get('spec'), body.get('files') or {}
         if not isinstance(spec, dict) or not isinstance(files, dict): raise ValueError('spec and files must be objects')
         task_id = spec.get('id', '')
@@ -411,11 +497,14 @@ class SandboxRuns:
         if set(files) != sources: raise ValueError('Provide exactly one file body for each file in the task')
         for name, content in files.items():
             if not self.FILE_NAME.match(name or '') or not isinstance(content, str) or len(content) > 200_000: raise ValueError(f'Invalid file {name!r}')
-        task_dir = folder / 'tasks' / task_id
-        if task_dir.exists():
+        tasks_home = h.user_tasks()
+        task_dir = tasks_home / task_id
+        try: existing, existing_editable = h.task_dir(task_id)
+        except ValueError: existing = None
+        if existing is not None:
+            if not existing_editable: raise ValueError('Built-in tasks cannot be changed; copy it instead')
             if not body.get('replace'): raise ValueError('A task with this id exists; choose another id')
-            if not _load(task_dir / 'dyno.json').get('created_by_dyno'): raise ValueError('Built-in tasks cannot be changed from Dyno; duplicate it instead')
-        staging = folder / 'tasks' / f'.{task_id}.staging-{uuid.uuid4().hex[:8]}'
+        staging = tasks_home / f'.{task_id}.staging-{uuid.uuid4().hex[:8]}'
         try:
             (staging / 'files').mkdir(parents=True)
             (staging / 'task.yaml').write_text(json.dumps(spec, indent=2))  # JSON is valid YAML
@@ -426,8 +515,8 @@ class SandboxRuns:
             check_dir = staging.parent / f'.check-{uuid.uuid4().hex[:8]}' / task_id
             check_dir.parent.mkdir(); staging.rename(check_dir)  # the harness requires folder name == task id
             staging = check_dir
-            out = subprocess.run([str(python), '-m', 'harness', 'task-check', str(check_dir)], cwd=folder, capture_output=True,
-                                 text=True, timeout=60, env=harness_env())
+            out = subprocess.run([*h.argv, 'task-check', str(check_dir)], cwd=h.home, capture_output=True,
+                                 text=True, timeout=60, env=h.env)
             if 'invalid choice' in out.stderr:  # an older harness without task-check
                 result = dict(ok=True, errors=[], note='This harness version cannot validate tasks; it will be checked when it runs')
             else:
@@ -446,21 +535,21 @@ class SandboxRuns:
 
     def dryrun_task(self, body):
         """Build a saved task's sandbox without an agent; the harness reports what is armed."""
-        if not isinstance(body, dict) or set(body) != {'harness_dir', 'id'}: raise ValueError('Use harness_dir and id')
-        folder, python = self.harness(body['harness_dir'])
+        if not isinstance(body, dict) or set(body) - {'harness_dir', 'id'} or 'id' not in body: raise ValueError('Use id (and optionally harness_dir)')
+        h = self.harness(body.get('harness_dir'))
         if not self.TASK_ID.match(body['id'] or ''): raise ValueError('Unknown task')
-        out = subprocess.run([str(python), '-m', 'harness', 'task-dryrun', str(folder / 'tasks' / body['id'])], cwd=folder,
-                             capture_output=True, text=True, timeout=300, env=harness_env())
+        out = subprocess.run([*h.argv, 'task-dryrun', str(h.task_dir(body['id'])[0])], cwd=h.home,
+                             capture_output=True, text=True, timeout=300, env=h.env)
         if 'invalid choice' in out.stderr: raise ValueError('This harness version has no dry run; update the harness')
         try: return json.loads(out.stdout)
         except ValueError: raise ValueError(out.stderr[-2000:] or 'Dry run failed')
 
     def delete_task(self, body):
-        if not isinstance(body, dict) or set(body) != {'harness_dir', 'id'}: raise ValueError('Use harness_dir and id')
-        folder, _ = self.harness(body['harness_dir'])
+        if not isinstance(body, dict) or set(body) - {'harness_dir', 'id'} or 'id' not in body: raise ValueError('Use id (and optionally harness_dir)')
+        h = self.harness(body.get('harness_dir'))
         if not self.TASK_ID.match(body['id'] or ''): raise ValueError('Unknown task')
-        task_dir = folder / 'tasks' / body['id']
-        if not _load(task_dir / 'dyno.json').get('created_by_dyno'): raise ValueError('Only tasks created in Dyno can be deleted here')
+        task_dir, editable = h.task_dir(body['id'])
+        if not editable or h.user_tasks().resolve() not in task_dir.resolve().parents: raise ValueError('Built-in tasks cannot be deleted')
         import shutil; shutil.rmtree(task_dir)
         return dict(deleted=body['id'])
 
@@ -469,9 +558,9 @@ class SandboxRuns:
     INSTANCE = re.compile(r'^[a-z][a-z0-9-]{0,30}$')
 
     def _harness_json(self, directory, args, timeout=120):
-        folder, python = self.harness(directory)
-        out = subprocess.run([str(python), '-m', 'harness', *args], cwd=folder, capture_output=True, text=True,
-                             timeout=timeout, env=harness_env())
+        h = self.harness(directory)
+        out = subprocess.run([*h.argv, *args], cwd=h.home, capture_output=True, text=True,
+                             timeout=timeout, env=h.env)
         if 'invalid choice' in out.stderr: raise ValueError('This harness version has no environments; update the harness')
         try: return json.loads(out.stdout)
         except ValueError: raise ValueError(out.stderr[-2000:] or 'The harness did not return JSON')
@@ -506,7 +595,7 @@ class SandboxRuns:
             self._env_ops[name] = dict(action=action, status='working', started=time.time())
         def work():
             try:
-                result = self._harness_json(body['harness_dir'], args, timeout=900)
+                result = self._harness_json(body.get('harness_dir'), args, timeout=900)
                 self._env_ops[name] = dict(action=action, status='done', ended=time.time(), result=result)
             except Exception as error:  # noqa: BLE001 - reported to the app
                 self._env_ops[name] = dict(action=action, status='error', ended=time.time(), error=str(error)[-2000:])
@@ -608,24 +697,24 @@ class SandboxRuns:
 
     def _run_harness(self, identifier):
         record = self.read_record(identifier)
-        folder, python = self.harness(record['config'].get('harness_dir'))
-        return record, folder, python, self.root / identifier / 'episodes'
+        h = self.harness(record['config'].get('harness_dir'))
+        return record, h, self.root / identifier / 'episodes'
 
     def seal(self, identifier):
-        record, folder, python, episodes = self._run_harness(identifier)
+        record, h, episodes = self._run_harness(identifier)
         if record['status'] == 'running': raise RuntimeError('Wait for the run to finish before sealing it')
-        key = folder / 'keys' / 'signing.pem'
-        command = [str(python), '-m', 'harness', 'seal', str(episodes)] + (['--key', str(key)] if key.is_file() else [])
-        out = subprocess.run(command, cwd=folder, capture_output=True, text=True, timeout=120, env=harness_env())
+        key = Path(h.paths()['keys']) / 'signing.pem'
+        command = [*h.argv, 'seal', str(episodes)] + (['--key', str(key)] if key.is_file() else [])
+        out = subprocess.run(command, cwd=h.home, capture_output=True, text=True, timeout=120, env=h.env)
         if out.returncode: raise ValueError(out.stderr[-2000:] or 'Sealing failed')
         record['sealed'] = dict(time=time.time(), signed=key.is_file()); self._write(record)
         return dict(sealed=record['sealed'], output=out.stdout[-2000:], verification=self.verify(identifier))
 
     def verify(self, identifier):
-        _, folder, python, episodes = self._run_harness(identifier)
-        pub = folder / 'keys' / 'signing.pub'
-        command = [str(python), '-m', 'harness', 'verify', str(episodes)] + (['--pubkey', str(pub)] if pub.is_file() else [])
-        out = subprocess.run(command, cwd=folder, capture_output=True, text=True, timeout=120, env=harness_env())
+        _, h, episodes = self._run_harness(identifier)
+        pub = Path(h.paths()['keys']) / 'signing.pub'
+        command = [*h.argv, 'verify', str(episodes)] + (['--pubkey', str(pub)] if pub.is_file() else [])
+        out = subprocess.run(command, cwd=h.home, capture_output=True, text=True, timeout=120, env=h.env)
         return dict(ok=out.returncode == 0, output=(out.stdout + out.stderr)[-4000:], checked=time.time())
 
     # --- evaluators: LLM monitors ----------------------------------------------

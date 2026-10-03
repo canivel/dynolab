@@ -46,7 +46,7 @@ struct EnvironmentsView: View {
                 }
             }.frame(minWidth:260,idealWidth:300,maxWidth:360)
             ScrollView {
-                if let t=template { detail(t).padding() } else { Text(harnessDir.isEmpty ? "Choose the harness folder in Readiness." : "Choose a template.").foregroundStyle(.secondary).padding() }
+                if let t=template { detail(t).padding() } else { Text(templates.isEmpty ? "No environments yet. Check Agents → Readiness → Sandbox engine." : "Choose a template.").foregroundStyle(.secondary).padding() }
             }.frame(minWidth:600,maxWidth:.infinity)
         }
         .task {
@@ -182,15 +182,14 @@ struct EnvironmentsView: View {
         }
     }
     private func reload() async {
-        guard !harnessDir.isEmpty else { return }
-        var c=URLComponents();c.queryItems=[URLQueryItem(name:"harness_dir",value:harnessDir)]
+        var c=URLComponents();c.queryItems=harnessDir.isEmpty ? [] : [URLQueryItem(name:"harness_dir",value:harnessDir)]
         do {
             data=try await model.researchLab.request("/sandbox/environments?\(c.percentEncodedQuery ?? "")",timeout:30)
             if selected == nil { selected=initialSelection ?? templates.first?["id"] as? String }
         } catch { onError(error.localizedDescription) }
     }
     private func loadEvents(_ name: String) async {
-        var c=URLComponents();c.queryItems=[URLQueryItem(name:"harness_dir",value:harnessDir)]
+        var c=URLComponents();c.queryItems=harnessDir.isEmpty ? [] : [URLQueryItem(name:"harness_dir",value:harnessDir)]
         events=(try? await model.researchLab.request("/sandbox/environments/\(name)/events?\(c.percentEncodedQuery ?? "")",timeout:30))?["events"] as? [[String:Any]] ?? events
     }
 }

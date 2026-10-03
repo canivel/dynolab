@@ -9,7 +9,10 @@ struct AgentsView: View {
     /// Opens straight onto one episode's timeline (snapshots, deep links).
     var initialEpisode: String? = nil
     var initialTripwiresOnly = false
-    @AppStorage("sandboxHarnessDir") private var harnessDir = ""
+    /// Empty means the harness bundled with Dyno. Developers can point at a source checkout.
+    @AppStorage("sandboxHarnessOverride") private var harnessDir = ""
+    @State private var engine: [String:Any] = [:]
+    @State private var showAdvanced = false
     @AppStorage("agentsWorkspace") private var workspace = Workspace.runs.rawValue
     @State private var runs: [[String:Any]] = []
     @State private var run: [String:Any] = [:]
@@ -70,7 +73,8 @@ struct AgentsView: View {
             if let initialEpisode { workspace=Workspace.runs.rawValue;episodeKey=initialEpisode }
             do {
                 try await refresh()
-                if !harnessDir.isEmpty { try await loadTasks();try await loadReadiness() }
+                try await loadEngine()
+                if engine["installed"] as? Bool == true { try await loadTasks();try await loadReadiness() }
                 else if initialEpisode == nil { workspace=Workspace.readiness.rawValue }
             } catch { issue=error.localizedDescription }
             while !Task.isCancelled {
@@ -78,6 +82,7 @@ struct AgentsView: View {
                 if let runID,active,episodeKey == nil { do { try await open(runID) } catch { issue=error.localizedDescription } }
                 if readiness["running"] as? Bool == true { try? await loadReadiness() }
                 if runs.contains(where:{ $0["status"] as? String == "running" }) { try? await refresh();try? await loadReadiness() }
+                if engine["setup_running"] as? Bool == true { try? await loadEngine() }
             }
         }
     }
@@ -124,7 +129,7 @@ struct AgentsView: View {
                 if !condition.isEmpty { body["condition"]=condition }
                 run=try await model.researchLab.request("/sandbox/runs",body:body,timeout:15)
                 try await refresh()
-            } }.buttonStyle(.dynoPrimary).disabled(working || task.isEmpty || endpoint.isEmpty || harnessDir.isEmpty)
+            } }.buttonStyle(.dynoPrimary).disabled(working || task.isEmpty || endpoint.isEmpty)
         }
     }
 
@@ -173,7 +178,7 @@ struct AgentsView: View {
             HStack(alignment:.top) {
                 Text("Every task is an ordinary chore with one explicit rule. Following the rule makes the task impossible, so the honest move is to say so. Tripwires record what the agent tries instead.").foregroundStyle(.secondary)
                 Spacer()
-                Button("New task") { taskEditor=EditorRequest(existing:nil,template:nil) }.buttonStyle(.dynoPrimary).disabled(harnessDir.isEmpty)
+                Button("New task") { taskEditor=EditorRequest(existing:nil,template:nil) }.buttonStyle(.dynoPrimary)
             }
             if tasks.isEmpty { Text("Choose the harness folder in Readiness to load tasks.").foregroundStyle(.secondary) }
             ForEach(Array(tasks.enumerated()),id:\.offset) { _,t in
@@ -211,7 +216,7 @@ struct AgentsView: View {
     }
 
     private func openEditor(_ id: String,edit: Bool) {
-        var c=URLComponents();c.queryItems=[URLQueryItem(name:"harness_dir",value:harnessDir)]
+        var c=URLComponents();c.queryItems=harnessDir.isEmpty ? [] : [URLQueryItem(name:"harness_dir",value:harnessDir)]
         perform {
             let detail=try await model.researchLab.request("/sandbox/tasks/\(id)?\(c.percentEncodedQuery ?? "")",timeout:15)
             if edit && detail["editable"] as? Bool != true { throw TaskDraftError.message("\(id) is a built-in task. Use Copy as new task to change it.") }
@@ -221,7 +226,7 @@ struct AgentsView: View {
 
     // MARK: Readiness
 
-    private var ready: Bool { readiness["ok"] as? Bool == true && !model.snapshot.models.isEmpty && !harnessDir.isEmpty }
+    private var ready: Bool { readiness["ok"] as? Bool == true && !model.snapshot.models.isEmpty && engine["installed"] as? Bool == true }
     private var readinessBanner: some View {
         Button { workspace=Workspace.readiness.rawValue } label: { Label("Finish the readiness checklist before trusting results.",systemImage:"exclamationmark.triangle").foregroundStyle(.orange) }.buttonStyle(.plain)
     }
@@ -234,9 +239,38 @@ struct AgentsView: View {
         let checks=done.isEmpty ? (readiness["progress"] as? [[String:Any]] ?? []) : done
         let controls=readiness["controls"] as? [String:Any]
         return VStack(alignment:.leading,spacing:16) {
-            step(1,"Harness folder",done:!harnessDir.isEmpty && !tasks.isEmpty,detail:harnessDir.isEmpty ? "The open-source containment harness: tasks, sandbox, labeler and evidence." : "\(harnessDir) · \(tasks.count) tasks loaded") {
-                Button("Choose…") { let p=NSOpenPanel();p.canChooseDirectories=true;p.canChooseFiles=false;p.message="Choose the containment harness folder";if p.runModal() == .OK,let url=p.url { harnessDir=url.path;perform { try await loadTasks() } } }
+            let paths=engine["paths"] as? [String:Any] ?? [:]
+            let setup=engine["setup"] as? [String:Any]
+            let setupRunning=engine["setup_running"] as? Bool == true
+            step(1,"Sandbox engine",done:engine["installed"] as? Bool == true && readiness["ok"] as? Bool == true,
+                 detail:engine["installed"] as? Bool == true ? "Harness \(paths["version"] as? String ?? "") \(engine["bundled"] as? Bool == true ? "bundled with Dyno" : "from a checkout") · \(tasks.count) tasks · your tasks, environments and runs are kept in \(paths["home"] as? String ?? "")" : (engine["error"] as? String ?? "Checking…")) {
+                HStack {
+                    Button(setupRunning ? "Setting up…" : "Set up") { perform { engine=try await model.researchLab.request("/sandbox/engine/setup",body:["harness_dir":harnessDir],timeout:15) } }.disabled(setupRunning || engine["installed"] as? Bool != true)
+                    if let home=paths["home"] as? String { Button("Show data") { NSWorkspace.shared.open(URL(fileURLWithPath:home)) } }
+                }
             }
+            VStack(alignment:.leading,spacing:4) {
+                Text("Set up checks Docker and the gVisor runtime, then builds the sandbox image and its isolated network. It is safe to run again.").font(.caption).foregroundStyle(.secondary)
+                ForEach(Array((setup?["steps"] as? [[String:Any]] ?? []).enumerated()),id:\.offset) { _,st in
+                    Label("\(st["name"] as? String ?? "")\((st["detail"] as? String).map { $0.isEmpty ? "" : " · " + $0 } ?? "")",systemImage:st["passed"] as? Bool == true ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .foregroundStyle(st["passed"] as? Bool == true ? DynoBrand.accent : .red).font(.callout).lineLimit(2)
+                }
+                if setupRunning { ProgressView().controlSize(.small) }
+                if let steps=setup?["steps"] as? [[String:Any]],steps.contains(where:{ $0["name"] as? String == "docker reachable" && $0["passed"] as? Bool != true }) {
+                    HStack {
+                        Text("Docker isn't available. Dyno can install Colima, Docker and gVisor with Homebrew (about 5 minutes, needs internet).").font(.caption)
+                        Button("Install sandbox runtime") { perform { engine=try await model.researchLab.request("/sandbox/engine/setup",body:["harness_dir":harnessDir,"install_runtime":true],timeout:15) } }.disabled(setupRunning)
+                    }
+                }
+                DisclosureGroup("Advanced",isExpanded:$showAdvanced) {
+                    HStack {
+                        Text(harnessDir.isEmpty ? "Using the harness bundled with Dyno." : "Using the checkout at \(harnessDir)").font(.caption)
+                        Spacer()
+                        Button("Use a source checkout…") { let p=NSOpenPanel();p.canChooseDirectories=true;p.canChooseFiles=false;p.message="Choose a harness source checkout (for harness development)";if p.runModal() == .OK,let url=p.url { harnessDir=url.path;perform { try await loadEngine();try await loadTasks() } } }
+                        if !harnessDir.isEmpty { Button("Use bundled") { harnessDir="";perform { try await loadEngine();try await loadTasks() } } }
+                    }.controlSize(.small)
+                }.font(.caption)
+            }.padding(.leading,34)
             step(2,"Sandbox isolation",done:readiness["ok"] as? Bool == true,detail:running ? "Checking. A throwaway container is started and removed." : readiness["checked"] != nil ? "Last checked \(Self.ago(readiness["checked"])) · took \(String(format:"%.0f",readiness["duration"] as? Double ?? 0)) s" : "Docker in a Colima VM with the gVisor runtime, an internal-only network, no sudo, and root-only files the agent cannot read.") {
                 Button(running ? "Checking…" : "Run checks") { perform { readiness=try await model.researchLab.request("/sandbox/readiness",body:["harness_dir":harnessDir],timeout:10) } }.disabled(harnessDir.isEmpty || running)
             }
@@ -308,8 +342,12 @@ struct AgentsView: View {
         if p.runModal() == .OK,let url=p.url { perform { _=try await model.researchLab.request("/sandbox/sources",body:["path":url.path]);search() } }
     }
     private func loadTasks() async throws {
-        var c=URLComponents();c.queryItems=[URLQueryItem(name:"harness_dir",value:harnessDir)]
+        var c=URLComponents();c.queryItems=harnessDir.isEmpty ? [] : [URLQueryItem(name:"harness_dir",value:harnessDir)]
         tasks=try await model.researchLab.request("/sandbox/tasks?\(c.percentEncodedQuery ?? "")",timeout:30)["tasks"] as? [[String:Any]] ?? []
+    }
+    private func loadEngine() async throws {
+        var c=URLComponents();c.queryItems=harnessDir.isEmpty ? [] : [URLQueryItem(name:"harness_dir",value:harnessDir)]
+        engine=try await model.researchLab.request("/sandbox/engine?\(c.percentEncodedQuery ?? "")",timeout:30)
     }
     private func loadReadiness() async throws { readiness=try await model.researchLab.request("/sandbox/readiness") }
     private func refresh() async throws { runs=try await model.researchLab.request("/sandbox/runs")["runs"] as? [[String:Any]] ?? [] }
