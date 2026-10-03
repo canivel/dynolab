@@ -29,7 +29,7 @@ struct AgentsView: View {
     private var current: Workspace { Workspace(rawValue: workspace) ?? .runs }
 
     enum Workspace: String, CaseIterable, Identifiable {
-        case runs = "Runs", search = "Search", tasks = "Tasks", readiness = "Readiness"
+        case runs = "Runs", conversations = "Conversations", search = "Search", tasks = "Tasks", readiness = "Readiness"
         var id: String { rawValue }
     }
 
@@ -41,7 +41,7 @@ struct AgentsView: View {
                     Text("Real commands in an isolated sandbox with no network route out. Every command is logged before it runs.").font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Picker("",selection:$workspace) { ForEach(Workspace.allCases) { Text($0.rawValue).tag($0.rawValue) } }.pickerStyle(.segmented).frame(width:380)
+                Picker("",selection:$workspace) { ForEach(Workspace.allCases) { Text($0.rawValue).tag($0.rawValue) } }.pickerStyle(.segmented).frame(width:520)
             }
             if let issue { Text(issue).foregroundStyle(.orange).font(.callout) }
             switch current {
@@ -55,6 +55,7 @@ struct AgentsView: View {
                         else { Text("Search reasoning, commands, outputs and tripwires across every run.").foregroundStyle(.secondary).frame(maxWidth:.infinity,maxHeight:.infinity) }
                     }.frame(minWidth:560,maxWidth:.infinity)
                 }
+            case .conversations: ConversationsView(lab:model.researchLab,onError:{ issue=$0 })
             case .tasks: ScrollView { taskLibrary.padding(.vertical) }
             case .readiness: ScrollView { readinessPanel.padding(.vertical) }
             }

@@ -25,6 +25,8 @@ enum ViewSnapshot {
         NSApplication.shared.setActivationPolicy(.accessory)
 
         let model = MonitorModel()
+        // Snapshots can target a Lab service other than the one a running app owns.
+        if let value = ProcessInfo.processInfo.environment["DYNO_LAB_PORT"], let port = UInt16(value) { model.researchLab.port = port }
         waitForData(model)
         model.selectRunningModelForSnapshot()
         let publication = arguments.contains("--public")
@@ -147,6 +149,9 @@ enum ViewSnapshot {
             let episode = ProcessInfo.processInfo.environment["DYNO_EPISODE_KEY"]
             targets = [("window-agents", { AnyView(MainWindow(model: model, initialTab: .agents)) }, CGSize(width: 1400, height: 900))]
             if let episode { targets = [("agents-episode", { AnyView(AgentsView(model: model, initialEpisode: episode, initialTripwiresOnly: ProcessInfo.processInfo.environment["DYNO_ONLY_TRIPWIRES"] == "1").frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1400, height: 900))] }
+        }
+        if arguments.contains("--conversations-only") {
+            targets = [("agents-conversations", { AnyView(ConversationsView(lab: model.researchLab, onError: { print("error:", $0) }).frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1400, height: 900))]
         }
         if arguments.contains("--evaluate-only") {
             targets = [("window-evaluate", { AnyView(MainWindow(model: model, initialTab: .evaluate)) }, CGSize(width: 1400, height: 900))]
