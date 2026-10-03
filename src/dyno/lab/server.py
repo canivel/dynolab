@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import uuid
+from urllib.parse import parse_qs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from ..execution import ExecutionHTTPMixin
@@ -16,6 +17,7 @@ from .studies import Studies, summarize, monitor_metrics
 from .monitors import Monitors
 from .regressions import ResearchReports
 from .agent_tasks import AgentTasks
+from .sandbox import SandboxRuns
 
 OPERATIONS = ('inspect', 'compare', 'probe', 'sae', 'patch_sweep')
 
@@ -189,7 +191,10 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
             return
         path = self.path.split('?', 1)[0]
         if path == '/lab/v1/health':
-            self._execution_send({'status': 'ok', 'api_version': 1, 'worker_revision': 2, 'controlled_studies': 1, 'monitor_evaluations': 1, 'operations': OPERATIONS})
+            self._execution_send({'status': 'ok', 'api_version': 1, 'worker_revision': 2, 'controlled_studies': 1, 'monitor_evaluations': 1, 'sandbox_episodes': 1, 'operations': OPERATIONS})
+        elif path.startswith('/lab/v1/sandbox/'):
+            try: self._execution_send(self._sandbox_get(path.removeprefix('/lab/v1/sandbox/').split('/'), self._query()))
+            except (ValueError, OSError, subprocess.SubprocessError) as error: self._execution_send({'error': str(error)}, 400)
         elif path == '/lab/v1/agent-tasks':
             self._execution_send({'tasks':self.server.agent_tasks.list()})
         elif path.startswith('/lab/v1/agent-tasks/'):
@@ -256,6 +261,24 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
         else:
             self._execution_send({'error': 'not found'}, 404)
 
+    def _query(self):
+        query = self.path.split('?', 1)[1] if '?' in self.path else ''
+        return {k: v[-1] for k, v in parse_qs(query).items()}
+
+    def _sandbox_get(self, parts, query):
+        runs = self.server.sandbox
+        if parts == ['runs']: return {'runs': runs.list()}
+        if parts == ['sources']: return {'sources': runs.sources()}
+        if parts == ['tasks']: return runs.tasks(query.get('harness_dir'))
+        if parts == ['search']:
+            params = {k: query[k] for k in ('q', 'event', 'task', 'outcome', 'severity', 'limit') if query.get(k)}
+            return runs.search(params)
+        if len(parts) == 2 and parts[0] == 'runs': return runs.read(parts[1])
+        if len(parts) == 2 and parts[0] == 'episodes': return runs.episode(parts[1])
+        if len(parts) == 3 and parts[0] == 'episodes' and parts[2] == 'events':
+            return runs.events(parts[1], int(query.get('after', 0)))
+        raise ValueError('Unknown sandbox route')
+
     def do_DELETE(self):
         if not self._execution_local():
             return
@@ -285,7 +308,15 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
                 raise ValueError(f'Request must be 1–{maximum} bytes')
             body = json.loads(self.rfile.read(length))
             if not isinstance(body, dict): raise ValueError('Request must be an object')
-            if self.path == '/lab/v1/agent-tasks':
+            if self.path == '/lab/v1/sandbox/runs':
+                self._execution_send(self.server.sandbox.create(body), 201)
+            elif self.path == '/lab/v1/sandbox/sources':
+                if set(body) != {'path'}: raise ValueError('Use path')
+                self._execution_send(self.server.sandbox.add_source(body['path']), 201)
+            elif self.path.startswith('/lab/v1/sandbox/runs/') and self.path.endswith('/cancel'):
+                if body: raise ValueError('Cancel expects an empty object')
+                self._execution_send(self.server.sandbox.cancel(self.path.split('/')[-2]))
+            elif self.path == '/lab/v1/agent-tasks':
                 self._execution_send(self.server.agent_tasks.create(body),201)
             elif self.path.startswith('/lab/v1/agent-tasks/'):
                 parts=self.path.removeprefix('/lab/v1/agent-tasks/').split('/')
@@ -356,6 +387,7 @@ def main(argv=None):
     server.jobs = Jobs(args.data_dir)
     server.studies = Studies(Path(args.data_dir).expanduser() / 'controlled-studies')
     server.agent_tasks = AgentTasks(Path(args.data_dir).expanduser() / 'agent-tasks')
+    server.sandbox = SandboxRuns(Path(args.data_dir).expanduser() / 'sandbox-runs')
     server.reports = ResearchReports(Path(args.data_dir).expanduser() / 'research-reports', server.studies)
     server.monitors = Monitors(Path(args.data_dir).expanduser() / 'monitor-evaluations', server.studies)
     print(f'Dyno Research Lab: http://127.0.0.1:{args.port}/lab/v1', flush=True)
@@ -367,6 +399,8 @@ def main(argv=None):
     except KeyboardInterrupt:
         pass
     finally:
+        if server.sandbox.active:
+            server.sandbox.cancel(server.sandbox.active)
         if server.agent_tasks.active:
             server.agent_tasks.cancel(server.agent_tasks.active)
         if server.monitors.active:
