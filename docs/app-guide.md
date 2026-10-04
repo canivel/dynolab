@@ -4,6 +4,8 @@ Download the app, run your first model, and turn a question about its behavior i
 
 Dyno Lab is the research product; the installed macOS application is currently named **Dyno**. This guide covers the 0.5.1 release, including its experimental pool workflows. Images are actual app captures or cropped results from completed local experiments, not mock measurements. Some older captures have an earlier toolbar arrangement; the current navigation is described below.
 
+**Agent sandbox tests.** The **Agents** tab, the default from 0.5.1, runs AI agents on tasks they can't finish without breaking a rule, in an isolated sandbox, and evaluates the results in the **Evaluate** tab. See the [agent sandbox tests guide](agent-sandbox-tests.md).
+
 [Download for Apple Silicon](https://github.com/canivel/dynolab/releases/latest) · [Python SDK](sdk-guide.md) · [HTTP API](http-api.md) · [Local MCP](local-mcp.md)
 
 ## Studies: a question, its evidence, and the next test
