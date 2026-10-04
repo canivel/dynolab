@@ -2,7 +2,7 @@
 
 Download the app, run your first model, and turn a question about its behavior into an experiment. **Start here if you want to use the native app.** You do not need Python or the SDK to follow this guide.
 
-Dyno Lab is the research product; the installed macOS application is currently named **Dyno**. This guide covers the 0.4.2 release, including its experimental pool workflows. Images are actual app captures or cropped results from completed local experiments, not mock measurements. Some older captures have an earlier toolbar arrangement; the current navigation is described below.
+Dyno Lab is the research product; the installed macOS application is currently named **Dyno**. This guide covers the 0.5.1 release, including its experimental pool workflows. Images are actual app captures or cropped results from completed local experiments, not mock measurements. Some older captures have an earlier toolbar arrangement; the current navigation is described below.
 
 [Download for Apple Silicon](https://github.com/canivel/dynolab/releases/latest) · [Python SDK](sdk-guide.md) · [HTTP API](http-api.md) · [Local MCP](local-mcp.md)
 
@@ -338,21 +338,21 @@ Lime buttons identify primary actions; outlined buttons are secondary actions. V
 
 Isolated Lab experiments require a downloaded MLX language model and sufficient memory. **Start lab & run experiment** starts the local research service automatically before submitting. When Run is disabled, the reason appears beneath it. GPU active time includes desktop/browser rendering and is not a saturation measure, so it does not block experiments. Measured active inference requests, missing/stale memory information and insufficient headroom still prevent admission. For a running GGUF pool with research runtime v2, choose **Running GPU pool** under Execution backend. Interventions, causal patching, probes and SAE experiments reuse its resident weights. Probe/SAE fitting runs on the coordinator; see [pool research](pool-lab-capture.md) for limits.
 
-## Local preview: controlled comparisons
+## Controlled comparisons
 
-The local development app adds **Lab → Studies → Controlled comparisons**. Prepare a frozen protocol, run matched conditions on a selected endpoint, review the saved answers and export evidence. See [the controlled-study guide](controlled-studies.md) for steps and limits.
+**Lab → Studies → Controlled comparisons** is included from 0.5.1. Prepare a frozen protocol, run matched conditions on a selected endpoint, review the saved answers and export evidence. See [the controlled-study guide](controlled-studies.md) for steps and limits.
 
 
-### Context-masked response review (local preview)
+### Context-masked response review
 
 Saved controlled-study responses can now be reviewed in a shuffled queue with condition and model labels hidden, append-only judgments, self-reported prior exposure, and an explicit permanent reveal. See [the workflow and API examples](controlled-studies.md#review-with-conditions-hidden-local-preview). No running model is required. This is a review aid, not authenticated or guaranteed blind review.
 
 
-## Response monitor evaluations (local preview)
+## Response monitor evaluations
 
 Compare model scores with frozen reference labels, review separate development/test metrics, and inspect disagreements. See the [monitor evaluation walkthrough](monitor-evaluations.md) for UI, SDK, HTTP and MCP instructions and limits.
 
-Grouped probes now have a [validation workflow](probe-validation.md) with separate training, validation and test groups, and baseline controls (local preview).
+Grouped probes now have a [validation workflow](probe-validation.md) with separate training, validation and test groups, and baseline controls.
 
 ## Additional local research workflows
 
@@ -363,7 +363,7 @@ Grouped probes now have a [validation workflow](probe-validation.md) with separa
 - [Community reproductions](community-reproductions.md): Connect a new attempt to the exact shared study version.
 - [Monitor threshold selection](monitor-evaluations.md): select on development predictions before evaluating held-out data.
 
-These features are local previews. Guides separate measured evidence, user-supplied metadata and unsupported operations.
+These features are included in 0.5.1 as previews. Guides separate measured evidence, user-supplied metadata and unsupported operations.
 
 ## Approval-monitor research example
 

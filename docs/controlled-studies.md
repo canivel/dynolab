@@ -1,6 +1,6 @@
 # Controlled studies (local development preview)
 
-Compare responses to matched prompts, save every attempt, and review answers against a rubric written before execution. This feature is under local review and is not part of the published 0.4.3 app.
+Compare responses to matched prompts, save every attempt, and review answers against a rubric written before execution. Included from Dyno Lab 0.5.1.
 
 ## In the app
 
