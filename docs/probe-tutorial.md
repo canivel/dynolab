@@ -2,7 +2,7 @@
 
 Use this tutorial to learn how to create a study, train a probe and read its controls. It tests whether a linear classifier can distinguish prompts describing an unresolved release blocker from prompts describing a resolved one. It does not test whether a model is safe or sycophantic.
 
-This walkthrough uses the next research build. The published 0.4.3 app does not contain all of these controls.
+This walkthrough needs Dyno Lab 0.5.1 or later; earlier releases don't contain all of these controls.
 
 ## 1. Start a model
 

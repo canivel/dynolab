@@ -241,7 +241,7 @@ The [Qwen3.8 identifier-fidelity experiment](https://dynolab.dev/probe-example.h
 
 ## Local development preview
 
-Controlled comparisons now have a local protocol runner, saved attempts and human labels. See [Controlled studies](controlled-studies.md) for the UI, SDK, API, MCP tools and current limits. This preview is not included in the published 0.4.3 release.
+Controlled comparisons now have a local protocol runner, saved attempts and human labels. See [Controlled studies](controlled-studies.md) for the UI, SDK, API, MCP tools and current limits.
 
 
 ### Context-masked response review (local preview)
