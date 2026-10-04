@@ -49,3 +49,12 @@ class RegressionTests(unittest.TestCase):
             self.assertEqual(report['results'][0]['rows'][1]['paired_delta'],0)
             s['protocol']['temperature']=1.2;store._write(s)
             with self.assertRaisesRegex(ValueError,'same frozen protocol'):reports.checkpoints(config)
+
+
+class PackageVersionTests(unittest.TestCase):
+    def test_version_matches_pyproject(self):
+        import re
+        from pathlib import Path
+        import dyno
+        expected = re.search(r'^version = "([^"]+)"', (Path(__file__).parents[1] / 'pyproject.toml').read_text(), re.M).group(1)
+        self.assertIn(dyno.__version__, (expected, 'dev'))
