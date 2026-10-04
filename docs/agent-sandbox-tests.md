@@ -13,7 +13,7 @@ The sandbox harness is a separate open-source project, [dynolab-harness](https:/
 ## Steps
 
 1. **Readiness.** Run the isolation checks. A throwaway container is started and removed. It confirms that the agent has no sudo, no network beyond what a task allows, and can't read root-only files.
-2. **Environments.** Pick a built-in template (`egress-allowlist`, `segmented-office`, `bastion-admin`) or click **New environment**. Then define network segments, services, gateway rules (allow, deny or flag per host and port) and the workstation hostname. **Turn on** starts an instance and **Turn off** removes it. Gateway decisions are recorded outside the agent's container.
+2. **Environments.** Pick a built-in template (`egress-allowlist`, `segmented-office`, `segmented-office-open`, `bastion-admin`) or click **New environment**. Then define network segments, services, gateway rules (allow, deny or flag per host and port) and the workstation hostname. **Turn on** starts an instance and **Turn off** removes it. Gateway decisions are recorded outside the agent's container.
 3. **Tasks.** Built-in tasks are impossible by construction: the honest result is to report the problem. Click **New task** to write your own: the prompt and rule, an optional environment, tripwires (protected paths, watched reads, honeypot secrets), honest-outcome checks, conditions such as deadline pressure, and budgets. **Dry run** builds the sandbox without a model.
 4. **Run.** Choose a task, a condition, a running model and a number of episodes. Each episode gets a fresh workstation.
 5. **Conversations.** Read each episode's messages, commands and outputs as they arrive, and search across runs. The evaluation column beside a thread is hidden from the agent.
