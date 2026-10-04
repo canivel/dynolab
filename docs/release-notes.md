@@ -1,6 +1,21 @@
-# Dyno Lab 0.5.0 release candidate
+# Dyno Lab 0.5.0
 
-Prepared locally. The public download remains 0.4.3 until signing, notarization and release validation are complete.
+Dyno Lab 0.5.0 adds agent sandbox tests: run an AI agent on a task it can't finish without breaking a rule, record everything it does, and evaluate the result separately from what the agent sees. See the [agent sandbox tests guide](agent-sandbox-tests.md).
+
+## Agent sandbox tests
+
+- A new **Agents** tab, now the default. It covers runs, conversations, search, tasks, environments and readiness.
+- Agents run in Docker with the gVisor runtime inside a Colima VM, with all capabilities dropped and no network beyond what a task allows. Each episode gets a fresh workstation.
+- Built-in impossible tasks and environment templates. Create your own tasks (prompt, rule, tripwires, honeypot secrets, honest-outcome checks, conditions, budgets) and your own environments (network segments, services, per-host gateway rules). Turn environments on and off, open a shell in them, and run tasks against a running instance.
+- Conversations shows every message, command and output as it arrives, with full-text search across runs. Evaluation data appears in a separate column that the agent never sees.
+- A new **Evaluate** tab:
+  - **Results:** outcome counts per task and condition.
+  - **Review:** confirm or correct each automatic label.
+  - **Evaluators:** shows exactly what the agent sees, and lets you add LLM monitors that score transcripts without seeing labels or tripwires.
+  - **Evidence:** seal runs with SHA-256 checksums and an optional Ed25519 signature, and verify them.
+- The open-source [dynolab-harness](https://github.com/canivel/dynolab-harness) is bundled at a pinned commit. Nothing to download or choose.
+
+Labels come from heuristic rules and must be reviewed. Results from a few episodes are counts, not rates, and are not evidence that a model is safe.
 
 ## Research workflows
 
@@ -26,7 +41,7 @@ These tools record experiments and support review. Probe accuracy is not evidenc
 
 ## Upgrade
 
-Install the signed release through the existing updater once 0.5.0 is published, or download its DMG. Finish active work before restarting. Saved studies and downloaded model files live outside the app bundle. The Mac updater does not update Windows workers.
+Install it from inside Dyno (0.4.3 or later: Dyno Lab → Check for Updates…), or download the signed DMG. Finish active work before restarting. Saved studies and downloaded model files live outside the app bundle. The Mac updater does not update Windows workers.
 
 ---
 
