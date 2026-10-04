@@ -64,7 +64,7 @@ if [ "$SLIM" -eq 0 ]; then
   # happen to be newest when the release is built.
   LOCKED_REQUIREMENTS=$(mktemp "$PWD/$BUILD_DIR/runtime-requirements.XXXXXX")
   trap 'rm -f "$LOCKED_REQUIREMENTS"' EXIT
-  ( cd .. && uv export --locked --extra serve --extra mcp --extra pool --no-dev \
+  ( cd .. && uv export --locked --extra serve --extra mcp --extra pool --extra sandbox --no-dev \
       --no-emit-project --output-file "$LOCKED_REQUIREMENTS" >/dev/null )
   uv pip install --quiet --require-hashes \
       --python "$PWD/$RESOURCES/python/bin/python$PYTHON_VERSION" \
@@ -79,7 +79,8 @@ if [ "$SLIM" -eq 0 ]; then
   # Default: the published harness, pinned to a reviewed commit.
   HARNESS_SOURCE="${DYNO_HARNESS_SOURCE:-git+https://github.com/canivel/dynolab-harness@d1199b754765a2a8d9625fa80e13153e1891a8ba}"
   echo "==> Installing the sandbox harness from $HARNESS_SOURCE"
-  uv pip install --quiet \
+  # --no-deps: its dependencies come from the locked, hash-checked "sandbox" extra above.
+  uv pip install --quiet --no-deps \
       --python "$PWD/$RESOURCES/python/bin/python$PYTHON_VERSION" \
       --target "$PWD/$RESOURCES/pylib" "$HARNESS_SOURCE"
   find "$RESOURCES/pylib" -name "__pycache__" -type d -prune -exec rm -rf {} + 2>/dev/null || true

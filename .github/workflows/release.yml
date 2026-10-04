@@ -50,7 +50,7 @@ jobs:
       - name: Build distributions and dependency inventory
         run: |
           uv build
-          uv export --frozen --extra serve --extra mcp --extra pool --no-dev --no-emit-project --format cyclonedx1.5 -o dist/runtime-sbom.json
+          uv export --frozen --extra serve --extra mcp --extra pool --extra sandbox --no-dev --no-emit-project --format cyclonedx1.5 -o dist/runtime-sbom.json
           cp docs/release-notes.md dist/release-notes.md
           cp uv.lock dist/uv.lock
       - name: Build pinned pool research runtime
