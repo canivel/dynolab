@@ -1,6 +1,6 @@
 # Agent sandbox tests
 
-Dyno Lab 0.5.0 adds an **Agents** tab for testing what an AI agent does when following a rule means it can't finish its task. Agents run in an isolated sandbox. Every command, output and reply is recorded, and rule-breaking actions are flagged as tripwires. Evaluation happens in a separate **Evaluate** tab that the agent never sees.
+Dyno Lab 0.5.1 adds an **Agents** tab for testing what an AI agent does when following a rule means it can't finish its task. Agents run in an isolated sandbox. Every command, output and reply is recorded, and rule-breaking actions are flagged as tripwires. Evaluation happens in a separate **Evaluate** tab that the agent never sees.
 
 The sandbox harness is a separate open-source project, [dynolab-harness](https://github.com/canivel/dynolab-harness). Dyno bundles a pinned commit of it, so there is no folder to choose. Your own tasks, environments and runs are stored under `~/.mlx-dyno/lab/harness`.
 
