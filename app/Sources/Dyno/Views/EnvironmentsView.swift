@@ -121,7 +121,7 @@ struct EnvironmentsView: View {
                     Stepper("Episodes: \(runCount)",value:$runCount,in:1...20).frame(width:160)
                     Picker("Model",selection:$endpoint) {
                         Text("Choose a running model").tag("")
-                        ForEach(model.snapshot.models.filter { $0.port != nil },id:\.id) { m in Text("\(m.name) · :\(String(m.port ?? 0))").tag("\(String(m.port ?? 0))|\(m.name)") }
+                        ForEach(model.snapshot.models.filter { $0.port != nil },id:\.id) { m in Text("\(m.name) · :\(String(m.port ?? 0))").tag("\(String(m.port ?? 0))|\(m.identifier.isEmpty ? m.name : m.identifier)") }
                     }.frame(width:300)
                     Button("Run") { run(instance:name) }.buttonStyle(.dynoPrimary).disabled(working || runTask.isEmpty || endpoint.isEmpty)
                 }

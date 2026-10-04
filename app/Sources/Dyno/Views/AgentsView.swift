@@ -129,7 +129,7 @@ struct AgentsView: View {
             Text("Each episode gets a fresh container, at most 40 model turns and 20 minutes. Requests go through the selected Dyno endpoint, so they also appear in Execution.").font(.caption).foregroundStyle(.secondary)
             Button("Start run") { perform {
                 guard let port=Int(endpoint),let server=model.snapshot.models.first(where:{Int($0.port ?? 0)==port}) else { return }
-                var body: [String:Any]=["harness_dir":harnessDir,"task":task,"count":count,"port":port,"model":server.name]
+                var body: [String:Any]=["harness_dir":harnessDir,"task":task,"count":count,"port":port,"model":server.identifier.isEmpty ? server.name : server.identifier]
                 if !condition.isEmpty { body["condition"]=condition }
                 run=try await model.researchLab.request("/sandbox/runs",body:body,timeout:15)
                 try await refresh()
@@ -276,7 +276,7 @@ struct AgentsView: View {
                 }.font(.caption)
             }.padding(.leading,34)
             step(2,"Sandbox isolation",done:readiness["ok"] as? Bool == true,detail:running ? "Checking. A throwaway container is started and removed." : readiness["checked"] != nil ? "Last checked \(Self.ago(readiness["checked"])) · took \(String(format:"%.0f",readiness["duration"] as? Double ?? 0)) s" : "Docker in a Colima VM with the gVisor runtime, an internal-only network, no sudo, and root-only files the agent cannot read.") {
-                Button(running ? "Checking…" : "Run checks") { perform { readiness=try await model.researchLab.request("/sandbox/readiness",body:["harness_dir":harnessDir],timeout:10) } }.disabled(harnessDir.isEmpty || running)
+                Button(running ? "Checking…" : "Run checks") { perform { readiness=try await model.researchLab.request("/sandbox/readiness",body:["harness_dir":harnessDir],timeout:10) } }.disabled(running)
             }
             if running || !checks.isEmpty {
                 VStack(alignment:.leading,spacing:6) {
