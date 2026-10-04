@@ -340,7 +340,7 @@ Isolated Lab experiments require a downloaded MLX language model and sufficient 
 
 ## Local preview: controlled comparisons
 
-The local development app adds **Lab → Studies → Controlled comparisons**. Prepare a frozen protocol, run matched conditions on a selected endpoint, review the saved answers and export evidence. See [the controlled-study guide](controlled-studies.md) for steps and limits. This is not in the published 0.4.3 release.
+The local development app adds **Lab → Studies → Controlled comparisons**. Prepare a frozen protocol, run matched conditions on a selected endpoint, review the saved answers and export evidence. See [the controlled-study guide](controlled-studies.md) for steps and limits.
 
 
 ### Context-masked response review (local preview)

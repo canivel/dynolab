@@ -50,7 +50,7 @@ Requires **Apple Silicon and macOS 14+**. Python and MLX are bundled; model weig
 
 **In-app updates:** use **Dyno Lab → Check for Updates…** for a manual check. The next build shows a toolbar badge only when an update is available. Installation asks before restarting. Existing 0.4.2 installations need one manual upgrade to 0.4.3 to receive the updater. See [app updates](docs/app-updates.md).
 
-**[Download 0.4.3](https://github.com/canivel/dynolab/releases/tag/v0.4.3).** Adds signed in-app updates, visible app versions and reviewed study sharing/import. Upgrade manually once from 0.4.2; future updates are available inside Dyno. [Release notes](docs/release-notes.md).
+**[Download 0.5.0](https://github.com/canivel/dynolab/releases/tag/v0.5.0).** Adds [agent sandbox tests](docs/agent-sandbox-tests.md): run an AI agent on a task it can't finish without breaking a rule, in an isolated sandbox, and evaluate what it did in a tab the agent never sees. Also adds the research workflows below. From 0.4.3, update inside Dyno; from 0.4.2 or older, download once. [Release notes](docs/release-notes.md).
 
 ### Which model format should I use?
 
@@ -175,12 +175,12 @@ Try the [first experiment](docs/first-experiment.md) and tell us where you got s
 
 If Dyno Lab is useful to you, **star the repo to bookmark it and support its development**. Reproductions, corrections and focused contributions help turn a personal research tool into something other people can rely on.
 
-## Next release: research workflows
+## Research workflows
 
-The unreleased research workflow adds paired [regression reports](docs/regression-reports.md), [artifact compatibility checks](docs/compatibility-checks.md), [development-only monitor threshold selection](docs/monitor-evaluations.md), [community reproduction records](docs/community-reproductions.md), [simulated agent tasks](docs/simulated-agent-tasks.md) and [checkpoint comparisons](docs/checkpoint-comparisons.md). Each guide explains the prerequisites, steps, saved evidence and limitations. See the [implementation and validation record](docs/plans/research-completion.md). These changes are local review work, not capabilities of the currently published download.
+Dyno Lab 0.5.0 adds paired [regression reports](docs/regression-reports.md), [artifact compatibility checks](docs/compatibility-checks.md), [development-only monitor threshold selection](docs/monitor-evaluations.md), [community reproduction records](docs/community-reproductions.md), [simulated agent tasks](docs/simulated-agent-tasks.md) and [checkpoint comparisons](docs/checkpoint-comparisons.md). Each guide explains the prerequisites, steps, saved evidence and limitations. See the [implementation and validation record](docs/plans/research-completion.md).
 
 Start with the [step-by-step probe tutorial](docs/probe-tutorial.md), including the recorded result and why its controls limit the conclusion.
 
 ### Approval-monitor investigation
 
-An offline probe detected prohibited action proposals, but flagged six legitimate approvals when wording changed. [Read the methods, model comparison and false alarms](docs/approval-monitor-example.md), or [view the illustrated research note](https://dynolab.dev/approval-monitor.html). The evidence contains all 336 responses and a CPU-only audit. The illustrated grouped-validation workflow uses an unreleased development build, not released 0.4.3.
+An offline probe detected prohibited action proposals, but flagged six legitimate approvals when wording changed. [Read the methods, model comparison and false alarms](docs/approval-monitor-example.md), or [view the illustrated research note](https://dynolab.dev/approval-monitor.html). The evidence contains all 336 responses and a CPU-only audit. The illustrated grouped-validation workflow was recorded on a development build before 0.5.0.
