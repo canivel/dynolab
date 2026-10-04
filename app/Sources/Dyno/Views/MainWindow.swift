@@ -1,7 +1,8 @@
 import DynoKit
 import SwiftUI
 
-/// The app's window: pick a model on the left, watch it run on the right.
+/// The app's window. It opens on Agents, the sandboxed agent tests; the research lab,
+/// model serving and infrastructure tabs follow.
 ///
 /// The menu bar popover stays the glanceable summary; this is where you
 /// actually work — start a model, then see its throughput next to the machine
@@ -16,7 +17,7 @@ struct MainWindow: View {
     @State private var poolSession = PoolSession()
     @State private var modelFormat = "MLX"
 
-    init(model: MonitorModel, initialTab: Tab = .lab, chat: Bool = false, modelFormat: String = "MLX") {
+    init(model: MonitorModel, initialTab: Tab = .agents, chat: Bool = false, modelFormat: String = "MLX") {
         self.model = model
         _tab = State(initialValue: initialTab)
         _modelFormat = State(initialValue: modelFormat)
@@ -24,6 +25,8 @@ struct MainWindow: View {
     }
 
     enum Tab: String, CaseIterable, Identifiable {
+        case agents = "Agents"
+        case evaluate = "Evaluate"
         case lab = "Lab"
         case execution = "Execution"
         case run = "Models"
@@ -62,18 +65,10 @@ struct MainWindow: View {
                             .accessibilityAddTraits(tab == item && !showingChat ? .isSelected : [])
                     }
                 }.padding(4).background(DynoBrand.surface, in: RoundedRectangle(cornerRadius: 9))
-                .frame(width: 550)
+                .frame(width: 790)
                 Spacer()
                 AppUpdatesButton()
-                if case let .running(name, port) = model.serverState {
-                    HStack(spacing: 5) {
-                        Circle().fill(Color.green).frame(width: 6, height: 6)
-                        Text("\(name) · :\(String(port))")
-                            .font(.system(size: 10)).foregroundStyle(.secondary)
-                            .lineLimit(1).truncationMode(.middle)
-                    }
-                    .padding(.trailing, 6)
-                }
+                RuntimeOverview(model: model, pool: poolSession)
 
                 // Chat opens beside this window rather than replacing a tab,
                 // so a conversation and the router's decisions can be watched
@@ -140,6 +135,10 @@ struct MainWindow: View {
     private var dashboard: some View {
         Group {
             switch tab {
+            case .agents:
+                AgentsView(model: model)
+            case .evaluate:
+                EvaluateView(model: model)
             case .lab:
                 ResearchLabView(model: model)
             case .execution:

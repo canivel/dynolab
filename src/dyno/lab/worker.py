@@ -191,6 +191,8 @@ def run(config, folder):
                 else:
                     target = int(mx.argmax(probs).item())
                 reference = float(probs[target].item())
+                original_last = np.array(captured[layer][0, -1].astype(mx.float32))
+                base_logits = np.array(original[0, -1].astype(mx.float32))
                 base_output = generate(ids)
                 for strength in strengths:
                     def intervention(h, strength=float(strength)):
@@ -208,13 +210,53 @@ def run(config, folder):
                     active[layer] = intervention
                     changed = forward(ids)
                     probability = float(mx.softmax(changed[0, -1].astype(mx.float32))[target].item())
-                    trials.append(dict(prompt=prompt, strength=strength, layer=layer,
+                    trial = dict(prompt=prompt, strength=strength, layer=layer,
                                        target_token=tokenizer.decode([target]), baseline_probability=reference,
                                        probability=probability, delta=probability-reference,
-                                       baseline=base_output, output=generate(ids)))
+                                       baseline=base_output, output=generate(ids))
+                    if config.get('intervention_controls'):
+                        # Controls compare identical input prefixes, independently of continuation.
+                        last = mx.array(original_last)[None, None, :]
+                        changed_last = np.array(intervention(last)[0, -1].astype(mx.float32))
+                        magnitude = float(np.linalg.norm(changed_last-original_last))
+                        controls = []
+                        for repeat in range(config.get('control_repeats', 3)):
+                            control_seed = seed + repeat
+                            direction_rng = np.random.default_rng(control_seed)
+                            random_direction = direction_rng.normal(size=original_last.shape)
+                            random_direction *= magnitude / max(float(np.linalg.norm(random_direction)), 1e-12)
+                            def random_transform(h, d=mx.array(random_direction)):
+                                return mx.concatenate([h[:, :-1, :], h[:, -1:, :] + d.astype(h.dtype)[None, None, :]], axis=1)
+                            active[layer] = random_transform
+                            random_logits = forward(ids)
+                            random_probability = float(mx.softmax(random_logits[0, -1].astype(mx.float32))[target].item())
+                            controls.append(dict(seed=control_seed, perturbation_l2=magnitude, probability=random_probability, delta=random_probability-reference))
+                        active[layer] = lambda h: h
+                        noop = forward(ids)
+                        noop_drift = float(np.max(np.abs(np.array(noop[0, -1].astype(mx.float32))-base_logits)))
+                        active.clear()
+                        restored = forward(ids)
+                        restored_drift = float(np.max(np.abs(np.array(restored[0, -1].astype(mx.float32))-base_logits)))
+                        trial['controls'] = dict(random_directions=controls, noop_max_logit_drift=noop_drift, restored_max_logit_drift=restored_drift,
+                            scope='Fresh identical input prefix only; random controls do not generate continuations. Drift is measured, not assigned a universal pass tolerance.')
+                    trials.append(trial)
                 active.clear()
             result = dict(trials=trials, intervention=kind, position='last token, each forward pass',
                           note='Probability comparisons use an identical prefix. Generated continuations are free-running and may diverge. Greedy decoding.')
+    elif operation == 'probe' and config.get('probe_validation'):
+        from .probe_validation import run_validated_probe, validate_dataset
+        examples=config.get('examples',[]);validate_dataset(examples)
+        vectors={layer: np.stack([vector(e['text'],layer) for e in examples]) for layer in selected}
+        report,artifact=run_validated_probe(examples,vectors,seed)
+        name=f"probe-layer-{report['layer']}.npz"
+        np.savez(folder/name,**artifact)
+        from .compatibility import fingerprint
+        model_fingerprint=fingerprint(model_path,model_config,len(artifact['weight']),config.get('backend','mlx'),layer=report['layer'])
+        contract=dict(fingerprint=model_fingerprint,model=config['model'],requested_revision=config.get('revision'),model_config=model_config,
+            hook='block output',pooling='last input token',layer=report['layer'],dimension=len(artifact['weight']),normalization='training-only mean and standard deviation, floor 0.01',
+            artifact_sha256=hashlib.sha256((folder/name).read_bytes()).hexdigest(),dataset_sha256=report['dataset']['sha256'])
+        (folder/'probe-contract.json').write_text(json.dumps(contract,indent=2))
+        result=dict(reports=[report],validated_probe=True,compatibility=contract,pooling='last input token',note=report['note'])
     elif operation in ('probe', 'sae'):
         examples = config.get('examples', [])
         if not isinstance(examples, list) or len(examples) < 8:
@@ -317,7 +359,7 @@ def run(config, folder):
         provenance.update(backend='gguf-pool', capture_version=2, captured_backends=model.backends,
                           forward_passes=model.calls, weights_reloaded=False,
                           training_device='coordinator MLX', patch_scope='one block/token per fresh request')
-    result.update(provenance=provenance, artifacts=[p.name for p in folder.iterdir() if p.suffix in ('.npz','.safetensors')])
+    result.update(provenance=provenance, artifacts=[p.name for p in folder.iterdir() if p.suffix in ('.npz','.safetensors') or p.name == 'probe-contract.json'])
     (folder/'result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
 
 

@@ -1,0 +1,184 @@
+{
+  "layers": [
+    4,
+    8
+  ],
+  "seed": 0,
+  "max_input_tokens": 256,
+  "probe_validation": true,
+  "label_meaning": {
+    "0": "An unresolved blocker prevents release",
+    "1": "The blocker is resolved and release is permitted"
+  },
+  "dataset_note": "Authored tutorial examples, not collected model behavior or a published benchmark. Shared wording makes this a basic representation-classification exercise, not a sycophancy or safety detector.",
+  "examples": [
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Checkout sometimes charges twice. Status: It remains unresolved and is still a release blocker. There are no other release blockers. Release assessment:",
+      "label": 0,
+      "group": "checkout",
+      "split": "train",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Checkout sometimes charges twice. Status: It has been corrected, retested and closed as a release blocker. There are no other release blockers. Release assessment:",
+      "label": 1,
+      "group": "checkout",
+      "split": "train",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Valid passwords are rejected. Status: It remains unresolved and is still a release blocker. There are no other release blockers. Release assessment:",
+      "label": 0,
+      "group": "login",
+      "split": "train",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Valid passwords are rejected. Status: It has been corrected, retested and closed as a release blocker. There are no other release blockers. Release assessment:",
+      "label": 1,
+      "group": "login",
+      "split": "train",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Exported reports omit the final row. Status: It remains unresolved and is still a release blocker. There are no other release blockers. Release assessment:",
+      "label": 0,
+      "group": "export",
+      "split": "train",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Exported reports omit the final row. Status: It has been corrected, retested and closed as a release blocker. There are no other release blockers. Release assessment:",
+      "label": 1,
+      "group": "export",
+      "split": "train",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Synchronization overwrites newer records. Status: It remains unresolved and is still a release blocker. There are no other release blockers. Release assessment:",
+      "label": 0,
+      "group": "sync",
+      "split": "train",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Synchronization overwrites newer records. Status: It has been corrected, retested and closed as a release blocker. There are no other release blockers. Release assessment:",
+      "label": 1,
+      "group": "sync",
+      "split": "train",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Backups cannot be restored. Status: It remains unresolved and is still a release blocker. There are no other release blockers. Release assessment:",
+      "label": 0,
+      "group": "backup",
+      "split": "train",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Backups cannot be restored. Status: It has been corrected, retested and closed as a release blocker. There are no other release blockers. Release assessment:",
+      "label": 1,
+      "group": "backup",
+      "split": "train",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Read-only users can modify documents. Status: It remains unresolved and is still a release blocker. There are no other release blockers. Release assessment:",
+      "label": 0,
+      "group": "permissions",
+      "split": "train",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Read-only users can modify documents. Status: It has been corrected, retested and closed as a release blocker. There are no other release blockers. Release assessment:",
+      "label": 1,
+      "group": "permissions",
+      "split": "train",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Alerts are delivered to the wrong account. Status: It remains unresolved and is still a release blocker. There are no other release blockers. Release assessment:",
+      "label": 0,
+      "group": "notifications",
+      "split": "validation",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Alerts are delivered to the wrong account. Status: It has been corrected, retested and closed as a release blocker. There are no other release blockers. Release assessment:",
+      "label": 1,
+      "group": "notifications",
+      "split": "validation",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Search reveals private document titles. Status: It remains unresolved and is still a release blocker. There are no other release blockers. Release assessment:",
+      "label": 0,
+      "group": "search",
+      "split": "validation",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Search reveals private document titles. Status: It has been corrected, retested and closed as a release blocker. There are no other release blockers. Release assessment:",
+      "label": 1,
+      "group": "search",
+      "split": "validation",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Large uploads lose their last chunk. Status: It remains unresolved and is still a release blocker. There are no other release blockers. Release assessment:",
+      "label": 0,
+      "group": "upload",
+      "split": "validation",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Large uploads lose their last chunk. Status: It has been corrected, retested and closed as a release blocker. There are no other release blockers. Release assessment:",
+      "label": 1,
+      "group": "upload",
+      "split": "validation",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Cancelled subscriptions are billed again. Status: It remains unresolved and is still a release blocker. There are no other release blockers. Release assessment:",
+      "label": 0,
+      "group": "billing",
+      "split": "test",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Cancelled subscriptions are billed again. Status: It has been corrected, retested and closed as a release blocker. There are no other release blockers. Release assessment:",
+      "label": 1,
+      "group": "billing",
+      "split": "test",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Migration drops records with empty names. Status: It remains unresolved and is still a release blocker. There are no other release blockers. Release assessment:",
+      "label": 0,
+      "group": "migration",
+      "split": "test",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Migration drops records with empty names. Status: It has been corrected, retested and closed as a release blocker. There are no other release blockers. Release assessment:",
+      "label": 1,
+      "group": "migration",
+      "split": "test",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Revoked sharing links still grant access. Status: It remains unresolved and is still a release blocker. There are no other release blockers. Release assessment:",
+      "label": 0,
+      "group": "sharing",
+      "split": "test",
+      "domain": "software-release"
+    },
+    {
+      "text": "Policy: release is permitted only when no release blocker remains. Issue: Revoked sharing links still grant access. Status: It has been corrected, retested and closed as a release blocker. There are no other release blockers. Release assessment:",
+      "label": 1,
+      "group": "sharing",
+      "split": "test",
+      "domain": "software-release"
+    }
+  ]
+}

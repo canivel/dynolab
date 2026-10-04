@@ -6,6 +6,7 @@ struct DiscoverView: View {
     var useMLX: (String) -> Void = { _ in }
     var useGGUF: (String) -> Void = { _ in }
     @State var library = false
+    @AppStorage("dismissedDownloadNotices") private var dismissedDownloadNotices = ""
     @State private var selectedRepository: String?
     var body: some View {
         VStack(spacing: 0) {
@@ -66,10 +67,46 @@ struct DiscoverView: View {
             }.frame(width: 760, height: 640)
         }
     }
+    private func noticeID(_ item: DownloadManager.Progress) -> String {
+        item.repository + "|" + String(item.updatedAt ?? 0)
+    }
+    private var completedDownloads: [DownloadManager.Progress] {
+        let dismissed = Set(dismissedDownloadNotices.split(separator: "\n").map(String.init))
+        return model.downloads.values.filter { $0.isFinished && !dismissed.contains(noticeID($0)) }.sorted { $0.repository < $1.repository }
+    }
     private var visibleDownloads: [DownloadManager.Progress] {
-        model.downloads.values.sorted { $0.repository < $1.repository }
+        model.downloads.values.filter { !$0.isFinished }.sorted { $0.repository < $1.repository }
     }
     @ViewBuilder private var downloadActivity: some View {
+        if !completedDownloads.isEmpty {
+            VStack(spacing: 8) {
+                ForEach(completedDownloads, id: \.repository) { item in
+                    HStack(spacing: 12) {
+                        Image(systemName: item.error == nil ? "checkmark.circle.fill" : "exclamationmark.circle")
+                            .foregroundStyle(item.error == nil ? Color.green : Color.orange)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.displayName ?? item.repository).font(.callout.weight(.medium)).lineLimit(1).truncationMode(.middle)
+                            Text(item.error ?? "Download complete · " + ByteCountFormatter.string(fromByteCount: item.downloadedBytes, countStyle: .decimal))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if item.error == nil {
+                            Button("View downloaded") {
+                                model.catalogFormat = (item.displayName ?? item.repository).localizedCaseInsensitiveContains("gguf") ? .gguf : .mlx
+                                model.searchCatalog("")
+                                model.rescanModels()
+                                library = true
+                            }
+                        }
+                        Button("Dismiss") {
+                            dismissedDownloadNotices += "\n" + noticeID(item)
+                            if !item.isExternal { model.dismissDownload(item.repository) }
+                        }.help("Hide this notice. Downloaded files are kept.")
+                    }
+                }
+            }.padding(16).background(Color.secondary.opacity(0.04))
+            Divider()
+        }
         if !visibleDownloads.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 Label("Downloads", systemImage: "arrow.down.circle.fill").font(.headline)
@@ -109,7 +146,7 @@ struct DiscoverView: View {
                             }
                         }
                     }
-                }.frame(maxHeight: 160)
+                }.frame(height: min(160, CGFloat(visibleDownloads.count) * 130))
             }.padding(16).background(Color.accentColor.opacity(0.05))
             Divider()
         }

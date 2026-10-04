@@ -48,7 +48,7 @@ Start a model or pool, then open **Lab → Studies**. Keep your question, prompt
 
 Requires **Apple Silicon and macOS 14+**. Python and MLX are bundled; model weights are downloaded separately. The product is **Dyno Lab**; the installed bundle is `Dyno.app`, the command is `dyno`, and the Python distribution is `mlx-dyno`.
 
-**In-app updates:** use **Updates** in the toolbar to check for new releases or enable automatic checks. Installation asks before restarting. Existing 0.4.2 installations need one manual upgrade to 0.4.3 to receive the updater. See [app updates](docs/app-updates.md).
+**In-app updates:** use **Dyno Lab → Check for Updates…** for a manual check. The next build shows a toolbar badge only when an update is available. Installation asks before restarting. Existing 0.4.2 installations need one manual upgrade to 0.4.3 to receive the updater. See [app updates](docs/app-updates.md).
 
 **[Download 0.4.3](https://github.com/canivel/dynolab/releases/tag/v0.4.3).** Adds signed in-app updates, visible app versions and reviewed study sharing/import. Upgrade manually once from 0.4.2; future updates are available inside Dyno. [Release notes](docs/release-notes.md).
 
@@ -174,6 +174,12 @@ Available in **0.3.0**, the experimental pool uses a verified local SSH tunnel a
 Try the [first experiment](docs/first-experiment.md) and tell us where you got stuck. An [issue with your app version, model and steps to reproduce](https://github.com/canivel/dynolab/issues/new/choose) is useful even when you are new to interpretability. Please leave credentials and private prompts out of public reports.
 
 If Dyno Lab is useful to you, **star the repo to bookmark it and support its development**. Reproductions, corrections and focused contributions help turn a personal research tool into something other people can rely on.
+
+## Next release: research workflows
+
+The unreleased research workflow adds paired [regression reports](docs/regression-reports.md), [artifact compatibility checks](docs/compatibility-checks.md), [development-only monitor threshold selection](docs/monitor-evaluations.md), [community reproduction records](docs/community-reproductions.md), [simulated agent tasks](docs/simulated-agent-tasks.md) and [checkpoint comparisons](docs/checkpoint-comparisons.md). Each guide explains the prerequisites, steps, saved evidence and limitations. See the [implementation and validation record](docs/plans/research-completion.md). These changes are local review work, not capabilities of the currently published download.
+
+Start with the [step-by-step probe tutorial](docs/probe-tutorial.md), including the recorded result and why its controls limit the conclusion.
 
 ### Approval-monitor investigation
 

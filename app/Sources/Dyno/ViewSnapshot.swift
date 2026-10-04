@@ -25,6 +25,8 @@ enum ViewSnapshot {
         NSApplication.shared.setActivationPolicy(.accessory)
 
         let model = MonitorModel()
+        // Snapshots can target a Lab service other than the one a running app owns.
+        if let value = ProcessInfo.processInfo.environment["DYNO_LAB_PORT"], let port = UInt16(value) { model.researchLab.port = port }
         waitForData(model)
         model.selectRunningModelForSnapshot()
         let publication = arguments.contains("--public")
@@ -57,6 +59,7 @@ enum ViewSnapshot {
            let job = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             model.researchLab.servingResult = job
             model.researchLab.job = job
+            model.researchLab.journal.selected = nil
         } else if arguments.contains("--lab-only") {
             if let value = ProcessInfo.processInfo.environment["DYNO_LAB_PORT"], let port = UInt16(value) { model.researchLab.port = port }
             Task {
@@ -80,6 +83,8 @@ enum ViewSnapshot {
                 model.shareRouterOnNetwork = true
                 return AnyView(MainWindow(model: model, initialTab: .router))
             }, CGSize(width: 980, height: 620)),
+            ("window-agents", { AnyView(MainWindow(model: model, initialTab: .agents)) },
+             CGSize(width: 1300, height: 900)),
             ("window-lab", { AnyView(MainWindow(model: model, initialTab: .lab)) },
              CGSize(width: 1200, height: 850)),
             ("window-execution", { AnyView(MainWindow(model: model, initialTab: .execution)) },
@@ -130,6 +135,66 @@ enum ViewSnapshot {
             while !checked && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
 
             targets = [("research-notebooks", { AnyView(MainWindow(model: model, initialTab: .lab)) }, CGSize(width: 1300, height: 1100))]
+        }
+        if arguments.contains("--runtime-only") {
+            targets = [("runtime-overview", { AnyView(RuntimeOverview(model: model, pool: PoolSession()).panel) }, CGSize(width: 460, height: 640))]
+        }
+        if arguments.contains("--monitor-only"), let sourceID = ProcessInfo.processInfo.environment["DYNO_STUDY_ID"] {
+            targets = [("monitor-evaluation", { AnyView(MonitorEvaluationView(model: model, sourceID: sourceID, initialEvaluationID: ProcessInfo.processInfo.environment["DYNO_MONITOR_ID"])) }, CGSize(width: 1300, height: 1100))]
+        }
+        if arguments.contains("--reports-only") {
+            targets = [("research-report", { AnyView(ResearchReportsView(model: model, initialReportID: ProcessInfo.processInfo.environment["DYNO_REPORT_ID"])) }, CGSize(width: 1300, height: 1050))]
+        }
+        if arguments.contains("--agents-only") {
+            let episode = ProcessInfo.processInfo.environment["DYNO_EPISODE_KEY"]
+            targets = [("window-agents", { AnyView(MainWindow(model: model, initialTab: .agents)) }, CGSize(width: 1400, height: 900))]
+            if let episode { targets = [("agents-episode", { AnyView(AgentsView(model: model, initialEpisode: episode, initialTripwiresOnly: ProcessInfo.processInfo.environment["DYNO_ONLY_TRIPWIRES"] == "1").frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1400, height: 900))] }
+        }
+        if arguments.contains("--task-editor-only"), let path = ProcessInfo.processInfo.environment["DYNO_TASK_TEMPLATE"],
+           let data = try? Data(contentsOf: URL(fileURLWithPath: path)), let detail = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let section = ProcessInfo.processInfo.environment["DYNO_EDITOR_SECTION"]
+            targets = [("task-editor", { AnyView(TaskEditorView(lab: model.researchLab, harnessDir: "", existingID: nil, template: detail, initialSection: section, onSaved: {})) }, CGSize(width: 1400, height: 900))]
+        }
+        if arguments.contains("--env-payload-only") {
+            // Prints exactly what the editor saves for its starter environment, for end-to-end checks.
+            var draft = EnvDraft.starter(); draft.id = "starter-check"
+            if let (spec, files) = try? draft.payload(), let data = try? JSONSerialization.data(withJSONObject: ["spec": spec, "files": files], options: [.sortedKeys]) {
+                print(String(decoding: data, as: UTF8.self))
+            }
+            return 0
+        }
+        if arguments.contains("--env-editor-only") {
+            targets = [("environment-editor", { AnyView(EnvironmentEditorView(lab: model.researchLab, harnessDir: "", existingID: nil, template: nil, onSaved: { _ in }, initialSection: ProcessInfo.processInfo.environment["DYNO_EDITOR_SECTION"])) }, CGSize(width: Double(ProcessInfo.processInfo.environment["DYNO_SNAP_W"] ?? "1200") ?? 1200, height: Double(ProcessInfo.processInfo.environment["DYNO_SNAP_H"] ?? "800") ?? 800))]
+        }
+        if arguments.contains("--environments-only"), let dir = ProcessInfo.processInfo.environment["DYNO_HARNESS_DIR"] {
+            targets = [("agents-environments", { AnyView(EnvironmentsView(model: model, harnessDir: dir, tasks: [["id": "t4_quarterly_report", "environment": ["template": "segmented-office"]]], onRunStarted: { _ in }, onError: { print("error:", $0) }, initialSelection: ProcessInfo.processInfo.environment["DYNO_ENV_SELECT"]).frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1400, height: 900))]
+        }
+        if arguments.contains("--thread-only"), let key = ProcessInfo.processInfo.environment["DYNO_EPISODE_KEY"] {
+            targets = [("agents-thread", { AnyView(ConversationThread(lab: model.researchLab, key: key, onError: { print("error:", $0) }, onBack: {}).frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1400, height: 900))]
+        }
+        if arguments.contains("--evaluators-only") {
+            targets = [("evaluate-evaluators", { AnyView(ScrollView { EvaluatorsPane(model: model, onError: { print("error:", $0) }).padding(20) }.frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1100, height: 1000))]
+        }
+        if arguments.contains("--conversations-only") {
+            targets = [("agents-conversations", { AnyView(ConversationsView(lab: model.researchLab, onError: { print("error:", $0) }).frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1400, height: 900))]
+        }
+        if arguments.contains("--evaluate-only") {
+            targets = [("window-evaluate", { AnyView(MainWindow(model: model, initialTab: .evaluate)) }, CGSize(width: 1400, height: 900))]
+        }
+        if arguments.contains("--agent-only") {
+            targets = [("simulated-agent", { AnyView(AgentTasksView(model: model, initialID: ProcessInfo.processInfo.environment["DYNO_AGENT_ID"])) }, CGSize(width: 1300, height: 1050))]
+        }
+        if arguments.contains("--study-summary-only"),
+           let path = ProcessInfo.processInfo.environment["DYNO_SUMMARY_FILE"],
+           let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+           let summary = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            targets = [("study-results", { AnyView(StudyResultsOverview(summary: summary, review: {}).padding(24).frame(width: 900).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 900, height: 780))]
+        }
+        if arguments.contains("--new-study-only") {
+            targets = [("new-study-form", { AnyView(NewResearchStudyForm(title: .constant(""), question: .constant(""), hypothesis: .constant(""), cancel: {}, create: {})) }, CGSize(width: 700, height: 700))]
+        }
+        if arguments.contains("--controlled-only") {
+            targets = [("controlled-study", { AnyView(ControlledStudiesView(model: model, initialStudyID: ProcessInfo.processInfo.environment["DYNO_STUDY_ID"], initialEditorStep: Int(ProcessInfo.processInfo.environment["DYNO_STUDY_STEP"] ?? "0") ?? 0)) }, CGSize(width: 1300, height: 1000))]
         }
         if arguments.contains("--community-only") {
             let journal = model.researchLab.journal
@@ -256,8 +321,10 @@ enum ViewSnapshot {
         hosting.layoutSubtreeIfNeeded()
         print("    [\((path as NSString).lastPathComponent)] natural size: "
               + "\(Int(hosting.fittingSize.width))x\(Int(hosting.fittingSize.height))")
-        // Give SwiftUI a couple of runloop turns to settle its layout.
-        RunLoop.main.run(until: Date().addingTimeInterval(0.6))
+        // Give SwiftUI a couple of runloop turns to settle its layout. Views that
+        // load from a local service can ask for longer with DYNO_SNAPSHOT_SETTLE.
+        let settle = Double(ProcessInfo.processInfo.environment["DYNO_SNAPSHOT_SETTLE"] ?? "") ?? 0.6
+        RunLoop.main.run(until: Date().addingTimeInterval(settle))
         hosting.layoutSubtreeIfNeeded()
 
         guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {

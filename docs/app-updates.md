@@ -1,8 +1,8 @@
 # Updating Dyno Lab
 
-Updater-enabled builds have an **Updates** button in the main toolbar and
-**Dyno Lab → Check for Updates…** in the application menu. The panel shows the
-installed version and links to release notes. Enable **Automatically check for
+The main toolbar shows **Update available** only after a newer release is found.
+You can always check manually using **Dyno Lab → Check for Updates…**, or open
+**Settings → Updates** to see the installed version and update preferences. Enable **Automatically check for
 updates** to check periodically. Checks are off until you enable them.
 
 When an update is available, review its notes and choose whether to download
@@ -66,3 +66,13 @@ test bundle at it. Keep the production feed unchanged until the test passes.
 Local tests cover appcast signature, archive tampering, wrong keys, filename
 and version validation. A compile or signature test alone is not evidence of
 a successful end-to-end installed-app update.
+
+## Package an already built candidate
+
+After `app/build.sh` completes, `app/package-dmg.sh --package-existing` packages
+that bundle without rebuilding it. It checks the bundle version against
+`pyproject.toml`, verifies its code signature and exercises bundled MLX and the
+CLI before creating the DMG. Rebuild after changing app or runtime source; a
+matching version alone does not prove the bundle contains the current checkout.
+Supply the same signing identity and notarization profile used for the build.
+The default invocation still rebuilds first and is used by release CI.

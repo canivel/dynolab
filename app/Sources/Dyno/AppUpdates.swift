@@ -11,6 +11,7 @@ final class AppUpdates: NSObject, ObservableObject, SPUUpdaterDelegate {
     @Published private(set) var canCheck = false
     @Published private(set) var automaticChecks = false
     @Published private(set) var startupError: String?
+    @Published private(set) var availableVersion: String?
     var stopPool: (() -> Void)?
     private var controller: SPUStandardUpdaterController?
 
@@ -32,6 +33,19 @@ final class AppUpdates: NSObject, ObservableObject, SPUUpdaterDelegate {
     func check() { controller?.checkForUpdates(nil) }
     func setAutomaticChecks(_ enabled: Bool) {
         controller?.updater.automaticallyChecksForUpdates = enabled
+    }
+
+    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        availableVersion = item.displayVersionString
+    }
+
+    func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
+        availableVersion = nil
+    }
+
+    func updater(_ updater: SPUUpdater, userDidMake choice: SPUUserUpdateChoice,
+                 forUpdate updateItem: SUAppcastItem, state: SPUUserUpdateState) {
+        if choice == .skip { availableVersion = nil }
     }
 
     func updaterShouldRelaunchApplication(_ updater: SPUUpdater) -> Bool {
@@ -56,6 +70,9 @@ struct UpdateCheckMenuItem: View {
     @ObservedObject private var updates = AppUpdates.shared
     var body: some View {
         Button("Check for Updates…") { updates.check() }.disabled(!updates.canCheck)
+        Toggle("Automatically Check for Updates", isOn: Binding(
+            get: { updates.automaticChecks }, set: { updates.setAutomaticChecks($0) }))
+            .disabled(updates.startupError != nil)
     }
 }
 
@@ -63,28 +80,36 @@ struct AppUpdatesButton: View {
     @ObservedObject private var updates = AppUpdates.shared
     @State private var showing = false
     var body: some View {
-        Button { showing.toggle() } label: {
-            Label("Updates", systemImage: "arrow.down.circle")
-        }
-        .help("Check for new Dyno Lab releases")
-        .popover(isPresented: $showing) {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Dyno Lab updates").font(.headline)
-                Text("Installed: \(AppIdentity.label)").foregroundStyle(.secondary)
-                if let error = updates.startupError {
-                    Text(error).foregroundStyle(.orange)
+        if let version = updates.availableVersion {
+            Button { showing.toggle() } label: {
+                HStack(spacing: 6) {
+                    Label("Update available", systemImage: "arrow.down.circle")
+                    Circle().fill(DynoBrand.lime).frame(width: 7, height: 7)
+                        .accessibilityHidden(true)
                 }
-                Toggle("Automatically check for updates", isOn: Binding(
-                    get: { updates.automaticChecks }, set: { updates.setAutomaticChecks($0) }))
-                    .disabled(updates.startupError != nil)
-                Text("Dyno checks for published releases. You choose when to install and restart. Your studies and downloaded models stay on this computer.")
-                    .font(.callout).foregroundStyle(.secondary)
-                Button("Check for updates…") {
-                    showing = false
-                    updates.check()
-                }.disabled(!updates.canCheck)
-                Link("Release notes", destination: URL(string: "https://github.com/canivel/dynolab/releases")!)
-            }.padding(20).frame(width: 340)
+            }
+            .help("Dyno Lab \(version) is available")
+            .accessibilityLabel("Update available: Dyno Lab \(version)")
+            .popover(isPresented: $showing) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Dyno Lab updates").font(.headline)
+                    Text("Version \(version) is available").font(.subheadline.bold())
+                    Text("Installed: \(AppIdentity.label)").foregroundStyle(.secondary)
+                    if let error = updates.startupError {
+                        Text(error).foregroundStyle(.orange)
+                    }
+                    Toggle("Automatically check for updates", isOn: Binding(
+                        get: { updates.automaticChecks }, set: { updates.setAutomaticChecks($0) }))
+                        .disabled(updates.startupError != nil)
+                    Text("Dyno checks for published releases. You choose when to install and restart. Your studies and downloaded models stay on this computer.")
+                        .font(.callout).foregroundStyle(.secondary)
+                    Button("Review update…") {
+                        showing = false
+                        updates.check()
+                    }.disabled(!updates.canCheck)
+                    Link("Release notes", destination: URL(string: "https://github.com/canivel/dynolab/releases")!)
+                }.padding(20).frame(width: 340)
+            }
         }
     }
 }

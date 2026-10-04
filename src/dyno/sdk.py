@@ -34,6 +34,44 @@ class Lab:
         return Path(destination)
 
     def schema(self): return self._request('/openapi.json')
+    def studies(self): return self._request('/studies')['studies']
+    def create_study(self, protocol): return self._request('/studies', protocol)
+    def study(self, identifier): return self._request('/studies/'+identifier)
+    def run_study(self, identifier, port, model): return self._request('/studies/'+identifier+'/run', dict(port=port, model=model))
+    def cancel_study(self, identifier): return self._request('/studies/'+identifier+'/cancel', {})
+    def label_run(self, identifier, run_id, value, reviewer, note=''): return self._request('/studies/'+identifier+'/labels', dict(run_id=run_id, value=value, reviewer=reviewer, note=note))
+    def study_summary(self, identifier): return self._request('/studies/'+identifier+'/summary')
+    def export_study(self, identifier): return self._request('/studies/'+identifier+'/export')
+    def import_study(self, bundle): return self._request('/studies/import', bundle)
+    def prepare_review(self, identifier, reviewer, prior_exposure):
+        return self._request('/studies/'+identifier+'/prepare-review', dict(reviewer=reviewer, prior_exposure=prior_exposure))
+    def review(self, identifier, review_id):
+        return self._request('/studies/'+identifier+'/review', dict(review_id=review_id))
+    def review_label(self, identifier, review_id, item_id, value, note=''):
+        return self._request('/studies/'+identifier+'/review-label', dict(review_id=review_id, item_id=item_id, value=value, note=note))
+    def reveal_review(self, identifier, review_id):
+        return self._request('/studies/'+identifier+'/reveal-review', dict(review_id=review_id))
+    def reproduce_study(self, identifier): return self._request('/studies/'+identifier+'/reproduce', {})
+    def agent_tasks(self): return self._request('/agent-tasks')['tasks']
+    def prepare_agent_task(self, config): return self._request('/agent-tasks',config)
+    def agent_task(self, identifier): return self._request('/agent-tasks/'+identifier)
+    def run_agent_task(self, identifier): return self._request('/agent-tasks/'+identifier+'/run',{})
+    def cancel_agent_task(self, identifier): return self._request('/agent-tasks/'+identifier+'/cancel',{})
+    def research_reports(self): return self._request('/reports')['reports']
+    def research_report(self, identifier): return self._request('/reports/'+identifier)
+    def checkpoint_report(self, config): return self._request('/reports/checkpoints',config)
+    def compatibility_report(self, source_job_id, target_job_id): return self._request('/reports/compatibility', dict(source_job_id=source_job_id,target_job_id=target_job_id))
+    def regression_report(self, config): return self._request('/reports/regression', config)
+    def monitors(self): return self._request('/monitors')['evaluations']
+    def prepare_monitor(self, source_id, config): return self._request('/monitors', dict(source_id=source_id, config=config))
+    def monitor(self, identifier): return self._request('/monitors/'+identifier)
+    def select_monitor_threshold(self, identifier, candidates, prior_test_exposure): return self._request('/monitors/'+identifier+'/select-threshold', dict(candidates=candidates,prior_test_exposure=prior_test_exposure))
+    def run_monitor(self, identifier): return self._request('/monitors/'+identifier+'/run', {})
+    def cancel_monitor(self, identifier): return self._request('/monitors/'+identifier+'/cancel', {})
+    def monitor_report(self, identifier): return self._request('/monitors/'+identifier+'/report')
+    def export_monitor(self, identifier): return self._request('/monitors/'+identifier+'/export')
+    def reproduction_report(self, identifier): return self._request('/studies/'+identifier+'/reproduction-report')
+    def monitor_metrics(self, rows, threshold): return self._request('/monitor-metrics', dict(rows=rows, threshold=threshold))
     def health(self): return self._request('/health')
     def jobs(self): return self._request('/jobs')['jobs']
     def submit(self, operation, model, **settings):

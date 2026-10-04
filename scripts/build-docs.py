@@ -15,6 +15,17 @@ root = Path(__file__).resolve().parents[1]
 target = args.website_root / 'public'
 assert (target / 'index.html').is_file(), 'Expected website checkout with public/index.html'
 pages = [
+    ('agent-sandbox-tests.md', 'agent-sandbox-tests.html', 'Agent sandbox tests', 'Run agents on impossible tasks in an isolated sandbox and evaluate what they did.'),
+    ("probe-tutorial.md", "probe-tutorial.html", "First probe experiment", "Create a study, run a probe and interpret its controls."),
+    ('regression-reports.md', 'regression-reports.html', 'Regression reports (preview)', 'Compare paired labeled outcomes and inspect exclusions.'),
+    ('compatibility-checks.md', 'compatibility-checks.html', 'Artifact compatibility (preview)', 'Check a saved artifact contract before considering reuse.'),
+    ('checkpoint-comparisons.md', 'checkpoint-comparisons.html', 'Checkpoint comparisons (preview)', 'Compare saved runs with the same protocol across checkpoints.'),
+    ('simulated-agent-tasks.md', 'simulated-agent-tasks.html', 'Simulated agent tasks (preview)', 'Inspect bounded actions and verification claims.'),
+    ('community-reproductions.md', 'community-reproductions.html', 'Community reproductions (preview)', 'Connect a new attempt to the exact shared study version.'),
+
+    ("probe-validation.md", "probe-validation.html", "Probe validation (preview)", "Select probes on validation data and inspect controls on a separate test set."),
+    ("monitor-evaluations.md", "monitor-evaluations.html", "Monitor evaluations (preview)", "Test response monitors against saved reference judgments and inspect disagreements."),
+    ("controlled-studies.md", "controlled-studies.html", "Controlled studies (preview)", "Prepare matched comparisons and review saved answers with condition labels hidden."),
     ("research-notebooks.md", "studies.html", "Studies", "Keep a research journal, stream responses and preserve every iteration."),
     ("pool-lab-capture.md", "pool-lab.html", "Pool research", "Run interventions, probes and SAEs on resident distributed GGUF models."),
     ('pool-guide.md', 'pools.html', 'GPU pools', 'Set up a verified local GPU pool, connect a Windows worker and understand memory and telemetry.'),
@@ -30,6 +41,7 @@ for source_name, filename, label, description in pages:
     for other_source, other_page, _, _ in pages:
         source = source.replace('(' + other_source, '(' + other_page)
     source = source.replace('(https://dynolab.dev/', '(')
+    source = source.replace('(plans/research-workflows.md)', '(research-preview.html)')
     source = source.replace('(pools-preview.md', '(https://github.com/canivel/dynolab/blob/main/docs/pools-preview.md')
     md = markdown.Markdown(extensions=['fenced_code', 'tables', 'toc'], extension_configs={'toc': {'toc_depth': '2-3'}})
     body = md.convert(source)
@@ -56,3 +68,7 @@ Source: <a href="https://github.com/canivel/dynolab/blob/main/docs/{source_name}
     print(f'{source_name} → {filename}')
 shutil.copyfile(root / 'src/dyno/lab/openapi.json', target / 'openapi.json')
 shutil.copytree(root / 'docs/examples', target / 'examples', dirs_exist_ok=True)
+
+shutil.copytree(root / 'docs/assets', target / 'assets', dirs_exist_ok=True)
+
+shutil.copytree(root / "docs/tutorials", target / "tutorials", dirs_exist_ok=True)

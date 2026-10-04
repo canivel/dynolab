@@ -25,9 +25,9 @@ struct LabArtifactView: View {
                 Link("Neuronpedia feature atlas ↗", destination: URL(string: "https://www.neuronpedia.org/")!)
                 Text("Neuronpedia opens in your browser. Imported descriptions are source annotations, not locally verified explanations. No prompts are uploaded by this viewer.").font(.caption).foregroundStyle(.secondary)
                 DisclosureGroup("Fetch a public Neuronpedia feature") {
-                    TextField("Model ID", text: $atlasModel)
-                    TextField("Source ID", text: $atlasSource)
-                    TextField("Feature index", text: $atlasFeature)
+                    DynoFormField("Model ID", text: $atlasModel)
+                    DynoFormField("Source ID", text: $atlasSource)
+                    DynoFormField("Feature index", text: $atlasFeature)
                     Text("Sends these public identifiers to neuronpedia.org. Results are saved locally; no local prompts or model data are sent.").font(.caption)
                     Button(fetching ? "Fetching…" : "Fetch feature") { Task { await fetchFeature() } }.disabled(fetching)
                 }

@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 from dyno.lab.server import validate
 
-PAGES = ['studies.html', 'pool-lab.html', 'pools.html', 'pool-api.html', 'research-tools.html', 'guide.html', 'sdk.html', 'api.html', 'mcp.html']
+PAGES = ['agent-sandbox-tests.html', 'probe-tutorial.html', 'regression-reports.html', 'compatibility-checks.html', 'checkpoint-comparisons.html', 'simulated-agent-tasks.html', 'community-reproductions.html', 'probe-validation.html', 'monitor-evaluations.html', 'controlled-studies.html', 'studies.html', 'pool-lab.html', 'pools.html', 'pool-api.html', 'research-tools.html', 'guide.html', 'sdk.html', 'api.html', 'mcp.html']
 class Page(HTMLParser):
     def __init__(self, source):
         super().__init__()
@@ -26,7 +26,7 @@ class Page(HTMLParser):
         self.references.extend(attributes[key] for key in ('src', 'href') if key in attributes)
 
 def main():
-    for name in ('pool-guide.md', 'pool-api.md', 'research-tools.md', 'app-guide.md', 'sdk-guide.md', 'http-api.md', 'local-mcp.md'):
+    for name in ('agent-sandbox-tests.md', 'probe-tutorial.md', 'regression-reports.md', 'compatibility-checks.md', 'checkpoint-comparisons.md', 'simulated-agent-tasks.md', 'community-reproductions.md', 'probe-validation.md', 'monitor-evaluations.md', 'controlled-studies.md', 'pool-guide.md', 'pool-api.md', 'research-tools.md', 'app-guide.md', 'sdk-guide.md', 'http-api.md', 'local-mcp.md'):
         source = (ROOT / 'docs' / name).read_text()
         for language, code in re.findall(r'```(\w+)\n(.*?)```', source, re.S):
             if language == 'python':
@@ -38,6 +38,8 @@ def main():
         config.setdefault('operation', file.stem)
         config.setdefault('model', 'mlx-community/Qwen1.5-0.5B-Chat-4bit')
         validate(config)
+    for file in (ROOT / 'docs/tutorials').glob('*.json'):
+        validate(dict(json.loads(file.read_text()), operation='probe', model='/local/tutorial-model'))
     with tempfile.TemporaryDirectory() as directory:
         website = Path(directory)
         public = website / 'public'
@@ -56,11 +58,11 @@ def main():
                 if filename in documents:
                     if url.fragment:
                         assert unquote(url.fragment) in documents[filename].ids, (name, reference)
-                elif filename == 'openapi.json' or filename.startswith('examples/'):
+                elif filename == 'openapi.json' or filename.startswith(('examples/', 'tutorials/')):
                     assert (public / filename).is_file(), (name, reference)
                 else:
                     # These assets are maintained and browser-tested in the website repo.
-                    assert filename in ('index.html', 'favicon.svg', 'guide.css', 'probe-example.html', 'typebulb-study.html', 'approval-monitor.html') or filename.startswith(('assets/', 'screenshots/')), (name, reference)
+                    assert filename in ('index.html', 'favicon.svg', 'guide.css', 'probe-example.html', 'typebulb-study.html', 'research-preview.html', 'approval-monitor.html') or filename.startswith(('assets/', 'screenshots/')), (name, reference)
         schema = json.loads((public / 'openapi.json').read_text())
         assert schema['openapi'].startswith('3.')
     print('Documentation generation, internal links, code syntax and example configurations passed.')

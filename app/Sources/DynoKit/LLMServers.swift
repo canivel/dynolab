@@ -92,6 +92,7 @@ private struct ServerCapabilities {
     /// Model identity, resolved once: it does not change while the process
     /// lives, except on Ollama, which is covered by `ollamaPS`.
     var staticName: String?
+    var loadedDisplayName: String?
     var staticContext: Int?
     var probed = false
 }
@@ -199,7 +200,7 @@ public final class ModelMonitor: @unchecked Sendable {
         guard let name = caps.staticName else { return [] }
         var model = LLMModel(
             id: key,
-            name: Self.shortName(name),
+            name: caps.loadedDisplayName ?? Self.shortName(name),
             identifier: name,
             runtime: process.runtime ?? "LLM",
             pid: process.pid,
@@ -260,6 +261,9 @@ public final class ModelMonitor: @unchecked Sendable {
             if let model = payload["model"] as? [String: Any],
                let name = model["name"] as? String, !name.isEmpty {
                 caps.staticName = name
+                if let path = model["path"] as? String, !path.isEmpty {
+                    caps.loadedDisplayName = Self.shortName(path)
+                }
             }
         } else {
             caps.metrics = await getText(port: port, path: "/metrics") != nil
@@ -385,6 +389,12 @@ public final class ModelMonitor: @unchecked Sendable {
 
     /// Trim a path or repo id down to something that fits a menu panel.
     static func shortName(_ raw: String) -> String {
+        // Hugging Face cache paths end in a snapshot hash, not the model name.
+        let components = raw.components(separatedBy: "/")
+        if let repository = components.first(where: { $0.hasPrefix("models--") }),
+           components.contains("snapshots") {
+            return repository.components(separatedBy: "--").dropFirst(2).joined(separator: "--")
+        }
         var name = raw
         if name.contains("/") {
             // Keep the last path component, which is the model directory or file.
