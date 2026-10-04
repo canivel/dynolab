@@ -32,7 +32,7 @@ class AppcastTests(unittest.TestCase):
 
     def test_verified_release_has_exact_archive_and_escaped_notes(self):
         item = ET.fromstring(self.build()).find("channel/item")
-        self.assertEqual(item.findtext("description"), "Research & updates <reviewed>")
+        self.assertEqual(item.findtext("description"), "<p>Research &amp; updates &lt;reviewed&gt;</p>")
         self.assertEqual(item.findtext(f"{{{appcast.SPARKLE}}}version"), "0.4.3")
         enclosure = item.find("enclosure")
         self.assertEqual(enclosure.get("length"), str(self.archive.stat().st_size))
@@ -55,3 +55,14 @@ class AppcastTests(unittest.TestCase):
 
     def test_malformed_signature_is_rejected(self):
         with self.assertRaises(ValueError): self.build(signature="invalid!")
+
+
+class ReleaseNotesTests(unittest.TestCase):
+    def test_only_current_release_is_rendered_as_html(self):
+        notes = "# Dyno Lab 0.5.1\n\n- **New** [guide](agent-sandbox-tests.md) and [site](https://dynolab.dev)\n\n---\n\nDyno Lab 0.5.0 older notes"
+        html = appcast.release_notes_html(notes, "0.5.1")
+        self.assertIn("<h1>Dyno Lab 0.5.1</h1>", html)
+        self.assertIn("<strong>New</strong>", html)
+        self.assertIn('href="https://github.com/canivel/dynolab/blob/v0.5.1/docs/agent-sandbox-tests.md"', html)
+        self.assertIn('href="https://dynolab.dev"', html)
+        self.assertNotIn("older notes", html)

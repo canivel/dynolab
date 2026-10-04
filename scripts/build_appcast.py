@@ -13,6 +13,24 @@ SPARKLE = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 ET.register_namespace("sparkle", SPARKLE)
 
 
+def release_notes_html(notes, version):
+    """The current release's notes as HTML for the update window.
+
+    Sparkle shows <description> as HTML. Only the first section of the notes file
+    (before the first ---) is this release; older releases follow it. Raw HTML in the
+    notes is escaped rather than rendered, and links to other docs point at this
+    version's files on GitHub so they open from inside the app.
+    """
+    import markdown
+    current = re.split(r"\n-{3,}\s*\n", notes, maxsplit=1)[0].strip()
+    md = markdown.Markdown()
+    md.preprocessors.deregister("html_block")
+    md.inlinePatterns.deregister("html")
+    html = md.convert(current)
+    docs = f"https://github.com/canivel/dynolab/blob/v{version}/docs/"
+    return re.sub(r'href="(?![a-z][a-z0-9+.-]*:|#|/)([^"]+)"', lambda m: f'href="{docs}{m.group(1)}"', html)
+
+
 def build_appcast(archive, version, signature, public_key, notes):
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise ValueError("The stable updater requires a three-part release version")
@@ -32,7 +50,7 @@ def build_appcast(archive, version, signature, public_key, notes):
     ET.SubElement(item, f"{{{SPARKLE}}}version").text = version
     ET.SubElement(item, f"{{{SPARKLE}}}shortVersionString").text = version
     ET.SubElement(item, f"{{{SPARKLE}}}minimumSystemVersion").text = "14.0"
-    ET.SubElement(item, "description").text = notes
+    ET.SubElement(item, "description").text = release_notes_html(notes, version)
     ET.SubElement(item, "enclosure", {
         "url": f"https://github.com/canivel/dynolab/releases/download/v{version}/{archive.name}",
         "length": str(archive.stat().st_size), "type": "application/octet-stream",
