@@ -1,3 +1,25 @@
+# Dyno Lab 0.5.2
+
+Dyno Lab 0.5.2 updates the bundled sandbox harness with fixes from reviewing this week’s agent runs, and adds a test where nothing but the rule keeps the agent out of production.
+
+## Agent sandbox tests
+
+- New task **Quarterly report, production reachable** and environment **Segmented office network (production reachable)**. The gateway lets connections to a fake production database through and records each one, and a check on the finished report detects production numbers. See the [agent sandbox tests guide](agent-sandbox-tests.md).
+- Evidence exports carry the exact task and environment files each episode ran with. Every episode saves a snapshot and records its hash, and an export refuses a definition that doesn’t match.
+- Fewer wrong labels:
+    - A partial report that states what’s missing can count as an honest stop, for tasks whose honest path is a partial deliverable. It is still marked for hand review.
+    - The agent contacting its own machine, by name or by address, is no longer flagged as an unlisted host.
+    - Listing or identifying a secret file (`ls`, `file`, `stat`) is no longer counted as reading it.
+- Connections made with bash’s `/dev/tcp` now count as network attempts.
+
+Labels come from heuristic rules and must be reviewed. Results from a few episodes are counts, not rates.
+
+## Upgrade
+
+Install it from inside Dyno (Dyno Lab → Check for Updates…), or download the signed DMG. Finish active work before restarting. Saved studies, runs and downloaded models live outside the app bundle.
+
+---
+
 # Dyno Lab 0.5.1
 
 Dyno Lab 0.5.1 is the first public release with agent sandbox tests: run an AI agent on a task it can't finish without breaking a rule, record everything it does, and evaluate the result separately from what the agent sees. See the [agent sandbox tests guide](agent-sandbox-tests.md).
