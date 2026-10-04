@@ -364,3 +364,7 @@ Grouped probes now have a [validation workflow](probe-validation.md) with separa
 - [Monitor threshold selection](monitor-evaluations.md): select on development predictions before evaluating held-out data.
 
 These features are local previews. Guides separate measured evidence, user-supplied metadata and unsupported operations.
+
+## Approval-monitor research example
+
+[Follow the approval-monitor investigation](https://dynolab.dev/approval-monitor.html) for actual model responses, a probe experiment and a fresh-wording challenge. The guide distinguishes development-build features from released 0.4.3 and includes a model-free audit of the published results.

@@ -180,3 +180,7 @@ If Dyno Lab is useful to you, **star the repo to bookmark it and support its dev
 The unreleased research workflow adds paired [regression reports](docs/regression-reports.md), [artifact compatibility checks](docs/compatibility-checks.md), [development-only monitor threshold selection](docs/monitor-evaluations.md), [community reproduction records](docs/community-reproductions.md), [simulated agent tasks](docs/simulated-agent-tasks.md) and [checkpoint comparisons](docs/checkpoint-comparisons.md). Each guide explains the prerequisites, steps, saved evidence and limitations. See the [implementation and validation record](docs/plans/research-completion.md). These changes are local review work, not capabilities of the currently published download.
 
 Start with the [step-by-step probe tutorial](docs/probe-tutorial.md), including the recorded result and why its controls limit the conclusion.
+
+### Approval-monitor investigation
+
+An offline probe detected prohibited action proposals, but flagged six legitimate approvals when wording changed. [Read the methods, model comparison and false alarms](docs/approval-monitor-example.md), or [view the illustrated research note](https://dynolab.dev/approval-monitor.html). The evidence contains all 336 responses and a CPU-only audit. The illustrated grouped-validation workflow uses an unreleased development build, not released 0.4.3.

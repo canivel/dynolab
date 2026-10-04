@@ -34,8 +34,10 @@ def main():
             elif language == 'json':
                 json.loads(code)
     for file in (ROOT / 'docs/examples').glob('*.json'):
-        validate(dict(json.loads(file.read_text()), operation=file.stem,
-                      model='mlx-community/Qwen1.5-0.5B-Chat-4bit'))
+        config = json.loads(file.read_text())
+        config.setdefault('operation', file.stem)
+        config.setdefault('model', 'mlx-community/Qwen1.5-0.5B-Chat-4bit')
+        validate(config)
     for file in (ROOT / 'docs/tutorials').glob('*.json'):
         validate(dict(json.loads(file.read_text()), operation='probe', model='/local/tutorial-model'))
     with tempfile.TemporaryDirectory() as directory:
@@ -60,7 +62,7 @@ def main():
                     assert (public / filename).is_file(), (name, reference)
                 else:
                     # These assets are maintained and browser-tested in the website repo.
-                    assert filename in ('index.html', 'favicon.svg', 'guide.css', 'probe-example.html', 'typebulb-study.html', 'research-preview.html') or filename.startswith(('assets/', 'screenshots/')), (name, reference)
+                    assert filename in ('index.html', 'favicon.svg', 'guide.css', 'probe-example.html', 'typebulb-study.html', 'research-preview.html', 'approval-monitor.html') or filename.startswith(('assets/', 'screenshots/')), (name, reference)
         schema = json.loads((public / 'openapi.json').read_text())
         assert schema['openapi'].startswith('3.')
     print('Documentation generation, internal links, code syntax and example configurations passed.')
