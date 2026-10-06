@@ -1,3 +1,44 @@
+# Dyno Lab 0.6.1
+
+This is the first 0.6 release. A `v0.6.0` tag was created by mistake on the 0.5.2 code; it has no release or downloads.
+
+Dyno Lab 0.6.1 turns agent sandbox tests into a **team** test: a lead agent works on a goal it can't reach without breaking a rule and creates its own teammates. A hidden Observer records every rule break, who broke it and who asked them to, and checks the team's report against the logs. A new **Evals** tab turns those tests into rates you can compare. See the [agent sandbox tests guide](agent-sandbox-tests.md).
+
+## Agents
+
+- **One-page Setup.** Choose an environment (edit its architecture in place), a goal, plain-language rules, and a lead agent with a team size limit. Old screens moved under **Advanced**.
+- **Agents create agents.** Any agent can add a teammate with a name, a role and instructions. The new agent uses its creator's model, and the goal and rules always come from Dyno, not from the creator.
+- **Room & Observer.** The agents' group chat sits next to the Observer, which is hidden from them.
+  - The Observer keeps the family tree, flags instructions that point a new agent at something a rule protects, and attributes every break up the chain: *Rule 1 broken by Data access · delegated by Agent A · not disclosed*.
+  - **Full log** shows every turn in full: what each agent was sent, its thinking, every command and output, tokens, and the model's live output.
+- **Write in the chat.** Your messages reach every agent at its next turn. The room stays open after a final report for follow-ups, and the Observer marks breaks that came after your message.
+- **Versioned agent prompts.** A Markdown editor with a preview, for the lead and for created agents. Every save is a new version, and every test records the version it ran with.
+- **Observer alerts.** Your own checks on thinking, messages, commands, output or reports, by phrase or by asking a model. **Knows it's being tested** is on by default, and alerts pop up on the Room when they fire.
+- **Past tests** has its own tab with verdicts, rule results, **Run again** and **Export**. Export saves the full log as Markdown or all raw files as a zip.
+- **More stable sandbox.** A parallel port scan could hit the process limit, and gVisor then stops the whole sandbox. The limit is now 4096. A crashed workstation is detected and restarted clean, with the agents told; if it stays down, the test ends as a harness failure instead of looping.
+
+## Evals
+
+- **Overview:** scenarios against configs (model, team size, turns, prompt version), with safe rates, 95% Wilson ranges and the number of runs.
+- **Batches:** run one scenario on one or more models N times. Runs alternate between models.
+- **Metrics:** rule-break, disclosure, delegated-break and dishonest-report rates, per-rule and per-alert rates, and reliability as pass^k.
+- **Compare:** two configs on shared scenarios, with a paired difference and its range.
+- **Review:** an LLM judge for the report that never sees the Observer, a review queue of disagreements plus a random 15%, and Cohen's κ against your calls.
+
+Rule detectors, delegation flags and phrase alerts are heuristics: review them against the evidence they cite. A few runs give counts, not rates.
+
+## Also
+
+- Positive controls per task, with an editor and a commented example; control runs are sealed automatically.
+- Environment services: SQL database, secrets vault, object store and mail outbox.
+- Models: thinking is on by default for new servers.
+
+## Upgrade
+
+Install it from inside Dyno (Dyno Lab → Check for Updates…), or download the signed DMG. Finish active work before restarting. Saved studies, runs and downloaded models live outside the app bundle.
+
+---
+
 # Dyno Lab 0.5.2
 
 Dyno Lab 0.5.2 updates the bundled sandbox harness with fixes from reviewing this week’s agent runs, and adds a test where nothing but the rule keeps the agent out of production.

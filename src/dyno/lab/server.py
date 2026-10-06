@@ -286,6 +286,18 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
             params = {k: query[k] for k in ('q', 'event', 'task', 'outcome', 'severity', 'limit') if query.get(k)}
             return runs.search(params)
         if len(parts) == 2 and parts[0] == 'runs': return runs.read(parts[1])
+        if parts == ['rooms']: return runs.rooms()
+        if parts == ['prompts']: return runs.prompts.list(query.get('harness_dir'))
+        if parts == ['alerts']: return runs.alerts.list()
+        if len(parts) == 2 and parts[0] == 'prompts': return runs.prompts.get(parts[1])
+        interactive = query.get('interactive') == '1'
+        if parts == ['evals']: return runs.evals.overview(interactive)
+        if parts == ['evals', 'cell']: return runs.evals.cell(query.get('scenario'), query.get('config'), interactive)
+        if parts == ['evals', 'compare']: return runs.evals.compare(query.get('a'), query.get('b'), interactive)
+        if parts == ['evals', 'batches']: return runs.evals.batches()
+        if parts == ['evals', 'review']: return runs.evals.grading.overview()
+        if len(parts) == 3 and parts[:2] == ['evals', 'review']: return runs.evals.grading.detail(parts[2])
+        if len(parts) == 2 and parts[0] == 'rooms': return runs.room(parts[1], int(query.get('after', 0)), int(query.get('observed', 0)))
         if len(parts) == 2 and parts[0] == 'episodes': return runs.episode(parts[1])
         if len(parts) == 3 and parts[0] == 'episodes' and parts[2] == 'events':
             return runs.events(parts[1], int(query.get('after', 0)))
@@ -322,6 +334,33 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
             if not isinstance(body, dict): raise ValueError('Request must be an object')
             if self.path == '/lab/v1/sandbox/runs':
                 self._execution_send(self.server.sandbox.create(body), 201)
+            elif self.path == '/lab/v1/sandbox/rooms/plan':
+                self._execution_send(self.server.sandbox.room_plan(body))
+            elif self.path.startswith('/lab/v1/sandbox/rooms/') and self.path.endswith('/messages'):
+                self._execution_send(self.server.sandbox.room_message(self.path.split('/')[-2], body), 201)
+            elif self.path == '/lab/v1/sandbox/alerts':
+                self._execution_send(self.server.sandbox.alerts.save(body), 201)
+            elif self.path == '/lab/v1/sandbox/alerts/delete':
+                self._execution_send(self.server.sandbox.alerts.delete(body))
+            elif self.path == '/lab/v1/sandbox/alerts/try':
+                self._execution_send(self.server.sandbox.alerts.try_on(body))
+            elif self.path == '/lab/v1/sandbox/prompts':
+                self._execution_send(self.server.sandbox.prompts.save(body), 201)
+            elif self.path == '/lab/v1/sandbox/evals/judge':
+                self._execution_send(self.server.sandbox.evals.grading.start_judge(body), 202)
+            elif self.path.startswith('/lab/v1/sandbox/evals/review/'):
+                self._execution_send(self.server.sandbox.evals.grading.save_review(self.path.split('/')[-1], body), 201)
+            elif self.path == '/lab/v1/sandbox/evals/batches':
+                self._execution_send(self.server.sandbox.evals.start_batch(body), 201)
+            elif self.path.startswith('/lab/v1/sandbox/evals/batches/') and self.path.endswith('/cancel'):
+                self._execution_send(self.server.sandbox.evals.cancel_batch(self.path.split('/')[-2]))
+            elif self.path.startswith('/lab/v1/sandbox/rooms/') and self.path.endswith('/export'):
+                from .room_export import export
+                if set(body) - {'format', 'thinking', 'observer'}: raise ValueError('Use format, thinking and observer')
+                self._execution_send(export(self.server.sandbox, self.path.split('/')[-2], body.get('format'),
+                                            thinking=body.get('thinking') is not False, observer=body.get('observer') is not False))
+            elif self.path.startswith('/lab/v1/sandbox/rooms/') and self.path.endswith('/end'):
+                self._execution_send(self.server.sandbox.room_end(self.path.split('/')[-2]))
             elif self.path == '/lab/v1/sandbox/environment-templates':
                 self._execution_send(self.server.sandbox.save_environment(body), 201)
             elif self.path == '/lab/v1/sandbox/environment-templates/delete':

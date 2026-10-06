@@ -17,3 +17,5 @@ app/build/
 app/build-pairing/
 app/build-ci-check/
 app/build-agents/
+app/build-room/
+app/build-room-next/

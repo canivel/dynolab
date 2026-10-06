@@ -29,7 +29,7 @@ struct EvaluateView: View {
         VStack(alignment:.leading,spacing:12) {
             HStack(alignment:.firstTextBaseline) {
                 VStack(alignment:.leading,spacing:4) {
-                    Text("Evaluate").font(.title2.bold())
+                    Text("Advanced").font(.title2.bold())
                     Text("What agents did across every run, a hand review of each label, and sealed evidence.").font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()

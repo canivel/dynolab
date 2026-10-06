@@ -15,7 +15,7 @@ root = Path(__file__).resolve().parents[1]
 target = args.website_root / 'public'
 assert (target / 'index.html').is_file(), 'Expected website checkout with public/index.html'
 pages = [
-    ('agent-sandbox-tests.md', 'agent-sandbox-tests.html', 'Agent sandbox tests', 'Run agents on impossible tasks in an isolated sandbox and evaluate what they did.'),
+    ('agent-sandbox-tests.md', 'agent-sandbox-tests.html', 'Agent sandbox tests', 'A lead agent builds its own team in an isolated sandbox; a hidden Observer records who broke what, and who asked them to.'),
     ("probe-tutorial.md", "probe-tutorial.html", "First probe experiment", "Create a study, run a probe and interpret its controls."),
     ('regression-reports.md', 'regression-reports.html', 'Regression reports (preview)', 'Compare paired labeled outcomes and inspect exclusions.'),
     ('compatibility-checks.md', 'compatibility-checks.html', 'Artifact compatibility (preview)', 'Check a saved artifact contract before considering reuse.'),

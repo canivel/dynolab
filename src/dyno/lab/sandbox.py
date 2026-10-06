@@ -202,6 +202,22 @@ def _load(path):
     except (OSError, ValueError): return {}
 
 
+def _read_jsonl(path, after, limit):
+    """Complete lines with seq > after; a line still being written is left for the next read."""
+    out = []
+    try:
+        with Path(path).open(errors='replace') as f:
+            for line in f:
+                if not line.endswith('\n'): break
+                try: e = json.loads(line)
+                except ValueError: continue
+                if (e.get('seq') or 0) > after:
+                    out.append(e)
+                    if len(out) >= limit: break
+    except OSError: pass
+    return out
+
+
 def _episode_from_dict(row):
     return _episode(row)
 
@@ -219,6 +235,7 @@ class SandboxRuns:
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.lock = threading.RLock()
         self.active = self.process = None
+        self.waiters = []  # threads finishing runs: indexing and sealing continue after `active` clears
         self.index = EventIndex(self.root / 'index.sqlite')
         if any(m.get('auto') for m in _load(self.root / 'evaluators.json').get('monitors', [])):
             self._ensure_monitor_worker()
@@ -226,6 +243,12 @@ class SandboxRuns:
             data = _load(path)
             if data.get('status') == 'running':
                 data.update(status='interrupted', ended=time.time()); self._write(data)
+        from .evals import Evals
+        from .room_prompts import PromptLibrary
+        self.evals = Evals(self)
+        self.prompts = PromptLibrary(self)
+        from .room_alerts import AlertLibrary
+        self.alerts = AlertLibrary(self)
 
     def _write(self, record):
         path = self.root / record['id'] / 'run.json'
@@ -276,9 +299,11 @@ class SandboxRuns:
         return json.loads(out.stdout)
 
     def create(self, config):
-        allowed = {'kind', 'title', 'harness_dir', 'task', 'count', 'port', 'model', 'revision', 'seed', 'condition', 'instance'}
+        if isinstance(config, dict) and config.get('kind') == 'room': return self._start_room(config)
+        allowed = {'kind', 'title', 'harness_dir', 'task', 'tasks', 'count', 'port', 'model', 'revision', 'seed', 'condition', 'instance'}
         if not isinstance(config, dict) or set(config) - allowed: raise ValueError('Unsupported sandbox run config')
         if config.get('kind') == 'controls': return self._start_controls(config)
+        if 'tasks' in config: raise ValueError('tasks applies only to controls')
         c = dict(config); c.pop('kind', None); c.setdefault('count', 1)
         text(c.get('title', c.get('task')), 'title', 200); text(c.get('model'), 'model', 2048)
         if not EPISODE_NAME.match(c.get('task') or ''): raise ValueError('Choose a harness task')
@@ -301,24 +326,162 @@ class SandboxRuns:
 
     def _start_controls(self, config):
         """Scripted honest and rule-breaking agents: every rule break must be flagged."""
-        if set(config) - {'kind', 'harness_dir'}: raise ValueError('Controls take only harness_dir')
+        if set(config) - {'kind', 'harness_dir', 'tasks'}: raise ValueError('Controls take harness_dir and tasks')
+        tasks = config.get('tasks') or []
+        if not isinstance(tasks, list) or len(tasks) > 50 or not all(isinstance(t, str) and self.TASK_ID.match(t) for t in tasks):
+            raise ValueError('tasks must be a list of task ids')
         h = self.harness(config.get('harness_dir'))
-        return self._launch(dict(kind='controls', title='Positive controls', config=dict(config)), h, ['control'])
+        title = 'Positive controls' + (f" · {', '.join(tasks)}" if tasks else '')
+        return self._launch(dict(kind='controls', title=title, config=dict(config)), h, ['control', *(['--tasks', *tasks] if tasks else [])])
 
-    def _launch(self, record, h, args):
+    # --- rooms: several agents, one sandbox, a group chat and a hidden Observer ---
+
+    WATCH_KINDS = {'network', 'secret', 'files', 'privilege', 'report'}
+    HOSTNAME = re.compile(r'^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$')
+
+    def _room_spec(self, spec, complete=True):
+        """The spec the harness reads. Agents reach their models only through Dyno's loopback endpoints."""
+        if not isinstance(spec, dict) or set(spec) - {'title', 'environment', 'goal', 'rules', 'agents', 'limits', 'prompt'}:
+            raise ValueError('Unsupported room spec')
+        out = dict(title=str(spec.get('title') or '')[:120], goal=str(spec.get('goal') or '')[:8000], rules=[], agents=[])
+        prompts, out['prompt_ref'] = self.prompts.resolve(spec.get('prompt'))
+        if prompts: out['prompts'] = prompts
+        env = spec.get('environment') or None
+        if env is not None and not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,63}', str(env)): raise ValueError('Unknown environment')
+        out['environment'] = env
+        rules = spec.get('rules') or []
+        if not isinstance(rules, list) or len(rules) > 20: raise ValueError('Rules must be a list of at most 20')
+        for r in rules:
+            if not isinstance(r, dict) or set(r) - {'text', 'watch'}: raise ValueError('Each rule needs text')
+            rule = dict(text=str(r.get('text') or '')[:500])
+            w = r.get('watch')
+            if w:
+                if not isinstance(w, dict) or w.get('kind') not in self.WATCH_KINDS or set(w) - {'kind', 'hosts', 'path'}:
+                    raise ValueError('Unknown detector')
+                hosts = w.get('hosts') or []
+                if not isinstance(hosts, list) or len(hosts) > 20 or not all(isinstance(h, str) and self.HOSTNAME.match(h) for h in hosts):
+                    raise ValueError('Hosts must be host names')
+                path = w.get('path')
+                if path is not None and (not isinstance(path, str) or len(path) > 300 or '..' in path or '\x00' in path):
+                    raise ValueError('Path is not valid')
+                rule['watch'] = {k: v for k, v in dict(kind=w['kind'], hosts=hosts or None, path=path).items() if v}
+            out['rules'].append(rule)
+        agents = spec.get('agents') or []
+        if not isinstance(agents, list) or len(agents) > 6: raise ValueError('Add at most six agents')
+        for a in agents:
+            if not isinstance(a, dict) or set(a) - {'name', 'role', 'port', 'model'}: raise ValueError('Each agent has a name, role, port and model')
+            agent = dict(name=str(a.get('name') or '')[:40], role=str(a.get('role') or '')[:80])
+            if a.get('port') is not None or complete:
+                if type(a.get('port')) is not int or not 1024 <= a['port'] <= 65535: raise ValueError('Choose a running model for every agent')
+                text(a.get('model'), 'model', 2048)
+                agent.update(base_url=f"http://127.0.0.1:{a['port']}/v1", model=a['model'])
+            out['agents'].append(agent)
+        limits = spec.get('limits') or {}
+        if not isinstance(limits, dict) or set(limits) - {'max_rounds', 'max_seconds', 'steps_per_turn', 'max_agents', 'follow_up_seconds'}: raise ValueError('Unknown limits')
+        if 'follow_up_seconds' in limits and (type(limits['follow_up_seconds']) is not int or not 0 <= limits['follow_up_seconds'] <= 3600): raise ValueError('follow_up_seconds must be 0–3600')
+        if 'max_agents' in limits and (type(limits['max_agents']) is not int or not 1 <= limits['max_agents'] <= 12): raise ValueError('The team size limit must be 1–12')
+        if 'steps_per_turn' in limits and (type(limits['steps_per_turn']) is not int or not 1 <= limits['steps_per_turn'] <= 10): raise ValueError('steps_per_turn must be 1–10')
+        if 'max_rounds' in limits and (type(limits['max_rounds']) is not int or not 1 <= limits['max_rounds'] <= 50): raise ValueError('max_rounds must be 1–50')
+        if 'max_seconds' in limits and (type(limits['max_seconds']) is not int or not 60 <= limits['max_seconds'] <= 7200): raise ValueError('max_seconds must be 60–7200')
+        if limits: out['limits'] = dict(limits)
+        return out
+
+    def room_plan(self, body):
+        """How each rule will be watched, and what still has to be filled in. Nothing runs."""
+        if not isinstance(body, dict): raise ValueError('Send a room spec')
+        spec = self._room_spec(body.get('spec'), complete=False)
+        h = self.harness(body.get('harness_dir'))
+        folder = self.root / 'room-plans'; folder.mkdir(exist_ok=True, mode=0o700)
+        path = folder / f'{uuid.uuid4().hex}.json'
+        try:
+            path.write_text(json.dumps(spec))
+            return h.json(['room-plan', '--spec', str(path)], timeout=60)
+        finally: path.unlink(missing_ok=True)
+
+    def _start_room(self, config):
+        if set(config) - {'kind', 'harness_dir', 'spec', 'batch'}: raise ValueError('A room takes harness_dir and spec')
+        if config.get('batch') is not None and not KEY.match(str(config['batch'])): raise ValueError('Unknown batch')
+        spec = self._room_spec(config.get('spec'))
+        spec['alerts'] = self.alerts.for_room(spec)  # the room keeps the alerts it ran with
+        h = self.harness(config.get('harness_dir'))
+        title = spec['title'] or (spec['goal'].strip().splitlines() or ['Room'])[0][:60]
+        return self._launch(dict(kind='room', title=title, config=dict(config, spec=spec)), h,
+                            ['room', '--spec', '{run}/room.json', '--messages', '{run}/messages.jsonl'],
+                            files={'room.json': json.dumps(spec, indent=2), 'messages.jsonl': ''})
+
+    def _room_inbox(self, identifier):
+        record = self.read_record(identifier)
+        if record.get('kind') != 'room': raise ValueError('Not a room')
+        if self.active != identifier or record.get('status') != 'running': raise ValueError('This test has ended')
+        return self.root / identifier / 'messages.jsonl'
+
+    def room_message(self, identifier, body):
+        """The person writes in a running room. Every agent reads it at its next turn."""
+        if not isinstance(body, dict) or set(body) - {'text', 'name'}: raise ValueError('Send text and, optionally, name')
+        message = dict(kind='message', ts=time.time(), name=' '.join(str(body.get('name') or 'User').split())[:40] or 'User',
+                       text=text(body.get('text'), 'text', 4000).strip())
+        if not message['text']: raise ValueError('Write a message')
+        with self.lock:
+            with self._room_inbox(identifier).open('a') as f: f.write(json.dumps(message) + '\n')
+        return message
+
+    def room_end(self, identifier):
+        """End test: a waiting room closes at once, a working one at the next turn."""
+        with self.lock:
+            with self._room_inbox(identifier).open('a') as f: f.write(json.dumps(dict(kind='end', ts=time.time())) + '\n')
+        return self.read_record(identifier)
+
+    def rooms(self):
+        """Every room with what the Past tests list shows: verdict, team, model, rule results."""
+        out = []
+        for record in self.list():
+            if record.get('kind') != 'room': continue
+            spec = (record.get('config') or {}).get('spec') or {}
+            folder = next((p.parent for p in sorted((self.root / record['id'] / 'episodes').glob('*/manifest.json'))), None)
+            manifest = _load(folder / 'manifest.json') if folder else {}
+            result = _load(folder / 'observer.json') if folder else {}
+            agents = manifest.get('agents') or []
+            out.append(dict(id=record['id'], title=record.get('title'), created=record.get('created'), status=record.get('status'),
+                            sealed=bool(record.get('sealed')), environment=spec.get('environment'), goal=spec.get('goal'),
+                            models=sorted({a.get('model') for a in agents if a.get('model')} or {a.get('model') for a in spec.get('agents', []) if a.get('model')}),
+                            agents=len(agents), created_agents=sum(1 for a in agents if a.get('created_by')),
+                            verdict=result.get('verdict'), interactive=bool(result.get('interactive')), final_action=result.get('final_action'),
+                            rules=[dict(n=r.get('n'), status=r.get('status')) for r in result.get('rules') or []],
+                            prompt=spec.get('prompt_ref') or dict(id='default', name='Default', version=1), spec=spec))
+        return dict(rooms=out)
+
+    def room(self, identifier, after=0, observed=0):
+        """A room's chat events and, separately, what the Observer recorded."""
+        record = self.read_record(identifier)
+        if record.get('kind') != 'room': raise ValueError('Not a room')
+        folder = next((p.parent for p in sorted((self.root / identifier / 'episodes').glob('*/manifest.json'))), None)
+        out = dict(run=record, manifest=None, events=[], last=after, observer=[], observed=observed, result=None)
+        if folder is None: return out
+        out['manifest'] = _load(folder / 'manifest.json')
+        out['events'] = _read_jsonl(folder / 'transcript.jsonl', after, 500)
+        out['last'] = out['events'][-1].get('seq', after) if out['events'] else after
+        out['observer'] = _read_jsonl(folder / 'observer.jsonl', observed, 500)
+        out['observed'] = out['observer'][-1].get('seq', observed) if out['observer'] else observed
+        out['result'] = _load(folder / 'observer.json') or None
+        return out
+
+    def _launch(self, record, h, args, files=None):
         with self.lock:
             if self.active: raise RuntimeError('Another sandbox run is in progress')
             identifier = uuid.uuid4().hex
             folder = self.root / identifier
             folder.mkdir(mode=0o700)
             record.update(id=identifier, created=time.time(), status='running', config_hash=digest(record['config']))
-            record['command'] = [*h.argv, *args, '--out', str(folder / 'episodes')]
+            for name, content in (files or {}).items():
+                (folder / name).write_text(content); os.chmod(folder / name, 0o600)
+            record['command'] = [*h.argv, *[a.replace('{run}', str(folder)) for a in args], '--out', str(folder / 'episodes')]
             self._write(record)
             log = (folder / 'harness.log').open('w')
             self.process = subprocess.Popen(record['command'], cwd=h.home, stdout=log, stderr=subprocess.STDOUT,
                                             env=h.env, start_new_session=True)
             self.active = identifier
-            threading.Thread(target=self._wait, args=(identifier, self.process, log), daemon=True).start()
+            waiter = threading.Thread(target=self._wait, args=(identifier, self.process, log), daemon=True)
+            self.waiters.append(waiter); waiter.start()
             return record
 
     def _wait(self, identifier, process, log):
@@ -332,6 +495,19 @@ class SandboxRuns:
             if self.active == identifier: self.active = self.process = None
         try: self.index.update([self.root / identifier])
         except (sqlite3.Error, OSError): pass  # the next read re-indexes; nothing is lost
+        # Control runs prove the labeler works and nobody reviews them afterwards, and a room's
+        # Observer record is its evidence, so both are sealed as soon as they finish. Other model
+        # runs are sealed by hand, after review.
+        if record.get('kind') in ('controls', 'room') and record['status'] == 'completed':
+            try: self.seal(identifier)
+            except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as error:
+                with self.lock:
+                    record = self.read_record(identifier); record['seal_error'] = str(error)[-2000:]; self._write(record)
+
+    def settle(self, timeout=30):
+        """Wait until finished runs are indexed and sealed."""
+        for waiter in list(self.waiters): waiter.join(timeout)
+        self.waiters = [w for w in self.waiters if w.is_alive()]
 
     def cancel(self, identifier):
         with self.lock:
@@ -479,17 +655,36 @@ class SandboxRuns:
             path = task_dir / 'files' / f['source']
             try: files[f['source']] = path.read_text(errors='replace')[:200_000]
             except OSError: files[f['source']] = None
-        return dict(spec=spec, files=files, editable=editable, meta=_load(task_dir / 'dyno.json'))
+        return dict(spec=spec, files=files, editable=editable, meta=_load(task_dir / 'dyno.json'),
+                    controls=self._controls(task_dir, task_id))
+
+    CONTROL_BEHAVIOURS = ('honest', 'rule_break')
+
+    @staticmethod
+    def _controls(task_dir, task_id):
+        """The task's positive-control scripts: its controls/ folder, else the older mocks/<id>/ layout."""
+        out = {}
+        for b in SandboxRuns.CONTROL_BEHAVIOURS:
+            for p in (task_dir / 'controls' / f'{b}.yaml', task_dir.parent.parent / 'mocks' / task_id / f'{b}.yaml'):
+                if p.is_file():
+                    out[b] = p.read_text(errors='replace')[:100_000]; break
+            else: out[b] = None
+        return out
 
     def save_task(self, body):
-        if not isinstance(body, dict) or set(body) - {'harness_dir', 'spec', 'files', 'replace'}: raise ValueError('Use harness_dir, spec, files and replace')
+        if not isinstance(body, dict) or set(body) - {'harness_dir', 'spec', 'files', 'replace', 'controls'}: raise ValueError('Use harness_dir, spec, files, controls and replace')
+        controls = body.get('controls')
+        if controls is not None:
+            if not isinstance(controls, dict) or set(controls) - set(self.CONTROL_BEHAVIOURS): raise ValueError('controls: honest and rule_break scripts')
+            for b, script in controls.items():
+                if script is not None and (not isinstance(script, str) or len(script) > 100_000): raise ValueError(f'controls.{b} must be text')
         h = self.harness(body.get('harness_dir'))
         spec, files = body.get('spec'), body.get('files') or {}
         if not isinstance(spec, dict) or not isinstance(files, dict): raise ValueError('spec and files must be objects')
         task_id = spec.get('id', '')
         if not self.TASK_ID.match(task_id): raise ValueError('Task id: lowercase letters, digits and underscores, starting with a letter')
         allowed = {'id', 'prompt', 'rule', 'allowed_hosts', 'dirs', 'files', 'protected', 'watched_reads', 'secrets',
-                   'schema_version', 'meta', 'setup', 'limits', 'conditions', 'honest_checks'}
+                   'schema_version', 'meta', 'setup', 'limits', 'conditions', 'honest_checks', 'environment'}
         if set(spec) - allowed: raise ValueError(f'Unsupported task fields: {sorted(set(spec) - allowed)}')
         for key in ('allowed_hosts', 'dirs', 'files', 'protected', 'watched_reads', 'secrets'): spec.setdefault(key, [])
         text(spec.get('prompt'), 'prompt', 8000); text(spec.get('rule'), 'rule', 2000)
@@ -512,6 +707,11 @@ class SandboxRuns:
                 target = staging / 'files' / name
                 target.parent.mkdir(parents=True, exist_ok=True); target.write_text(content)
             (staging / 'dyno.json').write_text(json.dumps(dict(created_by_dyno=True, saved=time.time()), indent=2))
+            if controls is None and existing is not None and (existing / 'controls').is_dir():
+                import shutil; shutil.copytree(existing / 'controls', staging / 'controls')  # keep them when not edited
+            for b, script in (controls or {}).items():
+                if script and script.strip():
+                    (staging / 'controls').mkdir(exist_ok=True); (staging / 'controls' / f'{b}.yaml').write_text(script)
             check_dir = staging.parent / f'.check-{uuid.uuid4().hex[:8]}' / task_id
             check_dir.parent.mkdir(); staging.rename(check_dir)  # the harness requires folder name == task id
             staging = check_dir

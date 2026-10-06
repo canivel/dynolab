@@ -26,7 +26,7 @@ struct MainWindow: View {
 
     enum Tab: String, CaseIterable, Identifiable {
         case agents = "Agents"
-        case evaluate = "Evaluate"
+        case evaluate = "Evals"
         case lab = "Lab"
         case execution = "Execution"
         case run = "Models"
@@ -138,7 +138,7 @@ struct MainWindow: View {
             case .agents:
                 AgentsView(model: model)
             case .evaluate:
-                EvaluateView(model: model)
+                EvalsView(model: model)
             case .lab:
                 ResearchLabView(model: model)
             case .execution:
@@ -168,6 +168,7 @@ struct MainWindow: View {
                             tab = .pools
                         }
                     } else {
+                        RunningModelsBar(model: model)
                         HStack(spacing: 0) {
                             ModelSidebar(model: model).frame(width: 240)
                             Divider()
@@ -183,6 +184,53 @@ struct MainWindow: View {
                     poolSession.selectModel(path); tab = .pools
                 })
             }
+        }
+    }
+}
+
+// MARK: - Running models
+
+/// Every model server running on this Mac, each with a Stop button, whatever is selected below.
+private struct RunningModelsBar: View {
+    var model: MonitorModel
+    @State private var confirming: LLMModel?
+
+    private var running: [LLMModel] { model.snapshot.models.filter { $0.port != nil } }
+
+    var body: some View {
+        if !running.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("RUNNING NOW").font(.system(size: 10, weight: .semibold)).tracking(0.7).foregroundStyle(.tertiary)
+                ForEach(running, id: \.id) { m in
+                    HStack(spacing: 10) {
+                        Circle().fill(DynoBrand.accent).frame(width: 8, height: 8)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(m.name).font(.callout.weight(.semibold)).lineLimit(1)
+                            Text("\(m.runtime) · 127.0.0.1:\(String(m.port ?? 0))\(model.isDynoEndpoint(m) ? "" : " · started outside Dyno")")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if model.canStopEndpoint(m) || model.isDynoEndpoint(m) {
+                            Button("Stop") {
+                                if model.isDynoEndpoint(m) { model.stopEndpoint(m) } else { confirming = m }
+                            }.accessibilityLabel("Stop \(m.name)")
+                        } else {
+                            Text("Stop it in \(m.runtime)").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                if let error = model.serverActionError { Text(error).foregroundStyle(.orange).font(.caption) }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(DynoBrand.accent.opacity(0.06))
+            .confirmationDialog("Stop \(confirming?.name ?? "this model")?", isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })) {
+                Button("Stop the server", role: .destructive) { if let m = confirming { model.stopEndpoint(m) }; confirming = nil }
+                Button("Cancel", role: .cancel) { confirming = nil }
+            } message: {
+                Text("This server was started outside Dyno. Anything using it (a room, a script, another app) loses its model, and freeing it may take a few seconds.")
+            }
+            Divider()
         }
     }
 }

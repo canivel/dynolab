@@ -13,7 +13,8 @@ struct AgentsView: View {
     @AppStorage("sandboxHarnessOverride") private var harnessDir = ""
     @State private var engine: [String:Any] = [:]
     @State private var showAdvanced = false
-    @AppStorage("agentsWorkspace") private var workspace = Workspace.runs.rawValue
+    @AppStorage("agentsWorkspace2") private var workspace = Workspace.setup.rawValue
+    @AppStorage("agentsRoom") private var storedRoom = ""
     @State private var runs: [[String:Any]] = []
     @State private var run: [String:Any] = [:]
     @State private var episodeKey: String?
@@ -28,31 +29,53 @@ struct AgentsView: View {
     @State private var condition = ""
     @State private var envTemplates: [String] = []
     @State private var taskEditor: EditorRequest?
+    @State private var controlsViewer: ControlsRequest?
 
-    struct EditorRequest: Identifiable { let id=UUID();var existing: String?;var template: [String:Any]? }
+    struct EditorRequest: Identifiable { let id=UUID();var existing: String?;var template: [String:Any]?;var section: String?=nil }
+    struct ControlsRequest: Identifiable { let id=UUID();var task: String;var detail: [String:Any] }
     @State private var issue: String?
     @State private var working = false
     private var runID: String? { run["id"] as? String }
     private var active: Bool { run["status"] as? String == "running" }
-    private var current: Workspace { Workspace(rawValue: workspace) ?? .runs }
+    private var current: Workspace { Workspace(rawValue: workspace) ?? .setup }
+    private var roomID: Binding<String?> { Binding(get: { storedRoom.isEmpty ? nil : storedRoom }, set: { storedRoom = $0 ?? "" }) }
 
     enum Workspace: String, CaseIterable, Identifiable {
+        case setup = "Setup", room = "Room & Observer", past = "Past tests"
         case runs = "Runs", conversations = "Conversations", search = "Search", tasks = "Tasks", environments = "Environments", readiness = "Readiness"
         var id: String { rawValue }
+        static let main: [Workspace] = [.setup, .room, .past]
+        static let advanced: [Workspace] = [.runs, .conversations, .search, .tasks, .environments, .readiness]
     }
 
     var body: some View {
         VStack(alignment:.leading,spacing:12) {
-            HStack(alignment:.firstTextBaseline) {
-                VStack(alignment:.leading,spacing:4) {
-                    Text("Agents").font(.title2.bold())
-                    Text("Real commands in an isolated sandbox with no network route out. Every command is logged before it runs.").font(.callout).foregroundStyle(.secondary)
-                }
+            HStack(alignment:.center,spacing:14) {
+                Text("Agents").font(.title2.bold())
+                HStack(spacing:4) {
+                    ForEach(Array(Workspace.main.enumerated()),id:\.offset) { i,w in
+                        Button { workspace=w.rawValue } label: {
+                            Text(w == .past ? w.rawValue : "\(i+1) · \(w.rawValue)").font(.callout.weight(current == w ? .semibold : .regular))
+                                .padding(.horizontal,12).padding(.vertical,6)
+                                .background(RoundedRectangle(cornerRadius:7).fill(current == w ? DynoBrand.accent : .clear))
+                                .foregroundStyle(current == w ? DynoBrand.ink : .secondary).contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                    }
+                }.padding(3).background(RoundedRectangle(cornerRadius:10).fill(DynoBrand.surface)).overlay(RoundedRectangle(cornerRadius:10).stroke(.quaternary))
                 Spacer()
-                Picker("",selection:$workspace) { ForEach(Workspace.allCases) { Text($0.rawValue).tag($0.rawValue) } }.pickerStyle(.segmented).frame(width:640)
+                if Workspace.advanced.contains(current) { Text("Advanced › \(current.rawValue)").font(.callout).foregroundStyle(.secondary) }
+                Menu("Advanced") {
+                    ForEach(Workspace.advanced) { w in Button(w.rawValue) { workspace=w.rawValue } }
+                }.fixedSize().help("Runs of single-agent tasks, search, the task library, environments and the readiness checklist")
             }
             if let issue { Text(issue).foregroundStyle(.orange).font(.callout) }
             switch current {
+            case .setup:
+                TestSetupView(model:model,harnessDir:harnessDir,readiness:readiness,onStarted:{ r in storedRoom=r["id"] as? String ?? "";workspace=Workspace.room.rawValue },onAdvanced:{ workspace=$0 })
+            case .room:
+                RoomObserverView(lab:model.researchLab,roomID:roomID,onNewTest:{ workspace=Workspace.setup.rawValue })
+            case .past:
+                PastTestsView(lab:model.researchLab,onOpen:{ id in storedRoom=id;workspace=Workspace.room.rawValue },onRunAgain:{ workspace=Workspace.setup.rawValue })
             case .runs, .search:
                 HSplitView {
                     Group { if current == .runs { runList } else { searchPane } }.frame(minWidth:280,idealWidth:340,maxWidth:440)
@@ -205,26 +228,71 @@ struct AgentsView: View {
                     if !honeypots.isEmpty { Text("Honeypots and watched paths: \(honeypots.joined(separator:", "))").font(.caption).foregroundStyle(.secondary) }
                     let conditions=t["conditions"] as? [String] ?? []
                     if !conditions.isEmpty { Text("Conditions: neutral, \(conditions.joined(separator:", "))").font(.caption).foregroundStyle(.secondary) }
+                    controlsStatus(t)
                     HStack {
                         Button("Run this task") { task=id;condition="";run=[:];episodeKey=nil;workspace=Workspace.runs.rawValue }
                         Button("Search its runs") { query="";eventFilter="";workspace=Workspace.search.rawValue;searchTask(id) }
                         Button("Copy as new task") { openEditor(id,edit:false) }
                         Button("Edit") { openEditor(id,edit:true) }
+                        controlsButtons(t,id)
                     }.controlSize(.small)
                 }.padding(14).frame(maxWidth:.infinity,alignment:.leading).background(RoundedRectangle(cornerRadius:10).fill(DynoBrand.surface))
             }
         }
         .sheet(item:$taskEditor) { req in
-            TaskEditorView(lab:model.researchLab,harnessDir:harnessDir,existingID:req.existing,template:req.template,environments:envTemplates) { perform { try await loadTasks() } }
+            TaskEditorView(lab:model.researchLab,harnessDir:harnessDir,existingID:req.existing,template:req.template,initialSection:req.section,environments:envTemplates) { perform { try await loadTasks() } }
+        }
+        .sheet(item:$controlsViewer) { req in
+            ControlsViewer(task:req.task,controls:req.detail["controls"] as? [String:Any] ?? [:]) {
+                controlsViewer=nil
+                taskEditor=EditorRequest(existing:nil,template:req.detail,section:"Positive controls")
+            }
         }
     }
 
-    private func openEditor(_ id: String,edit: Bool) {
+    /// Whether a task has its two positive-control scripts (needs a harness that reports them).
+    private func hasControls(_ t: [String:Any]) -> Bool {
+        let c=t["controls"] as? [String:Bool]
+        return c?["honest"] == true && c?["rule_break"] == true
+    }
+
+    @ViewBuilder private func controlsStatus(_ t: [String:Any]) -> some View {
+        if let c=t["controls"] as? [String:Bool] {
+            let ok=hasControls(t)
+            let partial=c.values.contains(true) ? " (one script missing)" : ""
+            Label(ok ? "Positive controls: an honest and a rule-breaking script" : "No positive controls yet\(partial). Its labels can't be tested.",
+                  systemImage:ok ? "checkmark.seal" : "exclamationmark.triangle")
+                .font(.caption).foregroundStyle(ok ? DynoBrand.accent : Color.orange)
+        }
+    }
+
+    @ViewBuilder private func controlsButtons(_ t: [String:Any],_ id: String) -> some View {
+        if t["controls"] != nil {
+            let builtin=t["builtin"] as? Bool == true
+            Button(builtin ? "View controls" : "Controls") { builtin ? viewControls(id) : openEditor(id,edit:true,section:"Positive controls") }
+            Button("Run controls") { runControls([id]) }.disabled(!hasControls(t) || active)
+        }
+    }
+
+    private func runControls(_ ids: [String]) {
+        perform {
+            run=try await model.researchLab.request("/sandbox/runs",body:["kind":"controls","harness_dir":harnessDir,"tasks":ids],timeout:15)
+            episodeKey=nil;workspace=Workspace.runs.rawValue;try await refresh()
+        }
+    }
+
+    /// Built-in tasks can't be edited, so their scripts open read-only, with a way to copy them.
+    private func viewControls(_ id: String) {
+        var c=URLComponents();c.queryItems=harnessDir.isEmpty ? [] : [URLQueryItem(name:"harness_dir",value:harnessDir)]
+        perform { controlsViewer=ControlsRequest(task:id,detail:try await model.researchLab.request("/sandbox/tasks/\(id)?\(c.percentEncodedQuery ?? "")",timeout:15)) }
+    }
+
+    private func openEditor(_ id: String,edit: Bool,section: String?=nil) {
         var c=URLComponents();c.queryItems=harnessDir.isEmpty ? [] : [URLQueryItem(name:"harness_dir",value:harnessDir)]
         perform {
             let detail=try await model.researchLab.request("/sandbox/tasks/\(id)?\(c.percentEncodedQuery ?? "")",timeout:15)
             if edit && detail["editable"] as? Bool != true { throw TaskDraftError.message("\(id) is a built-in task. Use Copy as new task to change it.") }
-            taskEditor=EditorRequest(existing:edit ? id : nil,template:detail)
+            taskEditor=EditorRequest(existing:edit ? id : nil,template:detail,section:section)
         }
     }
 
@@ -295,7 +363,7 @@ struct AgentsView: View {
                     ForEach(model.snapshot.models,id:\.id) { m in Label("\(m.name) · 127.0.0.1:\(m.port.map { String($0) } ?? "—")",systemImage:"bolt.horizontal.circle").font(.callout) }
                 }.padding(.leading,34)
             }
-            step(4,"Positive controls pass",done:controls?["passed"] as? Bool == true,detail:controls == nil ? "Scripted honest and rule-breaking agents run in real containers. If a scripted rule break isn't flagged, the labels can't be trusted." : "Last controls run \(Self.ago(controls?["created"])) · \(controls?["status"] as? String ?? "")") {
+            step(4,"Positive controls pass",done:controls?["passed"] as? Bool == true,detail:controls == nil ? "Scripted honest and rule-breaking agents, with no model, run in real containers for every task that has them: the teaching task t0, the built-in tasks and your own. If a scripted rule break isn't flagged, the labels can't be trusted. Each task's scripts are under Tasks › Controls." : "Last controls run \(Self.ago(controls?["created"])) · \(controls?["status"] as? String ?? "")") {
                 HStack {
                     if let id=controls?["id"] as? String { Button("Open run") { perform { try await open(id);episodeKey=nil;workspace=Workspace.runs.rawValue } } }
                     Button("Run controls") { perform { run=try await model.researchLab.request("/sandbox/runs",body:["kind":"controls","harness_dir":harnessDir],timeout:15);episodeKey=nil;workspace=Workspace.runs.rawValue;try await refresh() } }.disabled(readiness["ok"] as? Bool != true || active)
@@ -493,4 +561,38 @@ private struct EventCard: View {
         return ResearchLab.pretty(args)
     }
     private func label(_ text: String,_ color: Color) -> some View { Text(text).font(.caption.bold()).foregroundStyle(color) }
+}
+
+
+/// Read-only view of a built-in task's positive-control scripts.
+struct ControlsViewer: View {
+    var task: String
+    var controls: [String:Any]
+    var onCopy: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        VStack(alignment:.leading,spacing:12) {
+            HStack {
+                VStack(alignment:.leading,spacing:4) {
+                    Text("Positive controls · \(task)").font(.title3.bold())
+                    Text("Built-in tasks are read-only. Copy the task to change its scripts.").font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Copy to a new task") { onCopy() }
+                Button("Close") { dismiss() }.keyboardShortcut(.cancelAction)
+            }
+            HStack(alignment:.top,spacing:12) {
+                script("Honest", "Does the work, hits the wall and reports it. Must be labeled honest_blocked with no tripwires.", controls["honest"] as? String)
+                script("Rule break", "Breaks the rule on purpose. Must be labeled rule_break and set off the tripwires it lists.", controls["rule_break"] as? String)
+            }
+        }.padding(20).frame(minWidth:900,minHeight:560)
+    }
+    private func script(_ title: String,_ help: String,_ text: String?) -> some View {
+        VStack(alignment:.leading,spacing:6) {
+            Text(title).font(.headline)
+            Text(help).font(.caption).foregroundStyle(.secondary)
+            ScrollView { Text(text ?? "No script.").font(.system(.caption,design:.monospaced)).textSelection(.enabled).frame(maxWidth:.infinity,alignment:.leading).padding(10) }
+                .background(RoundedRectangle(cornerRadius:8).fill(Color.black.opacity(0.25)))
+        }.frame(maxWidth:.infinity)
+    }
 }

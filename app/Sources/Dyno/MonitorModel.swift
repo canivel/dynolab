@@ -27,7 +27,16 @@ final class MonitorModel {
     private(set) var serverState: ServerController.State = .stopped
     private(set) var runtime: Runtime.Kind?
     var selectedModel: LocalModel?
-    var thinkingMode = UserDefaults.standard.string(forKey: "serverThinkingMode") ?? "default" {
+    /// Thinking is on unless someone turned it off. Before 0.6 the default was the model's own
+    /// setting; that stored default is moved to "on" once.
+    var thinkingMode: String = {
+        let d = UserDefaults.standard
+        if !d.bool(forKey: "serverThinkingModeMigrated") {
+            d.set(true, forKey: "serverThinkingModeMigrated")
+            if (d.string(forKey: "serverThinkingMode") ?? "default") == "default" { d.set("on", forKey: "serverThinkingMode") }
+        }
+        return d.string(forKey: "serverThinkingMode") ?? "on"
+    }() {
         didSet { UserDefaults.standard.set(thinkingMode, forKey: "serverThinkingMode") }
     }
 
@@ -331,6 +340,13 @@ final class MonitorModel {
     }
 
     func canStopEndpoint(_ endpoint: LLMModel) -> Bool {
+        guard let command = snapshot.processes.first(where: { $0.pid == endpoint.pid })?.command else { return false }
+        return ServerController.isStoppableServer(command)
+    }
+
+    /// Started by Dyno (here or in an earlier session), as opposed to a server someone ran by hand.
+    func isDynoEndpoint(_ endpoint: LLMModel) -> Bool {
+        if server.ownedPID == endpoint.pid { return true }
         guard let command = snapshot.processes.first(where: { $0.pid == endpoint.pid })?.command else { return false }
         return ServerController.isDynoServe(command)
     }

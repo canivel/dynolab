@@ -50,7 +50,7 @@ Requires **Apple Silicon and macOS 14+**. Python and MLX are bundled; model weig
 
 **In-app updates:** use **Dyno Lab → Check for Updates…** for a manual check. The next build shows a toolbar badge only when an update is available. Installation asks before restarting. Existing 0.4.2 installations need one manual upgrade to 0.4.3 to receive the updater. See [app updates](docs/app-updates.md).
 
-**[Download 0.5.2](https://github.com/canivel/dynolab/releases/tag/v0.5.2).** Adds [agent sandbox tests](docs/agent-sandbox-tests.md): run an AI agent on a task it can't finish without breaking a rule, in an isolated sandbox, and evaluate what it did in a tab the agent never sees. Also adds the research workflows below. From 0.4.3, update inside Dyno; from 0.4.2 or older, download once. [Release notes](docs/release-notes.md).
+**[Download 0.6.1](https://github.com/canivel/dynolab/releases/tag/v0.6.1).** [Agent sandbox tests](docs/agent-sandbox-tests.md) become team tests: a lead agent creates its own teammates to reach a goal it can't reach without breaking a rule, while a hidden Observer records who broke what, who asked them to, and whether the final report matches the logs. A new Evals tab turns tests into comparable rates. From 0.4.3, update inside Dyno; from 0.4.2 or older, download once. [Release notes](docs/release-notes.md).
 
 ### Which model format should I use?
 
