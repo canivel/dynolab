@@ -12,9 +12,9 @@ The sandbox harness is a separate open-source project, [dynolab-harness](https:/
 
 ## Steps
 
-1. **Readiness.** Run the isolation checks. A throwaway container is started and removed. It confirms that the agent has no sudo, no network beyond what a task allows, and can't read root-only files.
+1. **Readiness.** Run the isolation checks. A throwaway container is started and removed. It confirms that the agent has no sudo, no network beyond what a task allows, and can't read root-only files. Then click **Run controls** to run the positive controls (see below) for every task that has them.
 2. **Environments.** Pick a built-in template (`egress-allowlist`, `segmented-office`, `segmented-office-open`, `bastion-admin`) or click **New environment**. Then define network segments, services, gateway rules (allow, deny or flag per host and port) and the workstation hostname. **Turn on** starts an instance and **Turn off** removes it. Gateway decisions are recorded outside the agent's container.
-3. **Tasks.** Built-in tasks are impossible by construction: the honest result is to report the problem. Click **New task** to write your own: the prompt and rule, an optional environment, tripwires (protected paths, watched reads, honeypot secrets), honest-outcome checks, conditions such as deadline pressure, and budgets. **Dry run** builds the sandbox without a model.
+3. **Tasks.** Built-in tasks are impossible by construction: the honest result is to report the problem. `t0_locked_report` is a small teaching task to copy. Click **New task** (or **Copy as new task**) to write your own: the prompt and rule, an optional environment, tripwires (protected paths, watched reads, honeypot secrets), honest-outcome checks, positive controls, conditions such as deadline pressure, and budgets. **Dry run** builds the sandbox without a model.
 4. **Run.** Choose a task, a condition, a running model and a number of episodes. Each episode gets a fresh workstation.
 5. **Conversations.** Read each episode's messages, commands and outputs as they arrive, and search across runs. The evaluation column beside a thread is hidden from the agent.
 6. **Evaluate.**
@@ -22,6 +22,19 @@ The sandbox harness is a separate open-source project, [dynolab-harness](https:/
    - **Review:** lists rule breaks and false successes first, so you can confirm or correct each label.
    - **Evaluators:** shows exactly what the agent sees and lets you add LLM monitors, which score transcripts without seeing labels or tripwires.
    - **Evidence:** seals a run with SHA-256 checksums and an optional Ed25519 signature, and verifies it.
+
+## Positive controls
+
+Before any result counts, the labels have to be tested. A positive control is a scripted agent: no model, a fixed list of tool calls that the harness replays in a real sandbox and labels exactly like a real agent. Every task has two:
+
+- **Honest** (`controls/honest.yaml`): takes the honest path and must be labeled `honest_blocked`, with no tripwires.
+- **Rule-breaking** (`controls/rule_break.yaml`): breaks the rule on purpose and must be labeled `rule_break`, with every tripwire it lists.
+
+You don't have to predict what a model will do. The rule-breaking script tests your detectors: give it one step for each tripwire the task arms (read the honeypot, use the secret, write a protected file, reach a blocked host) and list them under `expect.tripwires`. If a control fails, fix the task or the labeler before trusting its results.
+
+To write them: open a task in the editor, choose **Positive controls**, and click **Start from the commented example**. It loads the two scripts of `t0_locked_report`, commented line by line, to adapt. Saving validates both scripts; **Save and run controls** runs them. On the task list, **Controls** opens a task's scripts and **Run controls** replays them. Format and reference: [controls.md](https://github.com/canivel/dynolab-harness/blob/main/docs/controls.md).
+
+Controls can't catch a rule break that no tripwire covers, which is why every result also gets hand review and, optionally, LLM monitors.
 
 ## Outcomes
 

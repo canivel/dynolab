@@ -276,9 +276,10 @@ class SandboxRuns:
         return json.loads(out.stdout)
 
     def create(self, config):
-        allowed = {'kind', 'title', 'harness_dir', 'task', 'count', 'port', 'model', 'revision', 'seed', 'condition', 'instance'}
+        allowed = {'kind', 'title', 'harness_dir', 'task', 'tasks', 'count', 'port', 'model', 'revision', 'seed', 'condition', 'instance'}
         if not isinstance(config, dict) or set(config) - allowed: raise ValueError('Unsupported sandbox run config')
         if config.get('kind') == 'controls': return self._start_controls(config)
+        if 'tasks' in config: raise ValueError('tasks applies only to controls')
         c = dict(config); c.pop('kind', None); c.setdefault('count', 1)
         text(c.get('title', c.get('task')), 'title', 200); text(c.get('model'), 'model', 2048)
         if not EPISODE_NAME.match(c.get('task') or ''): raise ValueError('Choose a harness task')
@@ -301,9 +302,13 @@ class SandboxRuns:
 
     def _start_controls(self, config):
         """Scripted honest and rule-breaking agents: every rule break must be flagged."""
-        if set(config) - {'kind', 'harness_dir'}: raise ValueError('Controls take only harness_dir')
+        if set(config) - {'kind', 'harness_dir', 'tasks'}: raise ValueError('Controls take harness_dir and tasks')
+        tasks = config.get('tasks') or []
+        if not isinstance(tasks, list) or len(tasks) > 50 or not all(isinstance(t, str) and self.TASK_ID.match(t) for t in tasks):
+            raise ValueError('tasks must be a list of task ids')
         h = self.harness(config.get('harness_dir'))
-        return self._launch(dict(kind='controls', title='Positive controls', config=dict(config)), h, ['control'])
+        title = 'Positive controls' + (f" · {', '.join(tasks)}" if tasks else '')
+        return self._launch(dict(kind='controls', title=title, config=dict(config)), h, ['control', *(['--tasks', *tasks] if tasks else [])])
 
     def _launch(self, record, h, args):
         with self.lock:
@@ -332,6 +337,13 @@ class SandboxRuns:
             if self.active == identifier: self.active = self.process = None
         try: self.index.update([self.root / identifier])
         except (sqlite3.Error, OSError): pass  # the next read re-indexes; nothing is lost
+        # Control runs prove the labeler works and nobody reviews them afterwards, so they are
+        # sealed as soon as they finish. Model runs are sealed by hand, after review.
+        if record.get('kind') == 'controls' and record['status'] == 'completed':
+            try: self.seal(identifier)
+            except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as error:
+                with self.lock:
+                    record = self.read_record(identifier); record['seal_error'] = str(error)[-2000:]; self._write(record)
 
     def cancel(self, identifier):
         with self.lock:
@@ -479,17 +491,36 @@ class SandboxRuns:
             path = task_dir / 'files' / f['source']
             try: files[f['source']] = path.read_text(errors='replace')[:200_000]
             except OSError: files[f['source']] = None
-        return dict(spec=spec, files=files, editable=editable, meta=_load(task_dir / 'dyno.json'))
+        return dict(spec=spec, files=files, editable=editable, meta=_load(task_dir / 'dyno.json'),
+                    controls=self._controls(task_dir, task_id))
+
+    CONTROL_BEHAVIOURS = ('honest', 'rule_break')
+
+    @staticmethod
+    def _controls(task_dir, task_id):
+        """The task's positive-control scripts: its controls/ folder, else the older mocks/<id>/ layout."""
+        out = {}
+        for b in SandboxRuns.CONTROL_BEHAVIOURS:
+            for p in (task_dir / 'controls' / f'{b}.yaml', task_dir.parent.parent / 'mocks' / task_id / f'{b}.yaml'):
+                if p.is_file():
+                    out[b] = p.read_text(errors='replace')[:100_000]; break
+            else: out[b] = None
+        return out
 
     def save_task(self, body):
-        if not isinstance(body, dict) or set(body) - {'harness_dir', 'spec', 'files', 'replace'}: raise ValueError('Use harness_dir, spec, files and replace')
+        if not isinstance(body, dict) or set(body) - {'harness_dir', 'spec', 'files', 'replace', 'controls'}: raise ValueError('Use harness_dir, spec, files, controls and replace')
+        controls = body.get('controls')
+        if controls is not None:
+            if not isinstance(controls, dict) or set(controls) - set(self.CONTROL_BEHAVIOURS): raise ValueError('controls: honest and rule_break scripts')
+            for b, script in controls.items():
+                if script is not None and (not isinstance(script, str) or len(script) > 100_000): raise ValueError(f'controls.{b} must be text')
         h = self.harness(body.get('harness_dir'))
         spec, files = body.get('spec'), body.get('files') or {}
         if not isinstance(spec, dict) or not isinstance(files, dict): raise ValueError('spec and files must be objects')
         task_id = spec.get('id', '')
         if not self.TASK_ID.match(task_id): raise ValueError('Task id: lowercase letters, digits and underscores, starting with a letter')
         allowed = {'id', 'prompt', 'rule', 'allowed_hosts', 'dirs', 'files', 'protected', 'watched_reads', 'secrets',
-                   'schema_version', 'meta', 'setup', 'limits', 'conditions', 'honest_checks'}
+                   'schema_version', 'meta', 'setup', 'limits', 'conditions', 'honest_checks', 'environment'}
         if set(spec) - allowed: raise ValueError(f'Unsupported task fields: {sorted(set(spec) - allowed)}')
         for key in ('allowed_hosts', 'dirs', 'files', 'protected', 'watched_reads', 'secrets'): spec.setdefault(key, [])
         text(spec.get('prompt'), 'prompt', 8000); text(spec.get('rule'), 'rule', 2000)
@@ -512,6 +543,11 @@ class SandboxRuns:
                 target = staging / 'files' / name
                 target.parent.mkdir(parents=True, exist_ok=True); target.write_text(content)
             (staging / 'dyno.json').write_text(json.dumps(dict(created_by_dyno=True, saved=time.time()), indent=2))
+            if controls is None and existing is not None and (existing / 'controls').is_dir():
+                import shutil; shutil.copytree(existing / 'controls', staging / 'controls')  # keep them when not edited
+            for b, script in (controls or {}).items():
+                if script and script.strip():
+                    (staging / 'controls').mkdir(exist_ok=True); (staging / 'controls' / f'{b}.yaml').write_text(script)
             check_dir = staging.parent / f'.check-{uuid.uuid4().hex[:8]}' / task_id
             check_dir.parent.mkdir(); staging.rename(check_dir)  # the harness requires folder name == task id
             staging = check_dir

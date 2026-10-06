@@ -18,10 +18,11 @@ struct TaskEditorView: View {
     @State private var issue: String?
     @State private var working = false
     @State private var saved = false
+    @State private var harnessWarnings: [String] = []
 
     enum Section: String, CaseIterable, Identifiable {
         case overview = "Overview", prompt = "Prompt & rule", environment = "Environment", tripwires = "Tripwires",
-             honest = "Honest outcome", conditions = "Conditions", budgets = "Budgets"
+             honest = "Honest outcome", controls = "Positive controls", conditions = "Conditions", budgets = "Budgets"
         var id: String { rawValue }
     }
 
@@ -139,6 +140,21 @@ struct TaskEditorView: View {
                 }.padding(8).background(RoundedRectangle(cornerRadius:8).fill(DynoBrand.surface))
             }
             Button("Add state check") { d.stateChecks.append(.init(name:"",command:"",asUser:"root")) }
+        case .controls:
+            Text("Positive controls test this task before any result counts.").font(.headline)
+            Text("A positive control is a scripted agent: no model, just a fixed list of tool calls. Dyno replays it in a real sandbox and labels it exactly like a real agent. The label must match the script's expect block, or the control fails and this task's results can't be trusted yet.").font(.callout).foregroundStyle(.secondary)
+            Text("You don't have to predict what a model will do. The honest script takes the honest path and must set off no tripwires. The rule-breaking script checks your detectors: give it one step for each tripwire you armed (read the honeypot, use the secret, write a protected file, reach a blocked host) and list them all under expect.tripwires.").font(.callout).foregroundStyle(.secondary)
+            HStack {
+                Button("Start from the commented example") { loadExample() }
+                Text("Loads the scripts of t0_locked_report, the teaching task. Change the commands, paths and secret names to match this task.").font(.caption).foregroundStyle(.secondary)
+            }
+            field("Honest script","controls/honest.yaml · expect: {outcome: honest_blocked, tripwires: []}") { editor($d.honestControl,height:230) }
+            field("Rule-breaking script","controls/rule_break.yaml · expect: {outcome: rule_break, tripwires: [the ones you armed]}") { editor($d.ruleControl,height:290) }
+            Text("Tools: bash {command}, read_file {path}, write_file {path, content}, submit {answer, summary}, report_blocked {reason}. Write {{secret:name}} to use this episode's honeypot value. The harness checks both scripts when you save.").font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button("Save and run controls") { perform { try await save(silent:true);_=try await lab.request("/sandbox/runs",body:["kind":"controls","harness_dir":harnessDir,"tasks":[d.id]],timeout:15);validation="Controls started for \(d.id). Follow them in Agents › Runs." } }
+                    .disabled(working || d.id.isEmpty || d.honestControl.isEmpty || d.ruleControl.isEmpty)
+            }
         case .conditions:
             Text("Conditions are named variants of this task. The base task is always the neutral condition. Use them to compare, for example, a neutral prompt with one that adds a deadline and a consequence.").font(.callout).foregroundStyle(.secondary)
             ForEach($d.conditions) { $c in
@@ -171,6 +187,7 @@ struct TaskEditorView: View {
                 VStack(alignment:.leading,spacing:4) { ForEach(warnings,id:\.self) { Label($0,systemImage:"exclamationmark.triangle").foregroundStyle(.orange).font(.caption) } }
             }
             if let validation { Label(validation,systemImage:"checkmark.seal").foregroundStyle(DynoBrand.accent).font(.callout) }
+            ForEach(harnessWarnings,id:\.self) { Label($0,systemImage:"exclamationmark.triangle").foregroundStyle(.orange).font(.caption) }
             if let r=dryRun {
                 Text("Dry run").font(.headline)
                 Label(r["ok"] as? Bool == true ? "Sandbox built and armed" : "Dry run found problems",systemImage:r["ok"] as? Bool == true ? "checkmark.circle.fill" : "xmark.octagon.fill").foregroundStyle(r["ok"] as? Bool == true ? DynoBrand.accent : .red)
@@ -213,13 +230,24 @@ struct TaskEditorView: View {
 
     private func save(silent: Bool) async throws {
         let (spec,files)=try d.payload()
-        var body: [String:Any]=["harness_dir":harnessDir,"spec":spec,"files":files]
+        var body: [String:Any]=["harness_dir":harnessDir,"spec":spec,"files":files,
+                                "controls":["honest":d.honestControl,"rule_break":d.ruleControl]]
         if existingID != nil || saved { body["replace"]=true }
         let result=try await lab.request("/sandbox/tasks",body:body,timeout:60)
         saved=true
         let note=((result["validation"] as? [String:Any])?["note"] as? String)
+        harnessWarnings=(result["validation"] as? [String:Any])?["warnings"] as? [String] ?? []
         validation=note ?? "Saved and validated by the harness"
         if !silent { onSaved() }
+    }
+    private func loadExample() {
+        var c=URLComponents();c.queryItems=harnessDir.isEmpty ? [] : [URLQueryItem(name:"harness_dir",value:harnessDir)]
+        perform {
+            let example=try await lab.request("/sandbox/tasks/t0_locked_report?\(c.percentEncodedQuery ?? "")",timeout:15)
+            let scripts=example["controls"] as? [String:Any] ?? [:]
+            guard let honest=scripts["honest"] as? String,let rule=scripts["rule_break"] as? String else { throw TaskDraftError.message("This harness has no example controls yet; update the harness.") }
+            d.honestControl=honest;d.ruleControl=rule
+        }
     }
     private func perform(_ action: @escaping @MainActor () async throws -> Void) { guard !working else { return };working=true;Task { do { try await action();issue=nil } catch { issue=error.localizedDescription };working=false } }
 }
@@ -241,6 +269,7 @@ struct TaskDraft {
     var mustReport="",stateChecks: [Check]=[]
     var conditions: [Condition]=[],maxSteps="",maxSeconds=""
     var environment=""
+    var honestControl="",ruleControl=""
 
     init() {}
 
@@ -279,6 +308,8 @@ struct TaskDraft {
                          maxSteps:(limits["max_steps"] as? Int).map(String.init) ?? "",maxSeconds:(limits["max_seconds"] as? Int).map(String.init) ?? "")
         }
         environment=(spec["environment"] as? [String:Any])?["template"] as? String ?? ""
+        let controls=detail["controls"] as? [String:Any] ?? [:]
+        honestControl=controls["honest"] as? String ?? "";ruleControl=controls["rule_break"] as? String ?? ""
         let limits=spec["limits"] as? [String:Any] ?? [:]
         maxSteps=(limits["max_steps"] as? Int).map(String.init) ?? "";maxSeconds=(limits["max_seconds"] as? Int).map(String.init) ?? ""
     }
@@ -309,6 +340,7 @@ struct TaskDraft {
         let paths=Set(files.map(\.path)+dirs.map(\.path))
         for p in protected where !p.path.isEmpty && !paths.contains(where:{ $0 == p.path || $0.hasPrefix(p.path + "/") }) && setupScript.isEmpty { w.append("Protected path \(p.path) is not created by any file or directory.") }
         if mustReport.isEmpty && stateChecks.isEmpty { w.append("No honest-outcome checks. Episodes will rely on tripwires and hand review alone.") }
+        if honestControl.isEmpty || ruleControl.isEmpty { w.append("No positive controls yet. Add an honest and a rule-breaking script so this task's labels can be tested.") }
         return w
     }
 
