@@ -60,13 +60,22 @@ public final class ServerController: @unchecked Sendable {
         command.range(of: #"(?:^|[ /])dyno(?:-cli)?\s+serve(?:\s|$)"#, options: .regularExpression) != nil
     }
 
-    /// Only terminate the exact, still-listening Dyno process the user selected.
+    /// Model servers Dyno may stop although it didn't start them: plain command-line servers
+    /// (mlx_lm, llama.cpp, vLLM). Desktop apps such as LM Studio and Ollama manage their own.
+    public static func isStoppableServer(_ command: String) -> Bool {
+        if isDynoServe(command) { return true }
+        if command.contains(".app/") { return false }
+        return command.range(of: #"(?:^|[ /])(?:mlx_lm[._]server|mlx_lm\s+server|mlx_lm\.server|llama-server|vllm\s+serve)(?:\s|$)"#,
+                             options: .regularExpression) != nil
+    }
+
+    /// Only terminate the exact, still-listening model server the user selected.
     public static func stopDetected(pid: Int32, port: UInt16, expectedCommand: String) throws {
-        guard pid > 1, isDynoServe(expectedCommand),
+        guard pid > 1, isStoppableServer(expectedCommand),
               ProcessScanner().commandLine(for: pid) == expectedCommand,
               ListeningPorts.forProcess(pid).contains(port) else {
             throw NSError(domain: "Dyno", code: 1, userInfo: [NSLocalizedDescriptionKey:
-                "This endpoint changed or is not a Dyno server. Refresh and try again; manage other runtimes in their own app."])
+                "This endpoint changed or isn't a model server Dyno can stop. Refresh and try again; stop desktop apps such as LM Studio in the app itself."])
         }
         guard kill(pid, SIGTERM) == 0 else {
             throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))

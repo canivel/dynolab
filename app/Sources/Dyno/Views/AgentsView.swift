@@ -13,7 +13,8 @@ struct AgentsView: View {
     @AppStorage("sandboxHarnessOverride") private var harnessDir = ""
     @State private var engine: [String:Any] = [:]
     @State private var showAdvanced = false
-    @AppStorage("agentsWorkspace") private var workspace = Workspace.runs.rawValue
+    @AppStorage("agentsWorkspace2") private var workspace = Workspace.setup.rawValue
+    @AppStorage("agentsRoom") private var storedRoom = ""
     @State private var runs: [[String:Any]] = []
     @State private var run: [String:Any] = [:]
     @State private var episodeKey: String?
@@ -36,25 +37,45 @@ struct AgentsView: View {
     @State private var working = false
     private var runID: String? { run["id"] as? String }
     private var active: Bool { run["status"] as? String == "running" }
-    private var current: Workspace { Workspace(rawValue: workspace) ?? .runs }
+    private var current: Workspace { Workspace(rawValue: workspace) ?? .setup }
+    private var roomID: Binding<String?> { Binding(get: { storedRoom.isEmpty ? nil : storedRoom }, set: { storedRoom = $0 ?? "" }) }
 
     enum Workspace: String, CaseIterable, Identifiable {
+        case setup = "Setup", room = "Room & Observer", past = "Past tests"
         case runs = "Runs", conversations = "Conversations", search = "Search", tasks = "Tasks", environments = "Environments", readiness = "Readiness"
         var id: String { rawValue }
+        static let main: [Workspace] = [.setup, .room, .past]
+        static let advanced: [Workspace] = [.runs, .conversations, .search, .tasks, .environments, .readiness]
     }
 
     var body: some View {
         VStack(alignment:.leading,spacing:12) {
-            HStack(alignment:.firstTextBaseline) {
-                VStack(alignment:.leading,spacing:4) {
-                    Text("Agents").font(.title2.bold())
-                    Text("Real commands in an isolated sandbox with no network route out. Every command is logged before it runs.").font(.callout).foregroundStyle(.secondary)
-                }
+            HStack(alignment:.center,spacing:14) {
+                Text("Agents").font(.title2.bold())
+                HStack(spacing:4) {
+                    ForEach(Array(Workspace.main.enumerated()),id:\.offset) { i,w in
+                        Button { workspace=w.rawValue } label: {
+                            Text(w == .past ? w.rawValue : "\(i+1) · \(w.rawValue)").font(.callout.weight(current == w ? .semibold : .regular))
+                                .padding(.horizontal,12).padding(.vertical,6)
+                                .background(RoundedRectangle(cornerRadius:7).fill(current == w ? DynoBrand.accent : .clear))
+                                .foregroundStyle(current == w ? DynoBrand.ink : .secondary).contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                    }
+                }.padding(3).background(RoundedRectangle(cornerRadius:10).fill(DynoBrand.surface)).overlay(RoundedRectangle(cornerRadius:10).stroke(.quaternary))
                 Spacer()
-                Picker("",selection:$workspace) { ForEach(Workspace.allCases) { Text($0.rawValue).tag($0.rawValue) } }.pickerStyle(.segmented).frame(width:640)
+                if Workspace.advanced.contains(current) { Text("Advanced › \(current.rawValue)").font(.callout).foregroundStyle(.secondary) }
+                Menu("Advanced") {
+                    ForEach(Workspace.advanced) { w in Button(w.rawValue) { workspace=w.rawValue } }
+                }.fixedSize().help("Runs of single-agent tasks, search, the task library, environments and the readiness checklist")
             }
             if let issue { Text(issue).foregroundStyle(.orange).font(.callout) }
             switch current {
+            case .setup:
+                TestSetupView(model:model,harnessDir:harnessDir,readiness:readiness,onStarted:{ r in storedRoom=r["id"] as? String ?? "";workspace=Workspace.room.rawValue },onAdvanced:{ workspace=$0 })
+            case .room:
+                RoomObserverView(lab:model.researchLab,roomID:roomID,onNewTest:{ workspace=Workspace.setup.rawValue })
+            case .past:
+                PastTestsView(lab:model.researchLab,onOpen:{ id in storedRoom=id;workspace=Workspace.room.rawValue },onRunAgain:{ workspace=Workspace.setup.rawValue })
             case .runs, .search:
                 HSplitView {
                     Group { if current == .runs { runList } else { searchPane } }.frame(minWidth:280,idealWidth:340,maxWidth:440)

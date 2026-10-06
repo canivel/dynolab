@@ -77,7 +77,7 @@ if [ "$SLIM" -eq 0 ]; then
   # nobody has to install it or choose a folder. DYNO_HARNESS_SOURCE is a wheel, a source
   # checkout or a git URL; release builds pin it.
   # Default: the published harness, pinned to a reviewed commit.
-  HARNESS_SOURCE="${DYNO_HARNESS_SOURCE:-git+https://github.com/canivel/dynolab-harness@aa5994d6c5462a2d4c51eef2dfd97174498229eb}"
+  HARNESS_SOURCE="${DYNO_HARNESS_SOURCE:-git+https://github.com/canivel/dynolab-harness@05604949ec8cef5b90f2e7875aed06a72ea15728}"
   echo "==> Installing the sandbox harness from $HARNESS_SOURCE"
   # --no-deps: its dependencies come from the locked, hash-checked "sandbox" extra above.
   uv pip install --quiet --no-deps \

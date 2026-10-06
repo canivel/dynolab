@@ -202,6 +202,22 @@ def _load(path):
     except (OSError, ValueError): return {}
 
 
+def _read_jsonl(path, after, limit):
+    """Complete lines with seq > after; a line still being written is left for the next read."""
+    out = []
+    try:
+        with Path(path).open(errors='replace') as f:
+            for line in f:
+                if not line.endswith('\n'): break
+                try: e = json.loads(line)
+                except ValueError: continue
+                if (e.get('seq') or 0) > after:
+                    out.append(e)
+                    if len(out) >= limit: break
+    except OSError: pass
+    return out
+
+
 def _episode_from_dict(row):
     return _episode(row)
 
@@ -226,6 +242,12 @@ class SandboxRuns:
             data = _load(path)
             if data.get('status') == 'running':
                 data.update(status='interrupted', ended=time.time()); self._write(data)
+        from .evals import Evals
+        from .room_prompts import PromptLibrary
+        self.evals = Evals(self)
+        self.prompts = PromptLibrary(self)
+        from .room_alerts import AlertLibrary
+        self.alerts = AlertLibrary(self)
 
     def _write(self, record):
         path = self.root / record['id'] / 'run.json'
@@ -276,6 +298,7 @@ class SandboxRuns:
         return json.loads(out.stdout)
 
     def create(self, config):
+        if isinstance(config, dict) and config.get('kind') == 'room': return self._start_room(config)
         allowed = {'kind', 'title', 'harness_dir', 'task', 'tasks', 'count', 'port', 'model', 'revision', 'seed', 'condition', 'instance'}
         if not isinstance(config, dict) or set(config) - allowed: raise ValueError('Unsupported sandbox run config')
         if config.get('kind') == 'controls': return self._start_controls(config)
@@ -310,14 +333,147 @@ class SandboxRuns:
         title = 'Positive controls' + (f" · {', '.join(tasks)}" if tasks else '')
         return self._launch(dict(kind='controls', title=title, config=dict(config)), h, ['control', *(['--tasks', *tasks] if tasks else [])])
 
-    def _launch(self, record, h, args):
+    # --- rooms: several agents, one sandbox, a group chat and a hidden Observer ---
+
+    WATCH_KINDS = {'network', 'secret', 'files', 'privilege', 'report'}
+    HOSTNAME = re.compile(r'^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$')
+
+    def _room_spec(self, spec, complete=True):
+        """The spec the harness reads. Agents reach their models only through Dyno's loopback endpoints."""
+        if not isinstance(spec, dict) or set(spec) - {'title', 'environment', 'goal', 'rules', 'agents', 'limits', 'prompt'}:
+            raise ValueError('Unsupported room spec')
+        out = dict(title=str(spec.get('title') or '')[:120], goal=str(spec.get('goal') or '')[:8000], rules=[], agents=[])
+        prompts, out['prompt_ref'] = self.prompts.resolve(spec.get('prompt'))
+        if prompts: out['prompts'] = prompts
+        env = spec.get('environment') or None
+        if env is not None and not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,63}', str(env)): raise ValueError('Unknown environment')
+        out['environment'] = env
+        rules = spec.get('rules') or []
+        if not isinstance(rules, list) or len(rules) > 20: raise ValueError('Rules must be a list of at most 20')
+        for r in rules:
+            if not isinstance(r, dict) or set(r) - {'text', 'watch'}: raise ValueError('Each rule needs text')
+            rule = dict(text=str(r.get('text') or '')[:500])
+            w = r.get('watch')
+            if w:
+                if not isinstance(w, dict) or w.get('kind') not in self.WATCH_KINDS or set(w) - {'kind', 'hosts', 'path'}:
+                    raise ValueError('Unknown detector')
+                hosts = w.get('hosts') or []
+                if not isinstance(hosts, list) or len(hosts) > 20 or not all(isinstance(h, str) and self.HOSTNAME.match(h) for h in hosts):
+                    raise ValueError('Hosts must be host names')
+                path = w.get('path')
+                if path is not None and (not isinstance(path, str) or len(path) > 300 or '..' in path or '\x00' in path):
+                    raise ValueError('Path is not valid')
+                rule['watch'] = {k: v for k, v in dict(kind=w['kind'], hosts=hosts or None, path=path).items() if v}
+            out['rules'].append(rule)
+        agents = spec.get('agents') or []
+        if not isinstance(agents, list) or len(agents) > 6: raise ValueError('Add at most six agents')
+        for a in agents:
+            if not isinstance(a, dict) or set(a) - {'name', 'role', 'port', 'model'}: raise ValueError('Each agent has a name, role, port and model')
+            agent = dict(name=str(a.get('name') or '')[:40], role=str(a.get('role') or '')[:80])
+            if a.get('port') is not None or complete:
+                if type(a.get('port')) is not int or not 1024 <= a['port'] <= 65535: raise ValueError('Choose a running model for every agent')
+                text(a.get('model'), 'model', 2048)
+                agent.update(base_url=f"http://127.0.0.1:{a['port']}/v1", model=a['model'])
+            out['agents'].append(agent)
+        limits = spec.get('limits') or {}
+        if not isinstance(limits, dict) or set(limits) - {'max_rounds', 'max_seconds', 'steps_per_turn', 'max_agents', 'follow_up_seconds'}: raise ValueError('Unknown limits')
+        if 'follow_up_seconds' in limits and (type(limits['follow_up_seconds']) is not int or not 0 <= limits['follow_up_seconds'] <= 3600): raise ValueError('follow_up_seconds must be 0–3600')
+        if 'max_agents' in limits and (type(limits['max_agents']) is not int or not 1 <= limits['max_agents'] <= 12): raise ValueError('The team size limit must be 1–12')
+        if 'steps_per_turn' in limits and (type(limits['steps_per_turn']) is not int or not 1 <= limits['steps_per_turn'] <= 10): raise ValueError('steps_per_turn must be 1–10')
+        if 'max_rounds' in limits and (type(limits['max_rounds']) is not int or not 1 <= limits['max_rounds'] <= 50): raise ValueError('max_rounds must be 1–50')
+        if 'max_seconds' in limits and (type(limits['max_seconds']) is not int or not 60 <= limits['max_seconds'] <= 7200): raise ValueError('max_seconds must be 60–7200')
+        if limits: out['limits'] = dict(limits)
+        return out
+
+    def room_plan(self, body):
+        """How each rule will be watched, and what still has to be filled in. Nothing runs."""
+        if not isinstance(body, dict): raise ValueError('Send a room spec')
+        spec = self._room_spec(body.get('spec'), complete=False)
+        h = self.harness(body.get('harness_dir'))
+        folder = self.root / 'room-plans'; folder.mkdir(exist_ok=True, mode=0o700)
+        path = folder / f'{uuid.uuid4().hex}.json'
+        try:
+            path.write_text(json.dumps(spec))
+            return h.json(['room-plan', '--spec', str(path)], timeout=60)
+        finally: path.unlink(missing_ok=True)
+
+    def _start_room(self, config):
+        if set(config) - {'kind', 'harness_dir', 'spec', 'batch'}: raise ValueError('A room takes harness_dir and spec')
+        if config.get('batch') is not None and not KEY.match(str(config['batch'])): raise ValueError('Unknown batch')
+        spec = self._room_spec(config.get('spec'))
+        spec['alerts'] = self.alerts.for_room(spec)  # the room keeps the alerts it ran with
+        h = self.harness(config.get('harness_dir'))
+        title = spec['title'] or (spec['goal'].strip().splitlines() or ['Room'])[0][:60]
+        return self._launch(dict(kind='room', title=title, config=dict(config, spec=spec)), h,
+                            ['room', '--spec', '{run}/room.json', '--messages', '{run}/messages.jsonl'],
+                            files={'room.json': json.dumps(spec, indent=2), 'messages.jsonl': ''})
+
+    def _room_inbox(self, identifier):
+        record = self.read_record(identifier)
+        if record.get('kind') != 'room': raise ValueError('Not a room')
+        if self.active != identifier or record.get('status') != 'running': raise ValueError('This test has ended')
+        return self.root / identifier / 'messages.jsonl'
+
+    def room_message(self, identifier, body):
+        """The person writes in a running room. Every agent reads it at its next turn."""
+        if not isinstance(body, dict) or set(body) - {'text', 'name'}: raise ValueError('Send text and, optionally, name')
+        message = dict(kind='message', ts=time.time(), name=' '.join(str(body.get('name') or 'User').split())[:40] or 'User',
+                       text=text(body.get('text'), 'text', 4000).strip())
+        if not message['text']: raise ValueError('Write a message')
+        with self.lock:
+            with self._room_inbox(identifier).open('a') as f: f.write(json.dumps(message) + '\n')
+        return message
+
+    def room_end(self, identifier):
+        """End test: a waiting room closes at once, a working one at the next turn."""
+        with self.lock:
+            with self._room_inbox(identifier).open('a') as f: f.write(json.dumps(dict(kind='end', ts=time.time())) + '\n')
+        return self.read_record(identifier)
+
+    def rooms(self):
+        """Every room with what the Past tests list shows: verdict, team, model, rule results."""
+        out = []
+        for record in self.list():
+            if record.get('kind') != 'room': continue
+            spec = (record.get('config') or {}).get('spec') or {}
+            folder = next((p.parent for p in sorted((self.root / record['id'] / 'episodes').glob('*/manifest.json'))), None)
+            manifest = _load(folder / 'manifest.json') if folder else {}
+            result = _load(folder / 'observer.json') if folder else {}
+            agents = manifest.get('agents') or []
+            out.append(dict(id=record['id'], title=record.get('title'), created=record.get('created'), status=record.get('status'),
+                            sealed=bool(record.get('sealed')), environment=spec.get('environment'), goal=spec.get('goal'),
+                            models=sorted({a.get('model') for a in agents if a.get('model')} or {a.get('model') for a in spec.get('agents', []) if a.get('model')}),
+                            agents=len(agents), created_agents=sum(1 for a in agents if a.get('created_by')),
+                            verdict=result.get('verdict'), interactive=bool(result.get('interactive')), final_action=result.get('final_action'),
+                            rules=[dict(n=r.get('n'), status=r.get('status')) for r in result.get('rules') or []],
+                            prompt=spec.get('prompt_ref') or dict(id='default', name='Default', version=1), spec=spec))
+        return dict(rooms=out)
+
+    def room(self, identifier, after=0, observed=0):
+        """A room's chat events and, separately, what the Observer recorded."""
+        record = self.read_record(identifier)
+        if record.get('kind') != 'room': raise ValueError('Not a room')
+        folder = next((p.parent for p in sorted((self.root / identifier / 'episodes').glob('*/manifest.json'))), None)
+        out = dict(run=record, manifest=None, events=[], last=after, observer=[], observed=observed, result=None)
+        if folder is None: return out
+        out['manifest'] = _load(folder / 'manifest.json')
+        out['events'] = _read_jsonl(folder / 'transcript.jsonl', after, 500)
+        out['last'] = out['events'][-1].get('seq', after) if out['events'] else after
+        out['observer'] = _read_jsonl(folder / 'observer.jsonl', observed, 500)
+        out['observed'] = out['observer'][-1].get('seq', observed) if out['observer'] else observed
+        out['result'] = _load(folder / 'observer.json') or None
+        return out
+
+    def _launch(self, record, h, args, files=None):
         with self.lock:
             if self.active: raise RuntimeError('Another sandbox run is in progress')
             identifier = uuid.uuid4().hex
             folder = self.root / identifier
             folder.mkdir(mode=0o700)
             record.update(id=identifier, created=time.time(), status='running', config_hash=digest(record['config']))
-            record['command'] = [*h.argv, *args, '--out', str(folder / 'episodes')]
+            for name, content in (files or {}).items():
+                (folder / name).write_text(content); os.chmod(folder / name, 0o600)
+            record['command'] = [*h.argv, *[a.replace('{run}', str(folder)) for a in args], '--out', str(folder / 'episodes')]
             self._write(record)
             log = (folder / 'harness.log').open('w')
             self.process = subprocess.Popen(record['command'], cwd=h.home, stdout=log, stderr=subprocess.STDOUT,
@@ -337,9 +493,10 @@ class SandboxRuns:
             if self.active == identifier: self.active = self.process = None
         try: self.index.update([self.root / identifier])
         except (sqlite3.Error, OSError): pass  # the next read re-indexes; nothing is lost
-        # Control runs prove the labeler works and nobody reviews them afterwards, so they are
-        # sealed as soon as they finish. Model runs are sealed by hand, after review.
-        if record.get('kind') == 'controls' and record['status'] == 'completed':
+        # Control runs prove the labeler works and nobody reviews them afterwards, and a room's
+        # Observer record is its evidence, so both are sealed as soon as they finish. Other model
+        # runs are sealed by hand, after review.
+        if record.get('kind') in ('controls', 'room') and record['status'] == 'completed':
             try: self.seal(identifier)
             except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as error:
                 with self.lock:
