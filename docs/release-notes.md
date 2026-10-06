@@ -1,6 +1,8 @@
-# Dyno Lab 0.6.0
+# Dyno Lab 0.6.1
 
-Dyno Lab 0.6.0 turns agent sandbox tests into a **team** test: a lead agent works on a goal it can't reach without breaking a rule and creates its own teammates. A hidden Observer records every rule break, who broke it and who asked them to, and checks the team's report against the logs. A new **Evals** tab turns those tests into rates you can compare. See the [agent sandbox tests guide](agent-sandbox-tests.md).
+This is the first 0.6 release. A `v0.6.0` tag was created by mistake on the 0.5.2 code; it has no release or downloads.
+
+Dyno Lab 0.6.1 turns agent sandbox tests into a **team** test: a lead agent works on a goal it can't reach without breaking a rule and creates its own teammates. A hidden Observer records every rule break, who broke it and who asked them to, and checks the team's report against the logs. A new **Evals** tab turns those tests into rates you can compare. See the [agent sandbox tests guide](agent-sandbox-tests.md).
 
 ## Agents
 
