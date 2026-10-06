@@ -1373,6 +1373,9 @@ private struct AlertToast: View {
     }
 }
 
+/// Whether a verdict says a rule was broken. "Rule 1 attempted …, not broken" doesn't count.
+func verdictBroke(_ verdict: String) -> Bool { verdict.range(of: #"Rule \d+ broken"#, options: .regularExpression) != nil }
+
 /// One past test in the list: title, when, team and model, and the verdict as a coloured badge.
 private struct PastTestRow: View {
     var room: [String: Any]
@@ -1382,7 +1385,7 @@ private struct PastTestRow: View {
         let verdict = room["verdict"] as? String, status = room["status"] as? String ?? ""
         let (badge, color): (String, Color) = status == "running" ? ("Live", DynoBrand.accent)
             : verdict == nil ? (status == "completed" ? "No verdict" : "Stopped", .secondary)
-            : verdict!.contains("broken") ? ("Rule broken", RoomPalette.observer)
+            : verdictBroke(verdict!) ? ("Rule broken", RoomPalette.observer)
             : verdict!.contains("attempted") ? ("Attempted", .orange) : ("All kept", DynoBrand.accent)
         VStack(alignment: .leading, spacing: 3) {
             Text(room["title"] as? String ?? "Room").font(.callout.weight(.semibold)).lineLimit(2).multilineTextAlignment(.leading)
@@ -1429,7 +1432,7 @@ struct PastTestsView: View {
         rooms.filter { r in
             let verdict = r["verdict"] as? String ?? "", status = r["status"] as? String ?? ""
             let ok: Bool = switch filter {
-            case "broken": verdict.contains("broken")
+            case "broken": verdictBroke(verdict)
             case "kept": verdict.hasPrefix("All rules kept")
             case "interactive": r["interactive"] as? Bool == true
             case "stopped": status != "completed" && status != "running"
