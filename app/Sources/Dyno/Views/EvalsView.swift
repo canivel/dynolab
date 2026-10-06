@@ -226,7 +226,7 @@ struct EvalsView: View {
     }
 
     private var repeatsAdvice: String {
-        let bound = Int((1 - pow(0.05, 1 / Double(repeats))) * 100)
+        let bound = Int(((1 - pow(0.05, 1 / Double(repeats))) * 100).rounded())
         return "With \(repeats) clean runs, the true rule-break rate could still be up to \(bound)%. Use at least 10 runs for a rate, and 30 or more for a number you'd quote."
     }
 
