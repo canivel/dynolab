@@ -264,7 +264,15 @@ struct TestSetupView: View {
         }
     }
 
-    private var planKey: String { (try? String(decoding: JSONEncoder().encode([draft.environment ?? ""] + draft.rules.map { $0.text + ($0.watch?.kind ?? "") + ($0.watch?.path ?? "") } + draft.agents.map { "\($0.name)\($0.port ?? 0)" } + ["\(draft.teamLimit)", "\(draft.prompt?.id ?? "")\(draft.prompt?.version ?? 0)"]), as: UTF8.self)) ?? "" }
+    /// Changes when anything the plan depends on changes. Built in steps: as one expression it is too slow to type-check.
+    private var planKey: String {
+        var parts: [String] = [draft.environment ?? ""]
+        for r in draft.rules { parts.append(r.text + (r.watch?.kind ?? "") + (r.watch?.path ?? "")) }
+        for a in draft.agents { parts.append("\(a.name)\(a.port ?? 0)") }
+        parts.append("\(draft.teamLimit)")
+        parts.append("\(draft.prompt?.id ?? "")\(draft.prompt?.version ?? 0)")
+        return parts.joined(separator: "\u{1F}")
+    }
 
     private var main: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -798,6 +806,8 @@ struct RoomObserverView: View {
             if roomID == nil, let first = rooms.first?["id"] as? String { roomID = first; return }
             while !Task.isCancelled, let id = roomID {
                 await poll(id)
+                // Right after launch the lab service may not answer yet: keep trying instead of giving up.
+                if data.isEmpty { try? await Task.sleep(for: .seconds(2)); if rooms.isEmpty { await loadRooms() }; continue }
                 let sealedOrFailed = run["sealed"] != nil || ["failed", "cancelled", "interrupted"].contains(run["status"] as? String ?? "")
                 if !running && sealedOrFailed && result != nil { break }
                 if !running && run["status"] as? String != "completed" { break }

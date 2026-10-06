@@ -235,6 +235,7 @@ class SandboxRuns:
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.lock = threading.RLock()
         self.active = self.process = None
+        self.waiters = []  # threads finishing runs: indexing and sealing continue after `active` clears
         self.index = EventIndex(self.root / 'index.sqlite')
         if any(m.get('auto') for m in _load(self.root / 'evaluators.json').get('monitors', [])):
             self._ensure_monitor_worker()
@@ -479,7 +480,8 @@ class SandboxRuns:
             self.process = subprocess.Popen(record['command'], cwd=h.home, stdout=log, stderr=subprocess.STDOUT,
                                             env=h.env, start_new_session=True)
             self.active = identifier
-            threading.Thread(target=self._wait, args=(identifier, self.process, log), daemon=True).start()
+            waiter = threading.Thread(target=self._wait, args=(identifier, self.process, log), daemon=True)
+            self.waiters.append(waiter); waiter.start()
             return record
 
     def _wait(self, identifier, process, log):
@@ -501,6 +503,11 @@ class SandboxRuns:
             except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as error:
                 with self.lock:
                     record = self.read_record(identifier); record['seal_error'] = str(error)[-2000:]; self._write(record)
+
+    def settle(self, timeout=30):
+        """Wait until finished runs are indexed and sealed."""
+        for waiter in list(self.waiters): waiter.join(timeout)
+        self.waiters = [w for w in self.waiters if w.is_alive()]
 
     def cancel(self, identifier):
         with self.lock:

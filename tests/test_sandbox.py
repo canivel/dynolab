@@ -164,6 +164,9 @@ class SandboxTests(unittest.TestCase):
         self.runs = SandboxRuns(root / 'lab')
 
     def tearDown(self):
+        wait(self.runs); self.runs.settle()  # sealing and indexing write after a run stops being active
+        for thread in (self.runs.evals.thread, self.runs.evals.grading.thread):
+            if thread: thread.join(30)
         self.tmp.cleanup()
 
     def test_run_events_and_search(self):
