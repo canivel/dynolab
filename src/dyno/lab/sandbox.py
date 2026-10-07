@@ -787,15 +787,8 @@ class SandboxRuns:
             if not editable: raise ValueError('Built-in environments cannot be changed; copy it instead')
             if not body.get('replace'): raise ValueError('An environment with this id exists; choose another id')
         import shutil
-        check_root = home / f'.check-{uuid.uuid4().hex[:8]}'
-        staging = check_root / env_id
+        check_root, staging, result = self._stage_environment(h, home, env_id, spec, files)
         try:
-            (staging / 'files').mkdir(parents=True)
-            (staging / 'environment.yaml').write_text(json.dumps(spec, indent=2))  # JSON is valid YAML
-            for name, content in files.items():
-                target = staging / 'files' / name
-                target.parent.mkdir(parents=True, exist_ok=True); target.write_text(content)
-            result = h.json(['env', 'check', str(staging)], timeout=60)
             if not result.get('ok'): raise ValueError('Environment is invalid: ' + '; '.join(result.get('errors', [])))
             with self.lock:
                 final = home / env_id
@@ -804,6 +797,40 @@ class SandboxRuns:
             return dict(saved=env_id, validation=result)
         finally:
             shutil.rmtree(check_root, ignore_errors=True)
+
+    def _stage_environment(self, h, home, env_id, spec, files):
+        """Write a template to a scratch folder and let the harness check it."""
+        import shutil
+        check_root = home / f'.check-{uuid.uuid4().hex[:8]}'
+        staging = check_root / env_id
+        try:
+            (staging / 'files').mkdir(parents=True)
+            (staging / 'environment.yaml').write_text(json.dumps(spec, indent=2))  # JSON is valid YAML
+            for name, content in files.items():
+                target = staging / 'files' / name
+                target.parent.mkdir(parents=True, exist_ok=True); target.write_text(content)
+            return check_root, staging, h.json(['env', 'check', str(staging)], timeout=60)
+        except BaseException:
+            shutil.rmtree(check_root, ignore_errors=True)
+            raise
+
+    def environment_from_compose(self, body):
+        """A Docker Compose file as a Dyno environment: converted, checked by the harness, optionally saved."""
+        if not isinstance(body, dict) or set(body) - {'compose', 'id', 'title', 'save', 'replace', 'harness_dir'}:
+            raise ValueError('Send compose, and optionally id, title, save and replace')
+        from .compose import from_compose
+        draft = from_compose(body.get('compose'), body.get('id'), body.get('title'))
+        if draft['errors']: return dict(draft, validation=None, saved=None)
+        h = self.harness(body.get('harness_dir'))
+        home = Path(h.paths().get('user_environments') or h.home / 'environments'); home.mkdir(parents=True, exist_ok=True)
+        import shutil
+        check_root, _, validation = self._stage_environment(h, home, draft['spec']['id'], draft['spec'], {})
+        shutil.rmtree(check_root, ignore_errors=True)
+        saved = None
+        if body.get('save') and validation.get('ok'):
+            saved = self.save_environment(dict(harness_dir=body.get('harness_dir'), spec=draft['spec'], files={},
+                                               replace=bool(body.get('replace'))))['saved']
+        return dict(draft, validation=validation, saved=saved)
 
     def delete_environment(self, body):
         if not isinstance(body, dict) or 'id' not in body or set(body) - {'harness_dir', 'id'}: raise ValueError('Use id')

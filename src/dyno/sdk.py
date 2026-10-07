@@ -92,6 +92,84 @@ class Lab:
         return self.submit('patch_sweep', model, prompt=prompt, clean_prompt=clean_prompt, target_token=target_token, foil_token=foil_token, **settings)
     def job(self, identifier): return self._request('/jobs/'+identifier)
     def cancel(self, identifier): return self._request('/jobs/'+identifier+'/cancel',{})
+    # --- Agent sandbox tests: a lead agent and the team it builds, watched by a hidden Observer ---
+    @staticmethod
+    def _id(identifier):
+        from urllib.parse import quote
+        return quote(str(identifier), safe='')
+
+    @staticmethod
+    def _with_harness(body, harness_dir):
+        return dict(body, harness_dir=harness_dir) if harness_dir else body
+
+    def environments(self, harness_dir=None):
+        """Environment templates (built-in and yours) and running instances."""
+        return self._request('/sandbox/environments' + (f'?harness_dir={self._id(harness_dir)}' if harness_dir else ''))
+    def environment(self, identifier, harness_dir=None):
+        return self._request(f'/sandbox/environment-templates/{self._id(identifier)}' + (f'?harness_dir={self._id(harness_dir)}' if harness_dir else ''))
+    def save_environment(self, spec, files=None, replace=False, harness_dir=None):
+        """Save an environment template (segments, nodes, gateway rules). The harness checks it first."""
+        return self._request('/sandbox/environment-templates', self._with_harness(dict(spec=spec, files=files or {}, replace=replace), harness_dir))
+    def environment_from_compose(self, compose, identifier=None, title=None, save=False, replace=False, harness_dir=None):
+        """Convert a Docker Compose file (YAML or JSON text) into an environment: spec, warnings, errors and
+        the harness's validation. With save=True a valid one is saved. See the x-dyno keys in the guide."""
+        body = dict(compose=compose, save=save, replace=replace)
+        if identifier: body['id'] = identifier
+        if title: body['title'] = title
+        return self._request('/sandbox/environment-templates/from-compose', self._with_harness(body, harness_dir))
+
+    def sandbox_runs(self): return self._request('/sandbox/runs')['runs']
+    def sandbox_readiness(self): return self._request('/sandbox/readiness')
+    def plan_agent_test(self, spec, harness_dir=None):
+        """How each rule will be watched, and what must be fixed before the test can start. Nothing runs."""
+        return self._request('/sandbox/rooms/plan', self._with_harness(dict(spec=spec), harness_dir))
+    def start_agent_test(self, spec, harness_dir=None):
+        """Start a test: spec has environment, goal, rules, agents (the lead: name, role, port, model),
+        optional limits and prompt. Runs a sandbox and the model until a final report or a limit."""
+        return self._request('/sandbox/runs', self._with_harness(dict(kind='room', spec=spec), harness_dir))
+    def agent_tests(self): return self._request('/sandbox/rooms')['rooms']
+    def agent_test(self, identifier, after=0, observed=0):
+        """The test's transcript events after `after` and Observer entries after `observed`, and its verdict."""
+        return self._request(f'/sandbox/rooms/{self._id(identifier)}?after={int(after)}&observed={int(observed)}')
+    def message_agent_test(self, identifier, text, name='User'):
+        """Write in a running test's chat. Every agent reads it at its next turn; the Observer records it."""
+        return self._request(f'/sandbox/rooms/{self._id(identifier)}/messages', dict(text=text, name=name))
+    def end_agent_test(self, identifier): return self._request(f'/sandbox/rooms/{self._id(identifier)}/end', {})
+    def stop_agent_test(self, identifier): return self._request(f'/sandbox/runs/{self._id(identifier)}/cancel', {})
+    def export_agent_test(self, identifier, format='md', thinking=True, observer=True):
+        """Write the full log (format='md') or the raw files (format='zip'); returns the file's path."""
+        return self._request(f'/sandbox/rooms/{self._id(identifier)}/export', dict(format=format, thinking=thinking, observer=observer))
+    def agent_prompts(self, harness_dir=None):
+        return self._request('/sandbox/prompts' + (f'?harness_dir={self._id(harness_dir)}' if harness_dir else ''))
+    def agent_prompt(self, identifier): return self._request(f'/sandbox/prompts/{self._id(identifier)}')
+    def save_agent_prompt(self, name, lead, teammate, note='', identifier=None):
+        """A new prompt, or a new version of one. Earlier versions are never changed."""
+        body = dict(name=name, lead=lead, teammate=teammate, note=note)
+        return self._request('/sandbox/prompts', dict(body, id=identifier) if identifier else body)
+    def observer_alerts(self): return self._request('/sandbox/alerts')['alerts']
+    def save_observer_alert(self, alert): return self._request('/sandbox/alerts', alert)
+    def delete_observer_alert(self, identifier): return self._request('/sandbox/alerts/delete', dict(id=identifier))
+    def try_observer_alert(self, alert, test_id): return self._request('/sandbox/alerts/try', dict(alert=alert, room=test_id))
+    def agent_evals(self, include_interactive=False):
+        """Every finished test as a table of scenarios x configs, with safe rates and 95% ranges."""
+        return self._request(f'/sandbox/evals?interactive={int(bool(include_interactive))}')
+    def agent_eval_cell(self, scenario, config, include_interactive=False):
+        return self._request(f'/sandbox/evals/cell?scenario={self._id(scenario)}&config={self._id(config)}&interactive={int(bool(include_interactive))}')
+    def compare_agent_configs(self, a, b, include_interactive=False):
+        """Config B against config A on the scenarios both ran: paired difference and 95% range."""
+        return self._request(f'/sandbox/evals/compare?a={self._id(a)}&b={self._id(b)}&interactive={int(bool(include_interactive))}')
+    def eval_batches(self): return self._request('/sandbox/evals/batches')['batches']
+    def start_eval_batch(self, spec, models, repeats=10, harness_dir=None):
+        """Run one scenario `repeats` times on each model ({'port', 'model'}), alternating between them."""
+        return self._request('/sandbox/evals/batches', self._with_harness(dict(spec=spec, models=models, repeats=repeats), harness_dir))
+    def cancel_eval_batch(self, identifier): return self._request(f'/sandbox/evals/batches/{self._id(identifier)}/cancel', {})
+    def eval_review(self): return self._request('/sandbox/evals/review')
+    def review_agent_test(self, identifier, broke_rule, honest=None, note='', reviewer=''):
+        return self._request(f'/sandbox/evals/review/{self._id(identifier)}', dict(broke_rule=broke_rule, honest=honest, note=note, reviewer=reviewer))
+    def start_report_judge(self, port, model, again=False):
+        """An LLM judge checks each finished test's report against its transcript (never the Observer)."""
+        return self._request('/sandbox/evals/judge', dict(port=port, model=model, again=again))
+
     def wait(self, identifier, timeout=1800, interval=.5):
         deadline=time.monotonic()+timeout
         while time.monotonic()<deadline:

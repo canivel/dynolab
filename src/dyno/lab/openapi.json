@@ -1839,6 +1839,913 @@
           }
         ]
       }
+    },
+    "/sandbox/readiness": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Sandbox isolation checks and the last positive-controls run"
+          }
+        }
+      }
+    },
+    "/sandbox/runs": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Sandbox runs, newest first (tests, controls, single-agent runs)"
+          }
+        }
+      },
+      "post": {
+        "summary": "Start an agent test (kind room), a positive-controls run or single-agent episodes",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "room",
+                    "controls",
+                    "episodes"
+                  ]
+                },
+                "spec": {
+                  "$ref": "#/components/schemas/AgentTestSpec"
+                },
+                "harness_dir": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The run record"
+          }
+        }
+      }
+    },
+    "/sandbox/runs/{id}/cancel": {
+      "post": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stops the run; the harness tears its sandbox down"
+          }
+        }
+      }
+    },
+    "/sandbox/rooms": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Agent tests with verdict, team, models, rule results, prompt version and setup"
+          }
+        }
+      }
+    },
+    "/sandbox/rooms/plan": {
+      "post": {
+        "summary": "How each rule will be watched and what must be fixed. Nothing runs.",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "spec"
+              ],
+              "properties": {
+                "spec": {
+                  "$ref": "#/components/schemas/AgentTestSpec"
+                },
+                "harness_dir": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The normalized spec with errors and warnings"
+          }
+        }
+      }
+    },
+    "/sandbox/rooms/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "Return transcript events with seq greater than this",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "observed",
+            "in": "query",
+            "required": false,
+            "description": "Return Observer entries with seq greater than this",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "run, manifest, events, last, observer, observed and result (the Observer's verdict)"
+          }
+        }
+      }
+    },
+    "/sandbox/rooms/{id}/messages": {
+      "post": {
+        "summary": "Write in a running test's chat; agents read it at their next turn",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "text"
+              ],
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "maxLength": 4000
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 40
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The message"
+          }
+        }
+      }
+    },
+    "/sandbox/rooms/{id}/end": {
+      "post": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "End test: a waiting room closes and is sealed"
+          }
+        }
+      }
+    },
+    "/sandbox/rooms/{id}/export": {
+      "post": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "format"
+              ],
+              "properties": {
+                "format": {
+                  "type": "string",
+                  "enum": [
+                    "md",
+                    "zip"
+                  ]
+                },
+                "thinking": {
+                  "type": "boolean"
+                },
+                "observer": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "path, filename and bytes of the written file"
+          }
+        }
+      }
+    },
+    "/sandbox/prompts": {
+      "get": {
+        "parameters": [
+          {
+            "name": "harness_dir",
+            "in": "query",
+            "required": false,
+            "description": "Harness checkout to read the default prompts from",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default and saved agent prompts with every version, and the placeholders"
+          }
+        }
+      },
+      "post": {
+        "summary": "Save a prompt or a new version; unchanged text adds no version",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "name",
+                "lead",
+                "teammate"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "lead": {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                "teammate": {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                "note": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The prompt with its versions"
+          }
+        }
+      }
+    },
+    "/sandbox/prompts/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One saved prompt with every version"
+          }
+        }
+      }
+    },
+    "/sandbox/alerts": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Observer alerts; enabled ones run in every new test"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create or update an Observer alert",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "name",
+                "kind",
+                "reads"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "phrases",
+                    "llm"
+                  ]
+                },
+                "reads": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "thinking",
+                      "messages",
+                      "commands",
+                      "outputs",
+                      "reports"
+                    ]
+                  }
+                },
+                "phrases": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "regex": {
+                  "type": "boolean"
+                },
+                "question": {
+                  "type": "string"
+                },
+                "model_port": {
+                  "type": "integer",
+                  "nullable": true
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "warning",
+                    "info"
+                  ]
+                },
+                "enabled": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The alert"
+          }
+        }
+      }
+    },
+    "/sandbox/alerts/delete": {
+      "post": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/sandbox/alerts/try": {
+      "post": {
+        "summary": "Where a phrase alert would have fired on a past test",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "alert",
+                "room"
+              ],
+              "properties": {
+                "alert": {
+                  "type": "object"
+                },
+                "room": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "hits"
+          }
+        }
+      }
+    },
+    "/sandbox/evals": {
+      "get": {
+        "parameters": [
+          {
+            "name": "interactive",
+            "in": "query",
+            "required": false,
+            "description": "1 includes tests where someone wrote in the chat",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "scenarios, configs and cells (safe rate with 95% Wilson range per scenario x config)"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/cell": {
+      "get": {
+        "parameters": [
+          {
+            "name": "scenario",
+            "in": "query",
+            "required": true,
+            "description": "Scenario key",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "config",
+            "in": "query",
+            "required": true,
+            "description": "Config key",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "interactive",
+            "in": "query",
+            "required": false,
+            "description": "1 includes tests where someone wrote in the chat",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Metrics (rates, pass^k, per rule, per alert) and runs for one cell"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/compare": {
+      "get": {
+        "parameters": [
+          {
+            "name": "a",
+            "in": "query",
+            "required": true,
+            "description": "Baseline config key",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "b",
+            "in": "query",
+            "required": true,
+            "description": "Compared config key",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "interactive",
+            "in": "query",
+            "required": false,
+            "description": "1 includes tests where someone wrote in the chat",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paired difference in safe rate with a 95% range, per shared scenario and overall"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/batches": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Eval batches"
+          }
+        }
+      },
+      "post": {
+        "summary": "Run one scenario N times on each model, alternating; nobody writes in the chat",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "spec",
+                "models",
+                "repeats"
+              ],
+              "properties": {
+                "spec": {
+                  "$ref": "#/components/schemas/AgentTestSpec"
+                },
+                "models": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 4,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "port": {
+                        "type": "integer"
+                      },
+                      "model": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "repeats": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 50
+                },
+                "harness_dir": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The batch"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/batches/{id}/cancel": {
+      "post": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The batch; the running test is stopped"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/review": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Review queue, reviewed tests, judge status and agreement (Cohen's kappa)"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/review/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A test's facts, the judge's call and its reviews"
+          }
+        }
+      },
+      "post": {
+        "summary": "Record a review of a finished test (reviews are appended)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "broke_rule"
+              ],
+              "properties": {
+                "broke_rule": {
+                  "type": "boolean"
+                },
+                "honest": {
+                  "type": "boolean",
+                  "nullable": true
+                },
+                "note": {
+                  "type": "string"
+                },
+                "reviewer": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The review entry"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/judge": {
+      "post": {
+        "summary": "Judge finished tests' reports with a local model; it never sees the Observer",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "port",
+                "model"
+              ],
+              "properties": {
+                "port": {
+                  "type": "integer"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "again": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Judge progress"
+          }
+        }
+      }
+    },
+    "/sandbox/environments": {
+      "get": {
+        "parameters": [
+          {
+            "name": "harness_dir",
+            "in": "query",
+            "required": false,
+            "description": "Harness checkout; omit for the bundled one",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "templates (with validation errors) and running instances"
+          }
+        }
+      }
+    },
+    "/sandbox/environment-templates": {
+      "post": {
+        "summary": "Save an environment template; the harness checks it first",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "spec"
+              ],
+              "properties": {
+                "spec": {
+                  "type": "object",
+                  "description": "{id, schema_version, meta, images, segments, nodes, gateway, agent}; see the harness docs/environments.md"
+                },
+                "files": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Relative path → text placed under files/"
+                },
+                "replace": {
+                  "type": "boolean"
+                },
+                "harness_dir": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "saved id and the harness's validation"
+          }
+        }
+      }
+    },
+    "/sandbox/environment-templates/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "harness_dir",
+            "in": "query",
+            "required": false,
+            "description": "Harness checkout; omit for the bundled one",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The template, its files and whether it is editable"
+          }
+        }
+      }
+    },
+    "/sandbox/environment-templates/delete": {
+      "post": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "harness_dir": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted (your own templates only)"
+          }
+        }
+      }
+    },
+    "/sandbox/environment-templates/from-compose": {
+      "post": {
+        "summary": "Convert a Docker Compose file into an environment, check it, optionally save it",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "compose"
+              ],
+              "properties": {
+                "compose": {
+                  "type": "string",
+                  "description": "Compose file as YAML or JSON text. Per service, x-dyno sets access (allow, flag, deny, hidden), host, tripwire, severity, role: workstation, preset and preset data"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "save": {
+                  "type": "boolean"
+                },
+                "replace": {
+                  "type": "boolean"
+                },
+                "harness_dir": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "spec, files, warnings, errors, validation and saved (the id, when saved)"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1980,6 +2887,141 @@
           }
         },
         "description": "Local development preview. Maximum 200 requests and 200000 output tokens. All cases in a group must use the same split."
+      },
+      "AgentTestSpec": {
+        "type": "object",
+        "required": [
+          "goal",
+          "rules",
+          "agents"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "environment": {
+            "type": "string",
+            "nullable": true,
+            "description": "Environment template id, or null for a plain machine"
+          },
+          "goal": {
+            "type": "string",
+            "maxLength": 8000
+          },
+          "rules": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "required": [
+                "text"
+              ],
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "watch": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "network",
+                        "secret",
+                        "files",
+                        "privilege",
+                        "report"
+                      ]
+                    },
+                    "hosts": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "agents": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "description": "The agents the test starts with, usually one lead",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "port",
+                "model"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "port": {
+                  "type": "integer",
+                  "minimum": 1024,
+                  "maximum": 65535
+                },
+                "model": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "limits": {
+            "type": "object",
+            "properties": {
+              "max_rounds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50
+              },
+              "max_seconds": {
+                "type": "integer",
+                "minimum": 60,
+                "maximum": 7200
+              },
+              "steps_per_turn": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10
+              },
+              "max_agents": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 12
+              },
+              "follow_up_seconds": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3600
+              }
+            }
+          },
+          "prompt": {
+            "type": "object",
+            "description": "A saved prompt version; omit for the built-in prompt",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer"
+              }
+            }
+          }
+        }
       }
     }
   }

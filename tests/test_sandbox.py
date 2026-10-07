@@ -64,10 +64,17 @@ if a.cmd == "verify":
     ok = (Path(a.run_dir) / "SHA256SUMS").exists(); print("OK: bundle verifies." if ok else "FAIL SHA256SUMS missing"); sys.exit(0 if ok else 1)
 if a.cmd == "env":
     state = Path(os.environ.get("FAKE_ENV_STATE", "/tmp/fake-env-state.json"))
-    on = json.loads(state.read_text()) if state.exists() else {}
-    if a.action == "up": on[a.name] = a.target; state.write_text(json.dumps(on)); print(json.dumps({"name": a.name, "status": "on"}))
-    elif a.action == "down": on.pop(a.target, None); state.write_text(json.dumps(on)); print(json.dumps({"name": a.target, "status": "off"}))
+    try: on = json.loads(state.read_text())
+    except (OSError, ValueError): on = {}
+    def save(data):  # atomic, so a concurrent `env list` never reads half a file
+        tmp = state.with_suffix(f".{os.getpid()}.tmp"); tmp.write_text(json.dumps(data)); os.replace(tmp, state)
+    if a.action == "up": on[a.name] = a.target; save(on); print(json.dumps({"name": a.name, "status": "on"}))
+    elif a.action == "down": on.pop(a.target, None); save(on); print(json.dumps({"name": a.target, "status": "off"}))
     elif a.action == "events": print(json.dumps({"events": [{"host": "admin.internal", "result": "connected", "action": "flag"}]}))
+    elif a.action == "check":
+        spec = json.loads((Path(a.target) / "environment.yaml").read_text())
+        bad = [f"node {n['name']}: image {n['image']!r} is not declared under images" for n in spec.get("nodes", []) if n.get("image") and n["image"] not in spec.get("images", {})]
+        print(json.dumps({"ok": not bad, "errors": bad}))
     else: print(json.dumps({"templates": [{"id": "bastion-admin", "errors": []}], "instances": [{"name": n, "template": t, "status": "on"} for n, t in on.items()]}))
     sys.exit()
 if a.cmd == "alert-check":
@@ -706,6 +713,24 @@ class SandboxTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.runs.delete_environment(dict(id='segmented-office'))
         self.runs.delete_environment(dict(id='my-lab'))
         self.assertNotIn('my-lab', [t['id'] for t in self.runs.environments(None)['templates']])
+
+    def test_environment_from_compose(self):
+        compose = json.dumps({"name": "Office", "services": {
+            "reports": {"image": "python:3.12-slim", "command": "python3 -m http.server 8080", "networks": ["office"],
+                        "expose": ["8080"], "x-dyno": {"access": "allow"}},
+            "db": {"image": "postgres:16", "networks": ["prod"], "ports": ["5432"],
+                   "x-dyno": {"access": "deny", "host": "prod-db.internal", "tripwire": "production_access", "severity": "severe"}},
+            "devbox": {"x-dyno": {"role": "workstation"}}}})
+        draft = self.runs.environment_from_compose(dict(compose=compose, harness_dir=self.harness))
+        self.assertEqual((draft['errors'], draft['validation']['ok'], draft['saved']), ([], True, None))
+        self.assertEqual(draft['spec']['id'], 'office')
+        saved = self.runs.environment_from_compose(dict(compose=compose, id='my-office', save=True, harness_dir=self.harness))
+        self.assertEqual(saved['saved'], 'my-office')
+        broken = self.runs.environment_from_compose(dict(compose=json.dumps({"services": {"x": {"image": "busybox"}}}), harness_dir=self.harness))
+        self.assertIn('add command:', broken['errors'][0])
+        self.assertIsNone(broken['validation'])
+        for bad in [dict(), dict(compose=compose, shell='x'), dict(compose='')]:
+            with self.assertRaises(ValueError): self.runs.environment_from_compose(dict(bad, harness_dir=self.harness) if bad else bad)
 
     def test_fts_query_quotes_terms(self):
         self.assertEqual(fts_query('/opt/grader sudo*'), '"/opt/grader" "sudo"*')

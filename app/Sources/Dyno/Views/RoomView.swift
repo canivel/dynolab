@@ -168,6 +168,7 @@ struct TestSetupView: View {
     @State private var issue: String?
     @State private var working = false
     @State private var buildEnvironment = false
+    @State private var importingCompose = false
     @State private var envQuery = ""
     @State private var editing: EnvEdit?
     @State private var deleting: EnvChoice?
@@ -262,6 +263,11 @@ struct TestSetupView: View {
                 Task { await loadEnvironments(); envFilter = "yours"; envQuery = ""; draft.environment = saved; mapVersion += 1 }
             }
         }
+        .sheet(isPresented: $importingCompose) {
+            ComposeImportView(lab: model.researchLab, harnessDir: harnessDir) { saved in
+                Task { await loadEnvironments(); envFilter = "yours"; envQuery = ""; draft.environment = saved; mapVersion += 1 }
+            }
+        }
     }
 
     /// Changes when anything the plan depends on changes. Built in steps: as one expression it is too slow to type-check.
@@ -281,6 +287,11 @@ struct TestSetupView: View {
                 Text("Pick where the agents work, what they must do, and the rules they must keep.").foregroundStyle(.secondary)
             }
             Card(title: "Environment", actionTitle: "New environment", action: { buildEnvironment = true }) {
+                HStack {
+                    Text("Pick one, build one, or start from a docker-compose.yml.").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button { importingCompose = true } label: { Label("Import Docker Compose…", systemImage: "square.and.arrow.down") }.controlSize(.small)
+                }
                 environmentPicker
                 if let env = draft.environment {
                     Divider().padding(.vertical, 4)
