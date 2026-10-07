@@ -232,6 +232,7 @@ struct TestSetupView: View {
     @State private var buildEnvironment = false
     @State private var importingCompose = false
     @State private var importingTest = false
+    @State private var incomingLink = ""
     @State private var sharingTest = false
     @State private var envQuery = ""
     @State private var editing: EnvEdit?
@@ -327,8 +328,10 @@ struct TestSetupView: View {
                 Task { await loadEnvironments(); envFilter = "yours"; envQuery = ""; draft.environment = saved; mapVersion += 1 }
             }
         }
-        .sheet(isPresented: $importingTest) {
-            TestPackageImportView(lab: model.researchLab, harnessDir: harnessDir) { setup in
+        .onChange(of: model.incomingTestPackage) { _, id in openIncoming(id) }
+        .onAppear { openIncoming(model.incomingTestPackage) }
+        .sheet(isPresented: $importingTest, onDismiss: { incomingLink = "" }) {
+            TestPackageImportView(lab: model.researchLab, harnessDir: harnessDir, initialLink: incomingLink) { setup in
                 var d = RoomDraft(spec: setup)
                 d.agents[0].port = servers.first?.port
                 draft = d
@@ -708,6 +711,14 @@ struct TestSetupView: View {
         }
         .sheet(isPresented: $managingAlerts, onDismiss: { Task { await loadAlerts() } }) { AlertsManagerView(lab: model.researchLab, servers: servers) }
         .task { await loadAlerts() }
+    }
+
+    /// Open in Dyno on a shared test: preview it from Dyno Research.
+    private func openIncoming(_ id: UUID?) {
+        guard let id else { return }
+        model.incomingTestPackage = nil
+        incomingLink = "https://research.dynolab.dev/api/studies/\(id.uuidString.lowercased())/download"
+        importingTest = true
     }
 
     private func loadAlerts() async {

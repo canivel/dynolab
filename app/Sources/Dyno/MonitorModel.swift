@@ -88,6 +88,8 @@ final class MonitorModel {
     /// Set to ask the window to switch tabs; the window clears it once handled.
     /// Chat needs to send you to Run when nothing is loaded.
     var requestedTab: MainWindow.Tab?
+    /// A test package from Dyno Research to preview (dynolab://test/<id>).
+    var incomingTestPackage: UUID?
     var catalogFormat: ModelCatalog.ModelFormat = .mlx {
         didSet { if catalogFormat != oldValue { runSearch(query: searchText) } }
     }
