@@ -36,7 +36,7 @@ struct TestPackageShareView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Share this test", systemImage: "square.and.arrow.up").font(.title2.bold())
-            Text("Saves the whole setup in one file: the environment with its files, the goal, the rules, the lead agent, the prompt, alerts, script and history. It holds no model: whoever imports it picks one on their own Mac. Put the file in a GitHub repository, a gist or any website; others import it from the file or its link.")
+            Text("Saves the whole setup in one file: the environment with its files, the goal, the rules, the lead agent, the prompt, alerts, script and history. It holds no model: whoever imports it picks one on their own Mac. Publish it to Dyno Research and others import it from its link, or send the file itself.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             TextField("Title", text: $title).textFieldStyle(.roundedBorder)
             TextField("What it tests (optional)", text: $summary, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(2...5)
@@ -137,7 +137,7 @@ struct TestPackageImportView: View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Import a test", systemImage: "square.and.arrow.down.on.square").font(.title2.bold())
             HStack {
-                TextField("https:// link to a .dynotest.json (GitHub file links work)", text: $link)
+                TextField("research.dynolab.dev link to a shared test", text: $link)
                     .textFieldStyle(.roundedBorder).onSubmit(load)
                     .onChange(of: link) { _, new in if !new.isEmpty { fileText = nil; fileName = nil; preview = nil } }  // typing a link replaces a file
                 Button("Open file…", action: openFile)
