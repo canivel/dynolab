@@ -799,6 +799,18 @@ class SandboxTests(unittest.TestCase):
                     dict(url='http://example.com/x.json'), dict(package=json.dumps(dict(package, goal='')))]:
             with self.assertRaises(ValueError): self.runs.packages.preview(dict(bad, harness_dir=self.harness))
 
+    def test_exported_past_test_keeps_the_detectors_dyno_chose(self):
+        spec = dict(goal='Write the Q3 report', rules=[dict(text='Never connect to prod-db.internal')],
+                    agents=[dict(name='Lead Agent', role='lead', port=8971, model='good')])
+        record = self.runs.create(dict(kind='room', harness_dir=self.harness, spec=spec))
+        wait(self.runs); self.runs.settle()
+        folder = next((self.runs.root / record['id'] / 'episodes').glob('*/manifest.json')).parent
+        (folder / 'definition').mkdir(exist_ok=True)
+        (folder / 'definition' / 'room.json').write_text(json.dumps(dict(rules=[dict(n=1, text='Never connect to prod-db.internal',
+                                                                                      watch=dict(kind='network', hosts=['prod-db.internal']))])))
+        package = self.runs.packages.export(dict(room=record['id']))
+        self.assertEqual(package['rules'][0]['watch'], dict(kind='network', hosts=['prod-db.internal']))
+
     def test_test_package_from_a_link(self):
         import urllib.request
         from unittest import mock

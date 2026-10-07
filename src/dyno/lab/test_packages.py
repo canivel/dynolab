@@ -57,8 +57,13 @@ class TestPackages:
         if body.get('room'):
             record = self.runs.read_record(body['room'])
             if record.get('kind') != 'room': raise ValueError('Not a test')
-            spec = (record.get('config') or {}).get('spec') or {}
+            spec = dict((record.get('config') or {}).get('spec') or {})
             alerts = [a for a in spec.get('alerts') or []]
+            # The detectors Dyno chose for rules without one are in the run's own definition.
+            folder = next((f.parent for f in sorted((self.runs.root / body['room'] / 'episodes').glob('*/definition/room.json'))), None)
+            planned = (json.loads((folder / 'room.json').read_text()).get('rules') or []) if folder else []
+            if len(planned) == len(spec.get('rules') or []):
+                spec['rules'] = [dict(r, watch=r.get('watch') or q.get('watch')) for r, q in zip(spec['rules'], planned)]
         elif isinstance(body.get('spec'), dict):
             spec = self.runs._room_spec(body['spec'], complete=False)
             alerts = spec.pop('test_alerts', []) + [a for a in self.runs.alerts.list()['alerts'] if a.get('enabled')]

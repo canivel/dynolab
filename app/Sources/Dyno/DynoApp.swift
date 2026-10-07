@@ -75,11 +75,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     nonisolated func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated {
-            guard let url = urls.first, url.scheme == "dynolab", url.host == "study",
+            guard let url = urls.first, url.scheme == "dynolab", ["study", "test"].contains(url.host ?? ""),
                   url.query == nil, url.fragment == nil,
                   let id = UUID(uuidString: String(url.path.dropFirst())) else { return }
-            MonitorModel.shared.researchLab.journal.incomingCommunityStudy = id
-            MonitorModel.shared.requestedTab = .lab
+            if url.host == "test" {
+                // A shared agent test: preview it in Agents → Setup → Import test.
+                UserDefaults.standard.set("Setup", forKey: "agentsWorkspace2")
+                MonitorModel.shared.incomingTestPackage = id
+                MonitorModel.shared.requestedTab = .agents
+            } else {
+                MonitorModel.shared.researchLab.journal.incomingCommunityStudy = id
+                MonitorModel.shared.requestedTab = .lab
+            }
             showMainWindow()
         }
     }

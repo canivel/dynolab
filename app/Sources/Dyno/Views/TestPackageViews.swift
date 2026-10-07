@@ -26,8 +26,12 @@ struct TestPackageShareView: View {
     @AppStorage("reviewerName") private var author = ""
     @State private var title = ""
     @State private var summary = ""
+    @State private var license = "CC-BY-4.0"
     @State private var issue: String?
     @State private var working = false
+    @State private var token = ResearchToken.load() ?? ""
+    @State private var hasToken = ResearchToken.load() != nil
+    @State private var published: URL?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -36,27 +40,71 @@ struct TestPackageShareView: View {
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             TextField("Title", text: $title).textFieldStyle(.roundedBorder)
             TextField("What it tests (optional)", text: $summary, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(2...5)
-            TextField("Author (optional)", text: $author).textFieldStyle(.roundedBorder).frame(width: 260)
+            HStack {
+                TextField("Author (optional)", text: $author).textFieldStyle(.roundedBorder).frame(width: 260)
+                Picker("License", selection: $license) { Text("CC BY 4.0").tag("CC-BY-4.0"); Text("CC0").tag("CC0-1.0") }.frame(width: 200)
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Publish to Dyno Research").font(.headline)
+                Text("Uploads a private draft to research.dynolab.dev with your research token. The page shows the environment as a diagram, the rules, the script, and Open in Dyno. You review it there and choose to publish; the token can't publish by itself.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if hasToken {
+                    HStack {
+                        Label("Research token saved in the Keychain", systemImage: "key.fill").font(.caption).foregroundStyle(DynoBrand.accent)
+                        Button("Forget") { ResearchToken.delete(); hasToken = false; token = "" }.buttonStyle(.link).font(.caption)
+                    }
+                } else {
+                    HStack {
+                        SecureField("Research token (dyr_…, with drafts:write)", text: $token).textFieldStyle(.roundedBorder)
+                        Button("Save") { if ResearchToken.save(token.trimmingCharacters(in: .whitespacesAndNewlines)) { hasToken = true } }.disabled(token.isEmpty)
+                    }
+                    Link("Create a token at research.dynolab.dev/settings/agents ↗", destination: URL(string: "https://research.dynolab.dev/settings/agents")!).font(.caption)
+                }
+                if let published {
+                    Label("Uploaded as a private draft. Review and publish it on the page that just opened.", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(DynoBrand.accent)
+                    Link(published.absoluteString, destination: published).font(.caption)
+                }
+            }
             if let issue { Text(issue).font(.caption).foregroundStyle(.orange) }
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(working ? "Packaging…" : "Save file…", action: share).buttonStyle(.dynoPrimary).disabled(working)
+                Button(working ? "Packaging…" : "Save file…", action: share).disabled(working)
+                Button("Publish to Dyno Research…", action: publish).buttonStyle(.dynoPrimary).disabled(working || !hasToken)
             }
         }
         .padding(20).frame(width: 560).background(DynoBrand.background).dynoTheme()
         .onAppear { if title.isEmpty { title = suggestedTitle.isEmpty ? String((spec["goal"] as? String ?? "").prefix(80)) : suggestedTitle } }
     }
 
-    private func share() {
-        working = true
+    private func makePackage() async throws -> [String: Any] {
         var body: [String: Any] = ["spec": spec, "title": title, "description": summary, "author": author]
         if !harnessDir.isEmpty { body["harness_dir"] = harnessDir }
+        var package = try await lab.request("/sandbox/packages/export", body: body, timeout: 60)
+        package["license"] = license
+        package.removeValue(forKey: "hash")  // the license changed the content; Dyno Research hashes what it stores
+        return package
+    }
+
+    private func share() {
+        working = true
+        Task { @MainActor in
+            defer { working = false }
+            do { if try saveTestPackage(try await makePackage()) != nil { dismiss() } }
+            catch { issue = error.localizedDescription }
+        }
+    }
+
+    private func publish() {
+        guard let token = ResearchToken.load() else { hasToken = false; return }
+        working = true; issue = nil
         Task { @MainActor in
             defer { working = false }
             do {
-                let package = try await lab.request("/sandbox/packages/export", body: body, timeout: 60)
-                if try saveTestPackage(package) != nil { dismiss() }
+                let url = try await ResearchUpload.draft(try await makePackage(), token: token)
+                published = url
+                NSWorkspace.shared.open(url)
             } catch { issue = error.localizedDescription }
         }
     }
@@ -66,6 +114,7 @@ struct TestPackageShareView: View {
 struct TestPackageImportView: View {
     var lab: ResearchLab
     var harnessDir: String
+    var initialLink = ""
     var onImported: ([String: Any]) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var link = ""
@@ -107,6 +156,7 @@ struct TestPackageImportView: View {
             }
         }
         .padding(20).frame(minWidth: 780, idealWidth: 860, minHeight: 560, idealHeight: 680).background(DynoBrand.background).dynoTheme()
+        .onAppear { if !initialLink.isEmpty && link.isEmpty { link = initialLink; load() } }
     }
 
     @ViewBuilder private func summary(_ p: [String: Any]) -> some View {
