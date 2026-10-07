@@ -21,6 +21,7 @@ import re
 import shutil
 import time
 import urllib.request
+from pathlib import Path
 
 from .evals import scenario_of
 
@@ -33,6 +34,40 @@ RULE_KEYS = ('text', 'watch', 'delivery', 'at')
 
 def _canonical(package):
     return json.dumps({k: v for k, v in package.items() if k != 'hash'}, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
+
+
+def ran_environment(episode, env_id):
+    """The environment exactly as a past run used it, from the copy the harness keeps in the episode:
+    (spec, files), or None when the episode kept no copy."""
+    if not re.fullmatch(r'[A-Za-z0-9._-]{1,80}', str(env_id or '')): return None
+    folder = Path(episode) / 'definition' / 'environment' / str(env_id)
+    try: raw = (folder / 'environment.yaml').read_text(errors='replace')
+    except OSError: return None
+    try: spec = json.loads(raw)
+    except ValueError:
+        import yaml
+        try: spec = yaml.safe_load(raw)
+        except yaml.YAMLError: return None
+    if not isinstance(spec, dict): return None
+    files = {}
+    for n in spec.get('nodes') or []:
+        for f in n.get('files') or []:
+            src = str(f.get('source') or '')
+            path = folder / 'files' / src
+            if src and '/' not in src and '..' not in src and path.is_file():
+                files[src] = path.read_text(errors='replace')[:200_000]
+    return spec, files
+
+
+def environment_compose(spec, files):
+    """The environment as a Docker Compose file (Dyno's dialect), or None if it can't be written."""
+    try:
+        from .compose import to_compose
+        # Small files go inside the compose file; bigger ones are referenced as files/<name>, so the
+        # package doesn't carry them twice.
+        return to_compose(spec, files, inline=sum(len(v) for v in files.values()) <= 100_000)
+    except Exception:  # never let the extra file stop a share
+        return None
 
 
 def package_hash(package):
@@ -67,14 +102,18 @@ class TestPackages:
             planned = (json.loads((folder / 'room.json').read_text()).get('rules') or []) if folder else []
             if len(planned) == len(spec.get('rules') or []):
                 spec['rules'] = [dict(r, watch=r.get('watch') or q.get('watch')) for r, q in zip(spec['rules'], planned)]
+            ran = ran_environment(folder.parent, spec.get('environment')) if folder and spec.get('environment') else None
         elif isinstance(body.get('spec'), dict):
+            ran = None
             spec = self.runs._room_spec(body['spec'], complete=False)
             scenario = scenario_of(spec)[0]
             alerts = spec.pop('test_alerts', []) + [a for a in self.runs.alerts.list()['alerts'] if a.get('enabled')]
         else:
             raise ValueError('Send the setup (spec) or a past test (room)')
         env = None
-        if spec.get('environment'):
+        if spec.get('environment') and ran:  # a past test: the environment as it ran, even if edited since
+            env = dict(id=spec['environment'], spec=ran[0], files=ran[1])
+        elif spec.get('environment'):
             detail = self.runs.environment_detail(hd, spec['environment'])
             env = dict(id=spec['environment'], spec=detail['spec'], files={k: v for k, v in detail['files'].items() if v is not None})
         prompt = None
@@ -96,6 +135,9 @@ class TestPackages:
             limits={k: v for k, v in (spec.get('limits') or {}).items() if k in LIMIT_KEYS},
             prompt=prompt, alerts=portable, script=spec.get('script') or [], rules_from=spec.get('rules_from') or '',
             history=spec.get('history') or [], scenario=scenario)
+        if env:  # the same environment as a Docker Compose file, for people who don't use Dyno
+            compose = environment_compose(env['spec'], env['files'])
+            if compose: package['compose'] = compose
         package['hash'] = package_hash(package)
         return package
 

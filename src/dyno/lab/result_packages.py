@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .evals import _load, config_of, scenario_of
-from .test_packages import package_hash
+from .test_packages import environment_compose, package_hash, ran_environment
 
 RUN_FORMAT, EVAL_FORMAT, VERSION = 'dynolab-run', 'dynolab-eval', 1
 LICENSES = ('CC-BY-4.0', 'CC0-1.0')
@@ -21,6 +21,9 @@ MAX_TIMELINE, KEEP_HEAD, KEEP_TAIL = 1500, 300, 1200
 MAX_RUNS = 2000
 _UUID = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
 _OPTIONS = {'title', 'description', 'author', 'license'}
+
+
+MAX_UPLOAD = 950_000  # bytes of JSON; Dyno Research's limit is 1 MB
 
 
 def _jsonl(path):
@@ -132,19 +135,6 @@ def _timeline(events, start, thinking, scrub):
     return out
 
 
-def _ran_environment(folder, env_id):
-    """The environment exactly as this run used it: the copy the harness keeps in the episode."""
-    path = folder / 'definition' / 'environment' / str(env_id) / 'environment.yaml'
-    if not re.fullmatch(r'[A-Za-z0-9._-]{1,80}', str(env_id)) or not path.is_file(): return None
-    raw = path.read_text(errors='replace')
-    try: spec = json.loads(raw)
-    except ValueError:
-        import yaml
-        try: spec = yaml.safe_load(raw)
-        except yaml.YAMLError: return None
-    return spec if isinstance(spec, dict) else None
-
-
 def run_package(runs, body):
     """A `dynolab-run` from a finished room: `{"room": id, "thinking": bool, "title", "description", "author", "license"}`."""
     if not isinstance(body, dict) or set(body) - (_OPTIONS | {'room', 'thinking'}): raise ValueError('Send room, and optionally thinking, title, description, author and license')
@@ -173,10 +163,17 @@ def run_package(runs, body):
 
     env = None
     if spec.get('environment'):
-        env = dict(id=spec['environment'], spec=_ran_environment(folder, spec['environment']))
-        if env['spec'] is None:  # older episodes kept no copy: the environment as it is now
-            try: env['spec'] = runs.environment_detail(record.get('config', {}).get('harness_dir'), spec['environment'])['spec']
+        ran = ran_environment(folder, spec['environment'])
+        if ran is None:  # older episodes kept no copy: the environment as it is now
+            try:
+                detail = runs.environment_detail(record.get('config', {}).get('harness_dir'), spec['environment'])
+                ran = detail['spec'], {k: v for k, v in (detail.get('files') or {}).items() if v is not None}
             except (ValueError, OSError, KeyError): pass
+        env = dict(id=spec['environment'], spec=ran[0] if ran else None)
+        if ran:
+            env['files'] = ran[1]
+            compose = environment_compose(*ran)
+            if compose: env['compose'] = compose
     texts = {i: r.get('text') for i, r in enumerate(spec.get('rules') or [], 1)}
     since = lambda d: dict(messages=d.get('messages'), steps=d.get('steps'), restated=bool(d.get('restated'))) if isinstance(d, dict) else None
     rules = [dict(n=r.get('n'), text=r.get('text') or texts.get(r.get('n')) or '', status=r.get('status'), by=r.get('by') or [],
@@ -216,6 +213,10 @@ def run_package(runs, body):
                    tool_calls=sum(e.get('event') == 'tool_call' for e in events),
                    tokens_in=sum(u.get('prompt_tokens') or 0 for u in usage), tokens_out=sum(u.get('completion_tokens') or 0 for u in usage),
                    agents=len(team), created_agents=sum(1 for a in team.values() if a.get('created_by'))))
+    # Dyno Research takes up to 1 MB: give up the compose file, then the environment's files, before failing.
+    e = package['setup'].get('environment') or {}
+    for key in ('compose', 'files'):
+        if len(json.dumps(package)) > MAX_UPLOAD and key in e: e.pop(key)
     return _finish(package)
 
 
