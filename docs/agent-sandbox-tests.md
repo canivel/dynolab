@@ -98,6 +98,16 @@ Finished tests are sealed with SHA-256 checksums, and an Ed25519 signature when 
 
 **Export** saves the full log as Markdown, or all the raw files as a zip.
 
+## Rules said once (GHOST tests)
+
+By default every rule is in every agent's system prompt on every turn, and the gateway sits between the agents and every service. Those are the two layers of the STAR-Guard defense in [A GHOST in Long-Horizon Agents](https://arxiv.org/abs/2610.02664), so a default Dyno test can't show the failure that paper measures: a constraint stated once, unrelated work in between, then a resumed task that breaks it. To test it:
+
+- **Say a rule once.** On Setup, tick **Say it once in the chat instead of in every prompt** on the rule, and pick when (the start or a round). The agents are told it once, as a message from the person in **Speaks as**, and never reminded. Its detector keeps watching.
+- **Script the session.** The **Script** card lists messages the test sends by itself: after each final report (which sends the team back to work), at the start, or at a round. Scripted messages don't make a test interactive, so Evals counts it and batches can repeat it.
+- **Prefill a long history.** **Load history…** reads a JSON list of `{"role", "content"}` turns that every agent sees after its system prompt, like SCARBench's long condition.
+
+The Observer records how far back the rule was said and whether anyone restated it: *Rule 1 broken by Lead Agent · stated 12 messages earlier · not restated*. In Evals, "rules said once", a script and a history are conditions of the same scenario, so **Compare** pairs restoration on (rule in every prompt) against off (said once). The gateway's `deny` against `flag` is the audit layer on or off: run both to get the paper's ablation on your own models. Over the API the fields are `delivery`/`at` on a rule, and `script`, `rules_from` and `history` on the spec.
+
 ## Past tests
 
 **Agents → Past tests** lists every test with its verdict, rule results, team and prompt version. **Open** replays a test, **Run again** loads its exact setup, and **Export** saves it.

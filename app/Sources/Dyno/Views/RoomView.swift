@@ -5,7 +5,18 @@ import SwiftUI
 // a team size limit. Everything else lives under Advanced.
 
 struct RoomWatch: Codable, Equatable { var kind: String; var hosts: [String]? = nil; var path: String? = nil }
-struct RoomRule: Identifiable, Codable, Equatable { var id = UUID(); var text: String; var watch: RoomWatch? = nil }
+struct RoomRule: Identifiable, Codable, Equatable {
+    var id = UUID(); var text: String; var watch: RoomWatch? = nil
+    /// GHOST tests: "chat_once" says the rule once in the chat instead of in every system prompt.
+    var delivery: String? = nil
+    /// When a rule said once is said: nil at the start, or a round number.
+    var at: Int? = nil
+}
+/// A message the test sends by itself, so a long session runs without anyone at the keyboard.
+struct ScriptLine: Identifiable, Codable, Equatable {
+    var id = UUID(); var after = "submit"; var round = 3; var name = ""; var text = ""
+}
+struct HistoryTurn: Codable, Equatable { var role: String; var content: String }
 /// A saved agent prompt and the version a test runs with.
 struct PromptRef: Codable, Equatable, Hashable { var id: String; var version: Int }
 struct RoomAgent: Identifiable, Codable, Equatable {
@@ -66,11 +77,16 @@ struct RoomDraft: Codable, Equatable {
     var teamLimit: Int { maxAgents ?? 6 }
     /// nil: the built-in default prompt.
     var prompt: PromptRef? = nil
+    // GHOST tests. Optional so drafts saved before them still load.
+    var script: [ScriptLine]? = nil
+    var rulesFrom: String? = nil
+    var history: [HistoryTurn]? = nil
 
     func spec(models: [Int: String]) -> [String: Any] {
         var s: [String: Any] = ["goal": goal, "limits": ["max_rounds": rounds, "max_agents": teamLimit, "follow_up_seconds": 300],
                                 "rules": rules.filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }.map { r -> [String: Any] in
                                     var d: [String: Any] = ["text": r.text]
+                                    if r.delivery == "chat_once" { d["delivery"] = "chat_once"; d["at"] = r.at.map { $0 as Any } ?? "start" }
                                     if let w = r.watch { d["watch"] = ["kind": w.kind, "hosts": w.hosts ?? [], "path": w.path as Any].compactMapValues { $0 is NSNull ? nil : $0 } }
                                     return d
                                 },
@@ -81,6 +97,15 @@ struct RoomDraft: Codable, Equatable {
                                 }]
         if let environment { s["environment"] = environment }
         if let prompt { s["prompt"] = ["id": prompt.id, "version": prompt.version] }
+        let lines = (script ?? []).filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        if !lines.isEmpty {
+            s["script"] = lines.map { l -> [String: Any] in
+                let after = l.after == "round" ? "round:\(l.round)" : l.after
+                return ["after": after, "name": l.name.isEmpty ? (rulesFrom ?? "User") : l.name, "text": l.text]
+            }
+        }
+        if let from = rulesFrom, !from.isEmpty { s["rules_from"] = from }
+        if let history, !history.isEmpty { s["history"] = history.map { ["role": $0.role, "content": $0.content] } }
         return s
     }
 }
@@ -93,8 +118,23 @@ extension RoomDraft {
         goal = spec["goal"] as? String ?? goal
         rules = (spec["rules"] as? [[String: Any]] ?? []).map { r in
             let w = r["watch"] as? [String: Any]
-            return RoomRule(text: r["text"] as? String ?? "", watch: w.map { RoomWatch(kind: $0["kind"] as? String ?? "", hosts: $0["hosts"] as? [String], path: $0["path"] as? String) })
+            var rule = RoomRule(text: r["text"] as? String ?? "", watch: w.map { RoomWatch(kind: $0["kind"] as? String ?? "", hosts: $0["hosts"] as? [String], path: $0["path"] as? String) })
+            if r["delivery"] as? String == "chat_once" { rule.delivery = "chat_once"; rule.at = r["at"] as? Int }
+            return rule
         }
+        rulesFrom = spec["rules_from"] as? String
+        let lines = (spec["script"] as? [[String: Any]] ?? []).map { m -> ScriptLine in
+            var l = ScriptLine(name: m["name"] as? String ?? "", text: m["text"] as? String ?? "")
+            let after = m["after"] as? String ?? "submit"
+            if after.hasPrefix("round:") { l.after = "round"; l.round = Int(after.dropFirst(6)) ?? 3 } else { l.after = after }
+            return l
+        }
+        script = lines.isEmpty ? nil : lines
+        let turns = (spec["history"] as? [[String: Any]] ?? []).compactMap { h -> HistoryTurn? in
+            guard let role = h["role"] as? String, let content = h["content"] as? String else { return nil }
+            return HistoryTurn(role: role, content: content)
+        }
+        history = turns.isEmpty ? nil : turns
         if let lead = (spec["agents"] as? [[String: Any]])?.first {
             let port = (lead["base_url"] as? String).flatMap { URLComponents(string: $0)?.port }
             agents = [RoomAgent(name: lead["name"] as? String ?? "Lead Agent", role: lead["role"] as? String ?? "", port: port)]
@@ -331,7 +371,53 @@ struct TestSetupView: View {
                 ForEach(warnings, id: \.self) { Label($0, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange) }
                 Text("The agents see these rules. They never see what watches them.").font(.caption).foregroundStyle(.secondary)
             }
+            scriptCard
         }
+    }
+
+    /// Messages the test sends by itself (GHOST tests: unrelated requests, then the resumed task).
+    private var scriptCard: some View {
+        Card(title: "Script") {
+            Text("Messages the test sends by itself, so a long session runs unattended. Scripted messages don't make a test interactive, so Evals counts it.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Text("Speaks as").font(.caption)
+                TextField("User", text: Binding(get: { draft.rulesFrom ?? "" }, set: { draft.rulesFrom = $0.isEmpty ? nil : $0 }))
+                    .textFieldStyle(.roundedBorder).frame(width: 160).controlSize(.small)
+                Text("Also says the rules marked “once”.").font(.caption2).foregroundStyle(.secondary)
+            }
+            ForEach(Binding(get: { draft.script ?? [] }, set: { draft.script = $0.isEmpty ? nil : $0 })) { $line in
+                HStack(alignment: .top, spacing: 8) {
+                    Picker("", selection: $line.after) {
+                        Text("After a final report").tag("submit"); Text("At the start").tag("start"); Text("At a round").tag("round")
+                    }.labelsHidden().frame(width: 160).controlSize(.small)
+                    if line.after == "round" { Stepper("\(line.round)", value: $line.round, in: 1...500).frame(width: 70).controlSize(.small) }
+                    TextField("Message", text: $line.text, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(1...3)
+                    Button { draft.script?.removeAll { $0.id == line.id } } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).foregroundStyle(.secondary)
+                }
+            }
+            HStack {
+                Button { draft.script = (draft.script ?? []) + [ScriptLine()] } label: { Label("Add message", systemImage: "plus") }.controlSize(.small)
+                Spacer()
+                Text(historySummary).font(.caption).foregroundStyle(.secondary)
+                Button("Load history…", action: loadHistory).controlSize(.small)
+                    .help("A JSON list of {\"role\": \"user\" | \"assistant\", \"content\": …} turns every agent sees after its system prompt: SCARBench's long condition.")
+                if draft.history != nil { Button("Clear") { draft.history = nil }.controlSize(.small) }
+            }
+        }
+    }
+
+    private var historySummary: String {
+        let n = draft.history?.count ?? 0
+        return n == 0 ? "No prefilled history" : "Prefilled history: \(n) messages"
+    }
+
+    private func loadHistory() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url, let data = try? Data(contentsOf: url) else { return }
+        do { draft.history = try JSONDecoder().decode([HistoryTurn].self, from: data); issue = nil }
+        catch { issue = "History must be a JSON list of {role, content}: \(error.localizedDescription)" }
     }
 
     /// All environments as cards: built-in first, then yours, A to Z. Plain machine counts as built-in.
@@ -459,6 +545,18 @@ struct TestSetupView: View {
                 Button { draft.rules.removeAll { $0.id == rule.wrappedValue.id } } label: { Image(systemName: "xmark") }
                     .buttonStyle(.borderless).foregroundStyle(.secondary).accessibilityLabel("Remove rule \(n)")
             }
+            HStack(spacing: 8) {
+                Toggle("Say it once in the chat instead of in every prompt", isOn: Binding(
+                    get: { rule.wrappedValue.delivery == "chat_once" },
+                    set: { rule.wrappedValue.delivery = $0 ? "chat_once" : nil })).toggleStyle(.checkbox).font(.caption)
+                    .help("For GHOST tests: the agents are told this rule once, then never reminded. Its detector still watches.")
+                if rule.wrappedValue.delivery == "chat_once" {
+                    Picker("", selection: Binding(get: { rule.wrappedValue.at ?? 0 }, set: { rule.wrappedValue.at = $0 == 0 ? nil : $0 })) {
+                        Text("at the start").tag(0)
+                        ForEach(2...10, id: \.self) { Text("at round \($0)").tag($0) }
+                    }.labelsHidden().controlSize(.small).fixedSize()
+                }
+            }.padding(.leading, 22)
             if let kind = rule.wrappedValue.watch?.kind, kind == "secret" || kind == "files" {
                 HStack {
                     Text(kind == "secret" ? "Fake password file at" : "Protect").font(.caption).foregroundStyle(.secondary)
@@ -894,7 +992,7 @@ struct RoomObserverView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         ForEach(chat) { item in ChatRow(item: item, agent: agents[item.agent ?? ""], target: agents[item.target ?? ""], showThinking: showThinking).id(item.id) }
-                        if running { HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Agents are working…").font(.caption).foregroundStyle(.secondary) } }
+                        if running { HStack(spacing: 6) { DynoSpinner(size: 12); Text("Agents are working…").font(.caption).foregroundStyle(.secondary) } }
                         if chat.isEmpty && !running { Text("Nothing was said in this room.").foregroundStyle(.secondary) }
                     }.padding(14)
                 }.onChange(of: chat.count) { _, _ in if let id = chat.last?.id { withAnimation { proxy.scrollTo(id, anchor: .bottom) } } }
@@ -934,7 +1032,8 @@ struct RoomObserverView: View {
                 default: out.append(ChatItem(id: seq * 10, agent: agent, ts: ts, kind: .command, text: tool))
                 }
             case "user_message":
-                out.append(ChatItem(id: seq * 10, agent: nil, ts: ts, kind: .user, text: e["content"] as? String ?? "", detail: e["name"] as? String))
+                let who = (e["name"] as? String ?? "You") + (e["scripted"] as? Bool == true ? " · script" : "")
+                out.append(ChatItem(id: seq * 10, agent: nil, ts: ts, kind: .user, text: e["content"] as? String ?? "", detail: who))
             case "waiting":
                 let minutes = max(1, (e["seconds"] as? Int ?? 300) / 60)
                 out.append(ChatItem(id: seq * 10, agent: nil, ts: ts, kind: .system, text: "The room stays open for \(minutes) minute\(minutes == 1 ? "" : "s"). Write below to send the team back to work, or End test."))
@@ -1014,7 +1113,7 @@ struct RoomObserverView: View {
                     scoreboard
                     alertSummary
                     if agents.count > 1 { teamTree }
-                    if observed.allSatisfy({ ["agent_created", "intervention", "sandbox_restart"].contains($0["kind"] as? String ?? "") }) { Text(running ? "Watching. Nothing flagged yet." : "Nothing was flagged.").font(.callout).foregroundStyle(.secondary) }
+                    if observed.allSatisfy({ ["agent_created", "intervention", "sandbox_restart", "scripted_message"].contains($0["kind"] as? String ?? "") }) { Text(running ? "Watching. Nothing flagged yet." : "Nothing was flagged.").font(.callout).foregroundStyle(.secondary) }
                     ForEach(observed.indices, id: \.self) { i in ObserverCard(event: observed[i], agents: agents) }
                     if let result { outcome(result) }
                 }.padding(14)
@@ -1193,7 +1292,7 @@ private struct ChatRow: View {
                 .opacity(item.kind == .thinking ? 0.4 : 1)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
-                    Text(item.kind == .user ? "\(item.detail ?? "You") · you" : item.kind == .report ? "Final report · \(name)" : item.kind == .blocked ? "Blocked · \(name)" : item.kind == .created ? "New agent · \(name)" : item.agent == nil ? "Room" : name)
+                    Text(item.kind == .user ? (item.detail ?? "You") : item.kind == .report ? "Final report · \(name)" : item.kind == .blocked ? "Blocked · \(name)" : item.kind == .created ? "New agent · \(name)" : item.agent == nil ? "Room" : name)
                         .font(.caption.weight(.semibold)).foregroundStyle(item.kind == .user ? Color.blue : item.agent == nil ? .secondary : color)
                     if let role = agent?["role"] as? String, !role.isEmpty, item.kind == .message { Text(role).font(.caption).foregroundStyle(.secondary) }
                     Text("· \(roomTime(item.ts))").font(.caption).foregroundStyle(.secondary)
@@ -1291,6 +1390,15 @@ private struct ObserverCard: View {
                 Text(event["what"] as? String ?? "").font(.callout).fixedSize(horizontal: false, vertical: true)
             }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+        case "scripted_message":
+            VStack(alignment: .leading, spacing: 3) {
+                Text("✎ \(roomTime(event["ts"])) · scripted message").font(.caption.bold()).foregroundStyle(.blue.opacity(0.8))
+                Text(event["what"] as? String ?? "").font(.callout).lineLimit(5)
+                if !((event["rules"] as? [Int]) ?? []).isEmpty {
+                    Text("States rule \(((event["rules"] as? [Int]) ?? []).map(String.init).joined(separator: ", ")) once. Distances are counted from here.").font(.caption2).foregroundStyle(.secondary)
+                }
+            }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10).stroke(Color.blue.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
         case "intervention":
             VStack(alignment: .leading, spacing: 3) {
                 Text("✎ \(roomTime(event["ts"])) · you wrote in the chat").font(.caption.bold()).foregroundStyle(.blue)
