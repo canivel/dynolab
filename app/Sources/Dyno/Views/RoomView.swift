@@ -1309,7 +1309,7 @@ struct RoomObserverView: View {
             ForEach((r["rules"] as? [[String: Any]] ?? []).filter { !($0["delegated_by"] as? [String] ?? []).isEmpty }.indices, id: \.self) { i in
                 let rule = (r["rules"] as? [[String: Any]] ?? []).filter { !($0["delegated_by"] as? [String] ?? []).isEmpty }[i]
                 Text("Rule \(rule["n"] as? Int ?? 0) \(rule["status"] as? String ?? ""): " + (rule["attribution"] as? [String] ?? []).joined(separator: " · "))
-                    .font(.caption).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    .font(.caption).fixedSize(horizontal: false, vertical: true).copyable((rule["attribution"] as? [String] ?? []).joined(separator: " · "))
             }
             if let other = r["other_events"] as? Int, other > 0 { Text("\(other) other event\(other == 1 ? "" : "s") outside your rules.").font(.caption).foregroundStyle(.secondary) }
             if let sealed = run["sealed"] as? [String: Any] {
@@ -1375,28 +1375,28 @@ private struct ChatRow: View {
                 switch item.kind {
                 case .command:
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(item.text).font(.callout.monospaced()).textSelection(.enabled)
+                        Text(item.text).font(.callout.monospaced()).copyable(item.text)
                         if let d = item.detail {
                             let lines = d.split(separator: "\n", omittingEmptySubsequences: false)
                             Text(expanded ? d : lines.prefix(3).joined(separator: "\n") + (lines.count > 3 ? "\n…" : ""))
-                                .font(.caption.monospaced()).foregroundStyle(item.exit == 0 || item.exit == nil ? Color.secondary : Color.orange).textSelection(.enabled)
+                                .font(.caption.monospaced()).foregroundStyle(item.exit == 0 || item.exit == nil ? Color.secondary : Color.orange).copyable(d)
                             if lines.count > 3 { Button(expanded ? "Less" : "All \(lines.count) lines") { expanded.toggle() }.buttonStyle(.link).font(.caption) }
                         }
                     }.padding(8).frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 8).fill(DynoBrand.background)).overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
                 case .thinking:
-                    Text(item.text).font(.caption).foregroundStyle(.secondary).italic().lineLimit(expanded ? nil : 4).textSelection(.enabled)
+                    Text(item.text).font(.caption).foregroundStyle(.secondary).italic().lineLimit(expanded ? nil : 4).copyable(item.text)
                         .onTapGesture { expanded.toggle() }
                 case .report, .blocked:
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("“\(item.text)”").font(.body).textSelection(.enabled)
+                        Text("“\(item.text)”").font(.body).copyable(item.text)
                         if let d = item.detail, !d.isEmpty, d != "-" { Text(d).font(.caption).foregroundStyle(.secondary) }
                     }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 8).fill(color.opacity(0.1))).overlay(RoundedRectangle(cornerRadius: 8).stroke(color.opacity(0.5)))
                 case .system:
                     Text(item.text).font(.callout).foregroundStyle(.secondary)
                 case .user:
-                    Text(item.text).font(.body).textSelection(.enabled).padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(item.text).font(.body).copyable(item.text).padding(10).frame(maxWidth: .infinity, alignment: .leading)
                         .background(RoundedRectangle(cornerRadius: 8).fill(Color.blue.opacity(0.10))).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.blue.opacity(0.4)))
                 case .created:
                     let newColor = RoomPalette.color(target?["color"] as? String)
@@ -1405,11 +1405,11 @@ private struct ChatRow: View {
                             Image(systemName: "person.badge.plus").foregroundStyle(newColor)
                             Text(item.text).font(.callout.weight(.semibold)).foregroundStyle(newColor)
                         }
-                        if let d = item.detail, !d.isEmpty { Text("“\(d)”").font(.callout).textSelection(.enabled) }
+                        if let d = item.detail, !d.isEmpty { Text("“\(d)”").font(.callout).copyable(d) }
                     }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 8).fill(newColor.opacity(0.08))).overlay(RoundedRectangle(cornerRadius: 8).stroke(newColor.opacity(0.45)))
                 case .message:
-                    Text(item.text).font(.body).textSelection(.enabled)
+                    Text(item.text).font(.body).copyable(item.text)
                 }
             }
         }
@@ -1437,7 +1437,7 @@ private struct ObserverCard: View {
                     Spacer()
                     badge(event["agent_id"], event["agent"])
                 }
-                Text("“\(event["quote"] as? String ?? "")”").font(.callout).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                Text("“\(event["quote"] as? String ?? "")”").font(.callout).fixedSize(horizontal: false, vertical: true).copyable(event["quote"] as? String ?? "")
                 Text("in its \(source) · \(event["how"] as? String == "model" ? "a model check" : "phrase match")"
                      + ((event["confidence"] as? Double).map { " · \(Int($0 * 100))% sure" } ?? ""))
                     .font(.caption2).foregroundStyle(.secondary)
@@ -1489,7 +1489,7 @@ private struct ObserverCard: View {
                     badge(event["agent_id"], event["agent"]); Image(systemName: "arrow.right").font(.caption2).foregroundStyle(.secondary); badge(event["target_id"], event["target"])
                 }
                 Text(event["what"] as? String ?? "").font(.callout)
-                Text("Instructions: “\(event["instructions"] as? String ?? "")”").font(.caption).foregroundStyle(.secondary).lineLimit(4).textSelection(.enabled)
+                Text("Instructions: “\(event["instructions"] as? String ?? "")”").font(.caption).foregroundStyle(.secondary).lineLimit(4).copyable(event["instructions"] as? String ?? "")
             }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 10).fill(Color.orange.opacity(0.08)))
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange.opacity(0.5)))
@@ -1507,7 +1507,7 @@ private struct ObserverCard: View {
                 if event["created_by"] as? String != nil, let chain = event["attribution"] as? String {
                     Text(chain).font(.caption).foregroundStyle(RoomPalette.observer.opacity(0.9)).fixedSize(horizontal: false, vertical: true)
                 }
-                Text(event["source"] as? String ?? "").font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(3).textSelection(.enabled)
+                Text(event["source"] as? String ?? "").font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(3).copyable(event["source"] as? String ?? "")
             }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 10).fill(RoomPalette.observerFill.opacity(broken ? 0.3 : 0.15)))
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(RoomPalette.observerFill.opacity(0.8)))
