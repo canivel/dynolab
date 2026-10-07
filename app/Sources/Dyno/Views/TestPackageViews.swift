@@ -4,11 +4,15 @@ import UniformTypeIdentifiers
 
 /// Writes a test package to a file the person chooses. Returns the file, or nil when they cancel.
 @MainActor
-func saveTestPackage(_ package: [String: Any]) throws -> URL? {
+func saveTestPackage(_ package: [String: Any]) throws -> URL? { try saveSharedPackage(package, suffix: ".dynotest.json") }
+
+/// Writes a package (a test, a run result or an Evals table) to a file the person chooses.
+@MainActor
+func saveSharedPackage(_ package: [String: Any], suffix: String) throws -> URL? {
     let data = try JSONSerialization.data(withJSONObject: package, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     let panel = NSSavePanel()
     let title = (package["title"] as? String ?? "test").lowercased().map { $0.isLetter || $0.isNumber ? String($0) : "-" }.joined()
-    panel.nameFieldStringValue = String(title.prefix(50)).trimmingCharacters(in: CharacterSet(charactersIn: "-")) + ".dynotest.json"
+    panel.nameFieldStringValue = String(title.prefix(50)).trimmingCharacters(in: CharacterSet(charactersIn: "-")) + suffix
     panel.canCreateDirectories = true
     guard panel.runModal() == .OK, let url = panel.url else { return nil }
     try data.write(to: url)
@@ -29,7 +33,6 @@ struct TestPackageShareView: View {
     @State private var license = "CC-BY-4.0"
     @State private var issue: String?
     @State private var working = false
-    @State private var token = ResearchToken.load() ?? ""
     @State private var hasToken = ResearchToken.load() != nil
     @State private var published: URL?
 
@@ -40,32 +43,8 @@ struct TestPackageShareView: View {
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             TextField("Title", text: $title).textFieldStyle(.roundedBorder)
             TextField("What it tests (optional)", text: $summary, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(2...5)
-            HStack {
-                TextField("Author (optional)", text: $author).textFieldStyle(.roundedBorder).frame(width: 260)
-                Picker("License", selection: $license) { Text("CC BY 4.0").tag("CC-BY-4.0"); Text("CC0").tag("CC0-1.0") }.frame(width: 200)
-            }
-            Divider()
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Publish to Dyno Research").font(.headline)
-                Text("Uploads a private draft to research.dynolab.dev with your research token. The page shows the environment as a diagram, the rules, the script, and Open in Dyno. You review it there and choose to publish; the token can't publish by itself.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                if hasToken {
-                    HStack {
-                        Label("Research token saved in the Keychain", systemImage: "key.fill").font(.caption).foregroundStyle(DynoBrand.accent)
-                        Button("Forget") { ResearchToken.delete(); hasToken = false; token = "" }.buttonStyle(.link).font(.caption)
-                    }
-                } else {
-                    HStack {
-                        SecureField("Research token (dyr_…, with drafts:write)", text: $token).textFieldStyle(.roundedBorder)
-                        Button("Save") { if ResearchToken.save(token.trimmingCharacters(in: .whitespacesAndNewlines)) { hasToken = true } }.disabled(token.isEmpty)
-                    }
-                    Link("Create a token at research.dynolab.dev/settings/agents ↗", destination: URL(string: "https://research.dynolab.dev/settings/agents")!).font(.caption)
-                }
-                if let published {
-                    Label("Uploaded as a private draft. Review and publish it on the page that just opened.", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(DynoBrand.accent)
-                    Link(published.absoluteString, destination: published).font(.caption)
-                }
-            }
+            ResearchSharingFields(author: $author, license: $license, hasToken: $hasToken, published: published,
+                                  pageShows: "The page shows the environment as a diagram, the rules, the script, and Open in Dyno.")
             if let issue { Text(issue).font(.caption).foregroundStyle(.orange) }
             HStack {
                 Spacer()

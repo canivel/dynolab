@@ -77,6 +77,11 @@ struct RoomExample {
     }
 }
 
+struct ResearchSource: Codable, Equatable {
+    var research: String
+    var scenario: String?
+}
+
 struct RoomDraft: Codable, Equatable {
     var environment: String? = "segmented-office-open"
     var goal = RoomExample.forEnvironment("segmented-office-open").goal
@@ -96,6 +101,8 @@ struct RoomDraft: Codable, Equatable {
     // From a shared test package.
     var testAlerts: [TestAlert]? = nil
     var title: String? = nil
+    /// The Dyno Research test this setup was imported from (and its scenario then), so results link back to it.
+    var source: ResearchSource? = nil
 
     func spec(models: [Int: String]) -> [String: Any] {
         var s: [String: Any] = ["goal": goal, "limits": ["max_rounds": rounds, "max_agents": teamLimit, "follow_up_seconds": 300],
@@ -123,6 +130,7 @@ struct RoomDraft: Codable, Equatable {
         if let history, !history.isEmpty { s["history"] = history.map { ["role": $0.role, "content": $0.content] } }
         if let testAlerts, !testAlerts.isEmpty { s["alerts"] = testAlerts.map(\.json) }
         if let title, !title.isEmpty { s["title"] = title }
+        if let source { s["source"] = ["research": source.research, "scenario": source.scenario].compactMapValues { $0 } }
         return s
     }
 }
@@ -157,6 +165,9 @@ extension RoomDraft {
             testAlerts = alerts
         }
         if let t = spec["title"] as? String, !t.isEmpty { title = t }
+        if let src = spec["source"] as? [String: Any], let research = src["research"] as? String {
+            source = ResearchSource(research: research, scenario: src["scenario"] as? String)
+        }
         if let lead = (spec["agents"] as? [[String: Any]])?.first {
             let port = (lead["base_url"] as? String).flatMap { URLComponents(string: $0)?.port }
             agents = [RoomAgent(name: lead["name"] as? String ?? "Lead Agent", role: lead["role"] as? String ?? "", port: port)]
@@ -1005,7 +1016,7 @@ struct RoomObserverView: View {
                         .help("Stop the agents now. The room isn't sealed.")
                 }
             }
-            if let id = roomID, !events.isEmpty { RoomExportMenu(lab: lab, roomID: id) }
+            if let id = roomID, !events.isEmpty { RoomExportMenu(lab: lab, roomID: id, title: run["title"] as? String ?? "") }
             if let spec = (run["config"] as? [String: Any])?["spec"] as? [String: Any] {
                 Button("Run again") {
                     if let data = try? JSONEncoder().encode(RoomDraft(spec: spec)) { storedDraft = String(decoding: data, as: UTF8.self) }
@@ -1670,7 +1681,7 @@ struct PastTestsView: View {
             }.frame(width: 170, alignment: .leading)
             VStack(spacing: 6) {
                 Button("Open") { onOpen(id) }.buttonStyle(.dynoPrimary).controlSize(.small)
-                RoomExportMenu(lab: lab, roomID: id).controlSize(.small)
+                RoomExportMenu(lab: lab, roomID: id, title: r["title"] as? String ?? "").controlSize(.small)
                 if let spec = r["spec"] as? [String: Any] {
                     Button("Run again") {
                         if let data = try? JSONEncoder().encode(RoomDraft(spec: spec)) { storedDraft = String(decoding: data, as: UTF8.self) }
@@ -1688,7 +1699,9 @@ struct PastTestsView: View {
 struct RoomExportMenu: View {
     var lab: ResearchLab
     var roomID: String
+    var title = ""
     @State private var working = false
+    @State private var sharingResult = false
     @State private var issue: String?
 
     var body: some View {
@@ -1699,8 +1712,10 @@ struct RoomExportMenu: View {
             Divider()
             Button("All raw files (.zip)") { run(["format": "zip"]) }
             Button("Test package to share (.dynotest.json)") { sharePackage() }
+            Button("Share result… (.dynorun.json or Dyno Research)") { sharingResult = true }
         }
         .fixedSize().disabled(working)
+        .sheet(isPresented: $sharingResult) { ResultShareView(lab: lab, result: .run(room: roomID), suggestedTitle: title) }
         .help(issue ?? "The full log has every turn: what each agent was sent, its thinking, every command and output, and the Observer. The zip has the room's raw files and the full log.")
     }
 

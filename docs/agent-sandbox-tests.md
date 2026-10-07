@@ -119,9 +119,18 @@ A whole setup fits in one JSON file, a **test package** (`.dynotest.json`). It h
 
 It holds no model: whoever imports it picks a model running on their Mac (`lead.model_hint` names what the author used). It's readable and editable by hand, so it diffs well in Git.
 
-- **Share:** **Setup → Share…** for the current setup, or **Share** on a row in **Past tests**. Put the file anywhere: a GitHub repository, a gist, a website.
+- **Share:** **Setup → Share…** for the current setup, or **Share** on a row in **Past tests**. Save the file, or **Publish to Dyno Research**: it uploads a private draft with your research token (made at research.dynolab.dev → Agent access, kept in the Keychain) and opens it for you to review and publish.
 - **Import:** **Setup → Import test…**, from a file or a research.dynolab.dev link (other links are refused; open those packages as a file). **Share… → Publish to Dyno Research** uploads a private draft you review and publish on the site. The preview shows what will be saved and everything the test will run (the image and command of each service) before anything happens. Identical environments and prompts already on your Mac are reused. A different environment with the same id is saved under a new id, so yours is never overwritten. Importing runs nothing; the Setup screen fills in, ready to run or to change.
 - **API, SDK and MCP:** `POST /lab/v1/sandbox/packages/export`, `/preview` and `/import`; `Lab.export_test_package`, `preview_test_package` and `import_test_package`; and the MCP tools with the same names.
+
+## Share results
+
+A finished test or an Evals table can be shared next to the test it ran:
+
+- **One test:** **Past tests → Share result…** or the Room's **Export → Result to share**. The package (`.dynorun.json`, format `dynolab-run`) holds the setup, the model and limits, the team, a timeline of every step (clipped), the Observer's events and its verdict. The agents' thinking is left out unless you tick **Include thinking**. The honeypot's fake secrets are replaced with `[secret]`.
+- **Evals:** **Evals → Share…** for one batch or the whole table (`.dynoeval.json`, format `dynolab-eval`): scenarios, configs, each cell's rates with 95% intervals, and every run's outcome.
+- Both can be saved as a file or published to Dyno Research the same way as a test. Results carry the test's `scenario` key, and the `test_id` when the setup was imported from research.dynolab.dev and not changed since, so the site lists them on the test's page.
+- **API, SDK and MCP:** `POST /lab/v1/sandbox/packages/export-run` and `/export-eval`; `Lab.export_run_result` and `export_eval_result`; the MCP tools with the same names.
 
 ## Past tests
 

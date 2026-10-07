@@ -114,6 +114,8 @@ The same service runs [agent sandbox tests](agent-sandbox-tests.md). A lead agen
 | POST | `/sandbox/environment-templates` | 201 | Save a template `{spec, files, replace}`; the harness checks it first |
 | POST | `/sandbox/environment-templates/from-compose` | 200 | Convert a Docker Compose file `{compose, id, title, save}`: `spec`, `warnings`, `errors`, `validation`, `saved`. See [Build an environment from Docker Compose](agent-sandbox-tests.md#build-an-environment-from-docker-compose) |
 | POST | `/sandbox/packages/export` | 200 | A shareable test package from `{"spec"}` or `{"room"}` (no model or port). See [Share a test](agent-sandbox-tests.md#share-a-test) |
+| POST | `/sandbox/packages/export-run` | 200 | A shareable result of one finished test `{"room", "thinking", "title", "license"}` (format `dynolab-run`). See [Share results](agent-sandbox-tests.md#share-results) |
+| POST | `/sandbox/packages/export-eval` | 200 | A shareable Evals table `{"batch"}` or everything finished (format `dynolab-eval`) |
 | POST | `/sandbox/packages/preview` | 200 | What importing `{"package"}` or `{"url"}` would create and run; nothing is saved |
 | POST | `/sandbox/packages/import` | 201 | Save the package's environment and prompt and return a `setup` to start from |
 | POST | `/sandbox/rooms/plan` | 200 | Check a test setup: how each rule will be watched, and `errors` to fix. Nothing runs |

@@ -26,6 +26,9 @@ struct EvalsView: View {
     @State private var chosenPorts: Set<Int> = []
     @State private var repeats = 10
     @State private var starting = false
+    @State private var sharing: SharedEvals?
+
+    struct SharedEvals: Identifiable { var batch: String?; var title: String; var id: String { batch ?? "all" } }
 
     enum Pane: String, CaseIterable, Identifiable {
         case overview = "Overview", batch = "Run a batch", compare = "Compare", review = "Review", controls = "Controls", advanced = "Advanced"
@@ -63,6 +66,7 @@ struct EvalsView: View {
             }
         }
         .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .sheet(item: $sharing) { item in ResultShareView(lab: lab, result: .eval(batch: item.batch), suggestedTitle: item.title) }
         .task(id: "\(workspace)\(includeInteractive)") {
             await lab.start()
             while !Task.isCancelled {
@@ -83,6 +87,10 @@ struct EvalsView: View {
                         .help("Those aren't comparable with tests nobody touched, so they're left out by default.")
                 }
                 Spacer()
+                if !scenarios.isEmpty {
+                    Button("Share…") { sharing = SharedEvals(batch: nil, title: "") }
+                        .help("Share this table on Dyno Research or as a .dynoeval.json file.")
+                }
                 Button("Run a batch…") { workspace = Pane.batch.rawValue }.buttonStyle(.dynoPrimary)
             }
             if scenarios.isEmpty {
@@ -214,6 +222,9 @@ struct EvalsView: View {
                             Spacer()
                             DynoProgressBar(value: Double(done), total: Double(max(total, 1)))
                             Text("\(done)/\(total)").font(.caption.monospacedDigit())
+                            if b["status"] as? String == "completed", let id = b["id"] as? String, done > 0 {
+                                Button("Share…") { sharing = SharedEvals(batch: id, title: b["title"] as? String ?? "") }
+                            }
                             if b["status"] as? String == "running", let id = b["id"] as? String {
                                 Button("Cancel") { Task { _ = try? await lab.request("/sandbox/evals/batches/\(id)/cancel", body: [:], timeout: 60); await refresh() } }
                             }

@@ -123,11 +123,22 @@ class Lab:
         spec or a past test. Save it as JSON (for example name.dynotest.json); it holds no model or port."""
         body = {k: v for k, v in dict(spec=spec, room=test_id, title=title, description=description, author=author).items() if v}
         return self._request('/sandbox/packages/export', body)
+    def export_run_result(self, test_id, thinking=False, title=None, description=None, author=None, license=None):
+        """A shareable result of one finished test (format dynolab-run): setup, config, team, timeline, Observer events
+        and result. Thinking is left out unless thinking=True. Save it as name.dynorun.json or upload it to Dyno Research."""
+        body = {k: v for k, v in dict(room=test_id, title=title, description=description, author=author, license=license).items() if v}
+        if thinking: body['thinking'] = True
+        return self._request('/sandbox/packages/export-run', body)
+    def export_eval_result(self, batch=None, title=None, description=None, author=None, license=None):
+        """A shareable Evals table (format dynolab-eval): scenarios, configs, cells with rates and 95% intervals, and
+        each run's outcome. One batch, or every finished run nobody wrote in."""
+        return self._request('/sandbox/packages/export-eval', {k: v for k, v in dict(batch=batch, title=title, description=description,
+                                                                                     author=author, license=license).items() if v})
     def preview_test_package(self, package=None, url=None):
         """What importing would create (environment, prompt) and what the test would run. Nothing is saved."""
         return self._request('/sandbox/packages/preview', {k: v for k, v in dict(package=package, url=url).items() if v is not None})
     def import_test_package(self, package=None, url=None):
-        """Import a package (an object, JSON text, or an https URL): saves the environment and prompt, reusing identical
+        """Import a package (an object, JSON text, or a research.dynolab.dev link): saves the environment and prompt, reusing identical
         ones, and returns `setup` to start from. Choose a running model for setup['agents'][0] before starting."""
         return self._request('/sandbox/packages/import', {k: v for k, v in dict(package=package, url=url).items() if v is not None})
 
