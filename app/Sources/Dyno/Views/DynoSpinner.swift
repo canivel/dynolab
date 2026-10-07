@@ -35,3 +35,17 @@ struct DynoProgressBar: View {
         .accessibilityElement().accessibilityLabel("Progress").accessibilityValue("\(Int(fraction * 100)) percent")
     }
 }
+
+/// Copy for text in live lists. `.textSelection(.enabled)` is also an AppKit view on the Mac (SwiftUI's
+/// SelectionOverlay): in a lazy stack that keeps growing during a run it sent layout into a loop and froze
+/// the Room (and could freeze a streaming chat). Right-click → Copy copies the whole text instead.
+extension View {
+    func copyable(_ text: @autoclosure @escaping () -> String) -> some View {
+        contextMenu {
+            Button("Copy") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text(), forType: .string)
+            }
+        }
+    }
+}

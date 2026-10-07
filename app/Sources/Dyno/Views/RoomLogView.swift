@@ -253,7 +253,7 @@ private struct LogBox: View {
             }
             Text(expanded || lines.count <= 40 ? text : lines.prefix(40).joined(separator: "\n") + "\n…")
                 .font(.system(size: 11, design: .monospaced)).foregroundStyle(warn ? Color.orange : .primary)
-                .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                .copyable(text).frame(maxWidth: .infinity, alignment: .leading)
         }.padding(6).background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.04)))
     }
 }
@@ -262,7 +262,7 @@ private struct LogText: View {
     var text: String
     var mono: Bool
     var body: some View {
-        Text(text).font(mono ? .system(size: 11.5, design: .monospaced) : .callout).textSelection(.enabled)
+        Text(text).font(mono ? .system(size: 11.5, design: .monospaced) : .callout).copyable(text)
             .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -310,7 +310,7 @@ private struct LiveCard: View {
                         Text(e.kind == "thinking" ? "Thinking" : e.kind == "tool" ? "Tool call" : e.kind == "output" ? "Answer" : e.kind.capitalized)
                             .font(.caption2.weight(.semibold)).foregroundStyle(e.kind == "thinking" ? Color.purple : .secondary)
                         Text(e.text).font(.system(size: 11.5, design: e.kind == "tool" ? .monospaced : .default))
-                            .foregroundStyle(e.kind == "thinking" ? Color.secondary : .primary).textSelection(.enabled)
+                            .foregroundStyle(e.kind == "thinking" ? Color.secondary : .primary).copyable(e.text)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
