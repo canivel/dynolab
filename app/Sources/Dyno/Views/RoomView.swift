@@ -703,8 +703,10 @@ struct TestSetupView: View {
     }
 
     private var alertsCard: some View {
-        Card(title: "Observer alerts") {
-            ForEach(draft.testAlerts ?? []) { a in
+        // A test shared from this Mac carries its author's alerts: one already on here runs once, so it shows once.
+        let ownIDs = Set(alertList.filter { $0["enabled"] as? Bool == true }.compactMap { $0["id"] as? String })
+        return Card(title: "Observer alerts") {
+            ForEach((draft.testAlerts ?? []).filter { !ownIDs.contains($0.id) }) { a in
                 HStack {
                     Label(a.name, systemImage: "shippingbox").font(.caption)
                     Spacer()
