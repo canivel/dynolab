@@ -87,6 +87,7 @@ def _finish(package):
 # --- one run ----------------------------------------------------------------------------------------
 
 def _timeline(events, start, thinking, scrub):
+    clip = lambda text, n: _clip(scrub(str(text or '')), n)  # secrets out before cutting: a cut secret would no longer match
     out = []
     t = lambda e: round(max(0.0, (_epoch(e.get('ts')) or start) - start), 1) if start is not None else 0.0
     for e in events:
@@ -94,43 +95,54 @@ def _timeline(events, start, thinking, scrub):
         item = None
         if kind == 'model':
             if thinking and (e.get('reasoning') or '').strip():
-                out.append(dict(t=t(e), agent=aid, kind='thought', text=scrub(_clip(e['reasoning'], 2000))))
-            if (e.get('content') or '').strip(): item = dict(kind='said', text=_clip(e['content'], 2000))
+                out.append(dict(t=t(e), agent=aid, kind='thought', text=clip(e['reasoning'], 2000)))
+            if (e.get('content') or '').strip(): item = dict(kind='said', text=clip(e['content'], 2000))
         elif kind == 'tool_call':
             args, tool = e.get('args') or {}, e.get('tool')
-            if tool == 'bash': item = dict(kind='ran', text='', detail=_clip(args.get('command'), 400))
-            elif tool == 'write_file': item = dict(kind='wrote', text=_clip(args.get('content'), 2000), detail=_clip(args.get('path'), 400))
-            elif tool == 'read_file': item = dict(kind='read', text='', detail=_clip(args.get('path'), 400))
+            if tool == 'bash': item = dict(kind='ran', text='', detail=clip(args.get('command'), 400))
+            elif tool == 'write_file': item = dict(kind='wrote', text=clip(args.get('content'), 2000), detail=clip(args.get('path'), 400))
+            elif tool == 'read_file': item = dict(kind='read', text='', detail=clip(args.get('path'), 400))
             elif tool == 'create_agent':
-                item = dict(kind='created', text=_clip(args.get('instructions'), 2000),
-                            detail=_clip(f"{args.get('name')}" + (f" ({args['role']})" if args.get('role') else ''), 400))
+                item = dict(kind='created', text=clip(args.get('instructions'), 2000),
+                            detail=clip(f"{args.get('name')}" + (f" ({args['role']})" if args.get('role') else ''), 400))
             elif tool in ('submit', 'report_blocked'):
                 item = dict(kind='submit' if tool == 'submit' else 'blocked',
-                            text=_clip('\n'.join(f'{k}: {v}' for k, v in args.items()), 2000))
-            else: item = dict(kind='tool', text=_clip(json.dumps(args), 2000), detail=_clip(tool, 400))
+                            text=clip('\n'.join(f'{k}: {v}' for k, v in args.items()), 2000))
+            else: item = dict(kind='tool', text=clip(json.dumps(args), 2000), detail=clip(tool, 400))
         elif kind == 'tool_result' and e.get('tool') not in ('create_agent', 'submit', 'report_blocked'):
             # The output belongs to the call before it.
             prev = next((x for x in reversed(out) if x.get('agent') == aid and x['kind'] in ('ran', 'wrote', 'read', 'tool')), None)
             if prev is not None and 'output' not in prev:
                 body = (e.get('stdout') or '') + (('\n[stderr]\n' + e['stderr']) if e.get('stderr') else '')
-                prev['output'] = scrub(_clip(body, 1200))
+                prev['output'] = clip(body, 1200)
                 if e.get('exit_code') is not None: prev['exit'] = e['exit_code']
             continue
         elif kind == 'user_message':
-            item = dict(kind='script' if e.get('scripted') else 'user', text=_clip(e.get('content'), 2000), detail=_clip(e.get('name'), 400))
+            item = dict(kind='script' if e.get('scripted') else 'user', text=clip(e.get('content'), 2000), detail=clip(e.get('name'), 400))
         elif kind in ('sandbox_crashed', 'sandbox_restarted', 'error', 'end', 'waiting', 'resumed'):
             text = {'sandbox_crashed': "The agents' machine crashed.", 'sandbox_restarted': 'The machine restarted from a clean state.',
-                    'error': f"Harness error: {_clip(e.get('error'), 300)}", 'end': f"The room ended: {e.get('end_reason')}",
+                    'error': f"Harness error: {clip(e.get('error'), 300)}", 'end': f"The room ended: {e.get('end_reason')}",
                     'waiting': 'The room waits for the next message.', 'resumed': 'Back to work.'}[kind]
             item = dict(kind='system', text=text)
         if item is not None:
             item = dict(t=t(e), agent=aid if aid not in (None, 'room', 'user') else None, **item)
-            for k in ('text', 'detail'):
-                if k in item: item[k] = scrub(item[k])
             out.append(item)
     if len(out) > MAX_TIMELINE:
         out = out[:KEEP_HEAD] + [dict(t=out[KEEP_HEAD]['t'], agent=None, kind='system', text=f'{len(out) - KEEP_HEAD - KEEP_TAIL} steps left out')] + out[-KEEP_TAIL:]
     return out
+
+
+def _ran_environment(folder, env_id):
+    """The environment exactly as this run used it: the copy the harness keeps in the episode."""
+    path = folder / 'definition' / 'environment' / str(env_id) / 'environment.yaml'
+    if not re.fullmatch(r'[A-Za-z0-9._-]{1,80}', str(env_id)) or not path.is_file(): return None
+    raw = path.read_text(errors='replace')
+    try: spec = json.loads(raw)
+    except ValueError:
+        import yaml
+        try: spec = yaml.safe_load(raw)
+        except yaml.YAMLError: return None
+    return spec if isinstance(spec, dict) else None
 
 
 def run_package(runs, body):
@@ -149,19 +161,22 @@ def run_package(runs, body):
     def scrub(text):
         for s in secrets: text = text.replace(s, '[secret]')
         return text
+    clip = lambda text, n: _clip(scrub(str(text or '')), n)  # secrets out before cutting
 
     start = _epoch(manifest.get('started_at')) or next((_epoch(e.get('ts')) for e in events if e.get('ts')), None)
     end = next((_epoch(e.get('ts')) for e in reversed(events) if e.get('ts')), None)
-    team = {a['id']: dict(id=a['id'], name=a.get('name'), role=a.get('role') or '', created_by=a.get('created_by'))
+    team = {a['id']: dict(id=_clip(a['id'], 60), name=_clip(a.get('name') or a['id'], 60), role=_clip(a.get('role'), 200), created_by=a.get('created_by'))
             for a in manifest.get('agents') or [] if a.get('id')}
     for e in events:
         if e.get('event') == 'agent_created' and e.get('agent_id') not in team:
-            team[e['agent_id']] = dict(id=e['agent_id'], name=e.get('name'), role=e.get('agent_role') or '', created_by=e.get('created_by'))
+            team[e['agent_id']] = dict(id=_clip(e['agent_id'], 60), name=_clip(e.get('name') or e['agent_id'], 60), role=_clip(e.get('agent_role'), 200), created_by=e.get('created_by'))
 
     env = None
     if spec.get('environment'):
-        try: env = dict(id=spec['environment'], spec=runs.environment_detail(record.get('config', {}).get('harness_dir'), spec['environment'])['spec'])
-        except (ValueError, OSError, KeyError): env = dict(id=spec['environment'], spec=None)
+        env = dict(id=spec['environment'], spec=_ran_environment(folder, spec['environment']))
+        if env['spec'] is None:  # older episodes kept no copy: the environment as it is now
+            try: env['spec'] = runs.environment_detail(record.get('config', {}).get('harness_dir'), spec['environment'])['spec']
+            except (ValueError, OSError, KeyError): pass
     texts = {i: r.get('text') for i, r in enumerate(spec.get('rules') or [], 1)}
     since = lambda d: dict(messages=d.get('messages'), steps=d.get('steps'), restated=bool(d.get('restated'))) if isinstance(d, dict) else None
     rules = [dict(n=r.get('n'), text=r.get('text') or texts.get(r.get('n')) or '', status=r.get('status'), by=r.get('by') or [],
@@ -173,8 +188,8 @@ def run_package(runs, body):
         if k not in ('rule_event', 'alert'): k = 'note'
         item = dict(t=round(max(0.0, (_epoch(o.get('ts')) or start or 0) - (start or 0)), 1),
                     agent=o.get('agent_id') if o.get('agent_id') not in ('user', 'room') else None, kind=k,
-                    rule=o.get('rule'), status=o.get('status'), what=scrub(_clip(o.get('what'), 600)), source=scrub(_clip(o.get('source'), 300)),
-                    attribution=_clip(o.get('attribution'), 300) or None, since_stated=since(o.get('since_stated')))
+                    rule=o.get('rule'), status=o.get('status'), what=clip(o.get('what'), 600), source=clip(o.get('source'), 400),
+                    attribution=clip(o.get('attribution'), 300) or None, since_stated=since(o.get('since_stated')))
         if k == 'alert': item['name'] = o.get('name')
         observer.append(item)
     usage = [e.get('usage') or {} for e in events if e.get('event') == 'model']
@@ -189,10 +204,10 @@ def run_package(runs, body):
         started=_iso(manifest.get('started_at')) or _iso(record.get('created')),
         duration_s=round(end - start, 1) if start is not None and end is not None else None,
         result=dict(outcome=facts['outcome'], safe=facts['safe'], verdict=result.get('verdict') or '', end_reason=result.get('end_reason'),
-                    report=scrub(_clip(result.get('report'), 4000)) if result.get('report') else None, interactive=bool(result.get('interactive')),
+                    report=clip(result.get('report'), 4000) if result.get('report') else None, interactive=bool(result.get('interactive')),
                     sandbox_restarts=result.get('sandbox_restarts') or 0, rules=rules,
-                    alerts=[dict(name=a.get('name'), fired=a.get('fired') or 0, agents=a.get('agents') or []) for a in result.get('alerts') or []],
-                    contradictions=[dict(claim=scrub(_clip(c.get('claim'), 600)), what=scrub(_clip((c.get('event') or {}).get('what'), 600)))
+                    alerts=[dict(name=_clip(a.get('name'), 120), fired=a.get('fired') or 0, agents=[_clip(x, 60) for x in (a.get('agents') or [])][:30]) for a in result.get('alerts') or []],
+                    contradictions=[dict(claim=clip(c.get('claim'), 600), what=clip((c.get('event') or {}).get('what'), 600))
                                     for c in (result.get('report_check') or {}).get('contradictions') or []]),
         team=list(team.values()),
         timeline=_timeline(events, start, bool(body.get('thinking')), scrub),

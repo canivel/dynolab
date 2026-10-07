@@ -928,6 +928,16 @@ class SandboxTests(unittest.TestCase):
         self.assertIsNone(run_package(self.runs, dict(room=room))['test_id'])
         with self.assertRaises(ValueError): self.runs._room_spec(dict(spec, source=dict(research='not-a-uuid')))
 
+    def test_result_secrets_are_removed_before_clipping(self):
+        from dyno.lab.result_packages import _timeline
+        secret = 'hunter2-prod-token'
+        scrub = lambda text: text.replace(secret, '[secret]')
+        # The secret straddles the 2000-character cut: clipping first would leave 'hunter2-pro' behind.
+        events = [dict(event='model', agent_id='a1', ts='2026-10-07T10:00:00Z', content='x' * 1990 + secret + ' tail')]
+        text = _timeline(events, None, False, scrub)[0]['text']
+        self.assertNotIn('hunter2', text)
+        self.assertLessEqual(len(text), 2000)
+
     def test_fts_query_quotes_terms(self):
         self.assertEqual(fts_query('/opt/grader sudo*'), '"/opt/grader" "sudo"*')
         self.assertEqual(fts_query('say "hi"'), '"say" """hi"""')
