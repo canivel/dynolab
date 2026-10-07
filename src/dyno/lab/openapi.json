@@ -2945,6 +2945,30 @@
                       "type": "string"
                     }
                   }
+                },
+                "delivery": {
+                  "type": "string",
+                  "enum": [
+                    "system",
+                    "chat_once"
+                  ],
+                  "description": "chat_once: said once in the chat instead of in every system prompt (GHOST tests)"
+                },
+                "at": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "start"
+                      ]
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 500
+                    }
+                  ],
+                  "description": "When a chat_once rule is said"
                 }
               }
             }
@@ -3018,6 +3042,59 @@
               },
               "version": {
                 "type": "integer"
+              }
+            }
+          },
+          "script": {
+            "type": "array",
+            "maxItems": 200,
+            "description": "Messages the test sends by itself; not interventions",
+            "items": {
+              "type": "object",
+              "required": [
+                "text"
+              ],
+              "properties": {
+                "after": {
+                  "type": "string",
+                  "description": "submit (after a final report), start, or round:N"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string",
+                  "maxLength": 4000
+                }
+              }
+            }
+          },
+          "rules_from": {
+            "type": "string",
+            "description": "Who says chat_once rules (default User)"
+          },
+          "history": {
+            "type": "array",
+            "maxItems": 400,
+            "description": "Prefilled turns after the system prompt",
+            "items": {
+              "type": "object",
+              "required": [
+                "role",
+                "content"
+              ],
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "assistant"
+                  ]
+                },
+                "content": {
+                  "type": "string",
+                  "maxLength": 8000
+                }
               }
             }
           }

@@ -341,7 +341,8 @@ class SandboxRuns:
 
     def _room_spec(self, spec, complete=True):
         """The spec the harness reads. Agents reach their models only through Dyno's loopback endpoints."""
-        if not isinstance(spec, dict) or set(spec) - {'title', 'environment', 'goal', 'rules', 'agents', 'limits', 'prompt'}:
+        if not isinstance(spec, dict) or set(spec) - {'title', 'environment', 'goal', 'rules', 'agents', 'limits', 'prompt',
+                                                      'script', 'rules_from', 'history'}:
             raise ValueError('Unsupported room spec')
         out = dict(title=str(spec.get('title') or '')[:120], goal=str(spec.get('goal') or '')[:8000], rules=[], agents=[])
         prompts, out['prompt_ref'] = self.prompts.resolve(spec.get('prompt'))
@@ -352,7 +353,7 @@ class SandboxRuns:
         rules = spec.get('rules') or []
         if not isinstance(rules, list) or len(rules) > 20: raise ValueError('Rules must be a list of at most 20')
         for r in rules:
-            if not isinstance(r, dict) or set(r) - {'text', 'watch'}: raise ValueError('Each rule needs text')
+            if not isinstance(r, dict) or set(r) - {'text', 'watch', 'delivery', 'at'}: raise ValueError('Each rule needs text')
             rule = dict(text=str(r.get('text') or '')[:500])
             w = r.get('watch')
             if w:
@@ -365,6 +366,13 @@ class SandboxRuns:
                 if path is not None and (not isinstance(path, str) or len(path) > 300 or '..' in path or '\x00' in path):
                     raise ValueError('Path is not valid')
                 rule['watch'] = {k: v for k, v in dict(kind=w['kind'], hosts=hosts or None, path=path).items() if v}
+            # GHOST tests: a rule said once in the chat instead of in every system prompt.
+            if r.get('delivery') not in (None, 'system', 'chat_once'): raise ValueError('A rule is delivered system or chat_once')
+            if r.get('delivery') == 'chat_once':
+                rule['delivery'] = 'chat_once'
+                at = r.get('at', 'start')
+                if not (at == 'start' or (type(at) is int and 1 <= at <= 500)): raise ValueError('A rule said once is said at start or at a round (1–500)')
+                rule['at'] = at
             out['rules'].append(rule)
         agents = spec.get('agents') or []
         if not isinstance(agents, list) or len(agents) > 6: raise ValueError('Add at most six agents')
@@ -376,6 +384,23 @@ class SandboxRuns:
                 text(a.get('model'), 'model', 2048)
                 agent.update(base_url=f"http://127.0.0.1:{a['port']}/v1", model=a['model'])
             out['agents'].append(agent)
+        script = spec.get('script') or []
+        if not isinstance(script, list) or len(script) > 200: raise ValueError('A script has at most 200 messages')
+        for m in script:
+            if not isinstance(m, dict) or set(m) - {'after', 'name', 'text'} or not isinstance(m.get('text'), str) or not m['text'].strip() or len(m['text']) > 4000:
+                raise ValueError('Each script message has text (1–4,000 characters), and optionally after and name')
+            after = m.get('after', 'submit')
+            if not (after in ('start', 'submit') or (isinstance(after, str) and re.fullmatch(r'round:([1-9]\d{0,2})', after))):
+                raise ValueError('A script message is sent after start, submit or round:N')
+        if script: out['script'] = [dict(after=m.get('after', 'submit'), name=str(m.get('name') or 'User')[:40], text=m['text']) for m in script]
+        if spec.get('rules_from'): out['rules_from'] = str(spec['rules_from'])[:40]
+        history = spec.get('history') or []
+        if not isinstance(history, list) or len(history) > 400: raise ValueError('history has at most 400 messages')
+        for h in history:
+            if not isinstance(h, dict) or set(h) - {'role', 'content'} or h.get('role') not in ('user', 'assistant') \
+                    or not isinstance(h.get('content'), str) or not h['content'].strip() or len(h['content']) > 8000:
+                raise ValueError('Each history message has a role (user or assistant) and 1–8,000 characters of content')
+        if history: out['history'] = [dict(role=h['role'], content=h['content']) for h in history]
         limits = spec.get('limits') or {}
         if not isinstance(limits, dict) or set(limits) - {'max_rounds', 'max_seconds', 'steps_per_turn', 'max_agents', 'follow_up_seconds'}: raise ValueError('Unknown limits')
         if 'follow_up_seconds' in limits and (type(limits['follow_up_seconds']) is not int or not 0 <= limits['follow_up_seconds'] <= 3600): raise ValueError('follow_up_seconds must be 0–3600')

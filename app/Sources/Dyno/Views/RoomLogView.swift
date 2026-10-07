@@ -53,7 +53,8 @@ struct RoomFullLog: View {
             case "agent_created":
                 out.append(.note(id: seq * 100, ts: ts, text: "\(agents[e["created_by"] as? String ?? ""]?["name"] as? String ?? "An agent") created \(e["name"] as? String ?? "an agent"): system prompt", agent: agent, detail: e["system_prompt"] as? String))
             case "user_message":
-                flush(); out.append(.note(id: seq * 100, ts: ts, text: "\(e["name"] as? String ?? "You") wrote: \(e["content"] as? String ?? "")", agent: nil, detail: nil))
+                let who = (e["name"] as? String ?? "You") + (e["scripted"] as? Bool == true ? " (script)" : "")
+                flush(); out.append(.note(id: seq * 100, ts: ts, text: "\(who) wrote: \(e["content"] as? String ?? "")", agent: nil, detail: nil))
             case "waiting": flush(); out.append(.note(id: seq * 100, ts: ts, text: "Final report in. The room waits for a follow-up.", agent: nil, detail: nil))
             case "resumed": out.append(.note(id: seq * 100, ts: ts, text: "Back to work.", agent: nil, detail: nil))
             case "sandbox_crashed": out.append(.note(id: seq * 100, ts: ts, text: "The agents' machine crashed.", agent: nil, detail: e["stderr"] as? String))
@@ -199,7 +200,7 @@ private struct CallView: View {
                     let code = r["exit_code"] as? Int
                     Text([code.map { "exit \($0)" }, (r["duration_s"] as? Double).map { String(format: "%.1fs", $0) }].compactMap { $0 }.joined(separator: " · "))
                         .font(.caption2.monospacedDigit()).foregroundStyle(code == nil || code == 0 ? Color.secondary : .orange)
-                } else if !["submit", "report_blocked"].contains(call.tool) { ProgressView().controlSize(.mini) }
+                } else if !["submit", "report_blocked"].contains(call.tool) { DynoSpinner(size: 9) }
             }.foregroundStyle(.secondary)
             LogText(text: input, mono: true)
             if let extra = extraInput { LogBox(text: extra, label: "content") }
@@ -295,7 +296,7 @@ private struct LiveCard: View {
         let color = RoomPalette.color(agent?["color"] as? String)
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
+                DynoSpinner(size: 12)
                 Text("\(agent?["name"] as? String ?? "An agent") is working").font(.callout.weight(.semibold)).foregroundStyle(color)
                 if let t = trace {
                     Text(String(format: "· %.0fs · %d tokens so far", Date().timeIntervalSince1970 - t.started, t.outputTokens)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)

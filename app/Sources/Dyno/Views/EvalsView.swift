@@ -212,7 +212,7 @@ struct EvalsView: View {
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            ProgressView(value: Double(done), total: Double(max(total, 1))).frame(width: 140)
+                            DynoProgressBar(value: Double(done), total: Double(max(total, 1)))
                             Text("\(done)/\(total)").font(.caption.monospacedDigit())
                             if b["status"] as? String == "running", let id = b["id"] as? String {
                                 Button("Cancel") { Task { _ = try? await lab.request("/sandbox/evals/batches/\(id)/cancel", body: [:], timeout: 60); await refresh() } }

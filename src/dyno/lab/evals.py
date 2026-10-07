@@ -66,9 +66,18 @@ def config_of(spec):
     # The prompt is part of who is tested; rooms from before prompts were saved used the default.
     ref = spec.get('prompt_ref') or {}
     if ref.get('hash'): body['prompt'] = ref['hash']
+    # GHOST tests: how the rules reach the agents, the script and the prefilled history are conditions of the
+    # same scenario, so they belong to the config (Compare then pairs "said once" against "in every prompt").
+    once = [i for i, r in enumerate(spec.get('rules') or [], 1) if r.get('delivery') == 'chat_once']
+    if once: body['rules_once'] = once
+    if spec.get('script'): body['script'] = _hash(spec['script'])
+    if spec.get('history'): body['history'] = _hash(spec['history'])
     short = str(body['model'] or '?').split('/')[-1]
     label = f"{short} · team ≤{body['max_agents']} · {body['max_rounds']} turns"
     if ref.get('hash'): label += f" · {ref.get('name')} v{ref.get('version')}"
+    if once: label += ' · rules said once'
+    if spec.get('script'): label += f" · script {len(spec['script'])}"
+    if spec.get('history'): label += f" · history {len(spec['history'])}"
     return _hash(body), dict(body, label=label, prompt_name=ref.get('name') or 'Default', prompt_version=ref.get('version') or 1)
 
 

@@ -26,7 +26,7 @@ struct EnvironmentMapView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if !loaded {
-                HStack { ProgressView().controlSize(.small); Text(issue ?? "Loading the architecture…").font(.caption).foregroundStyle(issue == nil ? Color.secondary : Color.orange) }
+                HStack { DynoSpinner(size: 12); Text(issue ?? "Loading the architecture…").font(.caption).foregroundStyle(issue == nil ? Color.secondary : Color.orange) }
             } else {
                 ScrollView(.horizontal) { chart.padding(12) }
                     .frame(maxWidth: .infinity, alignment: .leading)
