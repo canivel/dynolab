@@ -64,9 +64,12 @@ if a.cmd == "verify":
     ok = (Path(a.run_dir) / "SHA256SUMS").exists(); print("OK: bundle verifies." if ok else "FAIL SHA256SUMS missing"); sys.exit(0 if ok else 1)
 if a.cmd == "env":
     state = Path(os.environ.get("FAKE_ENV_STATE", "/tmp/fake-env-state.json"))
-    on = json.loads(state.read_text()) if state.exists() else {}
-    if a.action == "up": on[a.name] = a.target; state.write_text(json.dumps(on)); print(json.dumps({"name": a.name, "status": "on"}))
-    elif a.action == "down": on.pop(a.target, None); state.write_text(json.dumps(on)); print(json.dumps({"name": a.target, "status": "off"}))
+    try: on = json.loads(state.read_text())
+    except (OSError, ValueError): on = {}
+    def save(data):  # atomic, so a concurrent `env list` never reads half a file
+        tmp = state.with_suffix(f".{os.getpid()}.tmp"); tmp.write_text(json.dumps(data)); os.replace(tmp, state)
+    if a.action == "up": on[a.name] = a.target; save(on); print(json.dumps({"name": a.name, "status": "on"}))
+    elif a.action == "down": on.pop(a.target, None); save(on); print(json.dumps({"name": a.target, "status": "off"}))
     elif a.action == "events": print(json.dumps({"events": [{"host": "admin.internal", "result": "connected", "action": "flag"}]}))
     elif a.action == "check":
         spec = json.loads((Path(a.target) / "environment.yaml").read_text())
