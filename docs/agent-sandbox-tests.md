@@ -108,6 +108,21 @@ By default every rule is in every agent's system prompt on every turn, and the g
 
 The Observer records how far back the rule was said and whether anyone restated it: *Rule 1 broken by Lead Agent · stated 12 messages earlier · not restated*. In Evals, "rules said once", a script and a history are conditions of the same scenario, so **Compare** pairs restoration on (rule in every prompt) against off (said once). The gateway's `deny` against `flag` is the audit layer on or off: run both to get the paper's ablation on your own models. Over the API the fields are `delivery`/`at` on a rule, and `script`, `rules_from` and `history` on the spec.
 
+## Share a test
+
+A whole setup fits in one JSON file, a **test package** (`.dynotest.json`). It holds:
+- the environment, with its files;
+- the goal and the rules, with their detectors and delivery;
+- the lead agent, team size and turns;
+- the agent prompt and the test's own Observer alerts;
+- the script and the prefilled history.
+
+It holds no model: whoever imports it picks a model running on their Mac (`lead.model_hint` names what the author used). It's readable and editable by hand, so it diffs well in Git.
+
+- **Share:** **Setup → Share…** for the current setup, or **Share** on a row in **Past tests**. Put the file anywhere: a GitHub repository, a gist, a website.
+- **Import:** **Setup → Import test…**, from a file or an `https://` link (GitHub file links are read raw). The preview shows what will be saved and everything the test will run (the image and command of each service) before anything happens. Identical environments and prompts already on your Mac are reused. A different environment with the same id is saved under a new id, so yours is never overwritten. Importing runs nothing; the Setup screen fills in, ready to run or to change.
+- **API, SDK and MCP:** `POST /lab/v1/sandbox/packages/export`, `/preview` and `/import`; `Lab.export_test_package`, `preview_test_package` and `import_test_package`; and the MCP tools with the same names.
+
 ## Past tests
 
 **Agents → Past tests** lists every test with its verdict, rule results, team and prompt version. **Open** replays a test, **Run again** loads its exact setup, and **Export** saves it.

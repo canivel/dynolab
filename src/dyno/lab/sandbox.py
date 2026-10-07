@@ -249,6 +249,8 @@ class SandboxRuns:
         self.prompts = PromptLibrary(self)
         from .room_alerts import AlertLibrary
         self.alerts = AlertLibrary(self)
+        from .test_packages import TestPackages
+        self.packages = TestPackages(self)
 
     def _write(self, record):
         path = self.root / record['id'] / 'run.json'
@@ -342,7 +344,7 @@ class SandboxRuns:
     def _room_spec(self, spec, complete=True):
         """The spec the harness reads. Agents reach their models only through Dyno's loopback endpoints."""
         if not isinstance(spec, dict) or set(spec) - {'title', 'environment', 'goal', 'rules', 'agents', 'limits', 'prompt',
-                                                      'script', 'rules_from', 'history'}:
+                                                      'script', 'rules_from', 'history', 'alerts'}:
             raise ValueError('Unsupported room spec')
         out = dict(title=str(spec.get('title') or '')[:120], goal=str(spec.get('goal') or '')[:8000], rules=[], agents=[])
         prompts, out['prompt_ref'] = self.prompts.resolve(spec.get('prompt'))
@@ -401,6 +403,9 @@ class SandboxRuns:
                     or not isinstance(h.get('content'), str) or not h['content'].strip() or len(h['content']) > 8000:
                 raise ValueError('Each history message has a role (user or assistant) and 1–8,000 characters of content')
         if history: out['history'] = [dict(role=h['role'], content=h['content']) for h in history]
+        test_alerts = spec.get('alerts') or []  # the test's own alerts (from a shared test), next to the library's
+        if not isinstance(test_alerts, list) or len(test_alerts) > 30: raise ValueError('A test has at most 30 alerts of its own')
+        if test_alerts: out['test_alerts'] = [dict(self.alerts.normalize(a), enabled=True) for a in test_alerts]
         limits = spec.get('limits') or {}
         if not isinstance(limits, dict) or set(limits) - {'max_rounds', 'max_seconds', 'steps_per_turn', 'max_agents', 'follow_up_seconds'}: raise ValueError('Unknown limits')
         if 'follow_up_seconds' in limits and (type(limits['follow_up_seconds']) is not int or not 0 <= limits['follow_up_seconds'] <= 3600): raise ValueError('follow_up_seconds must be 0–3600')
@@ -427,7 +432,7 @@ class SandboxRuns:
         if set(config) - {'kind', 'harness_dir', 'spec', 'batch'}: raise ValueError('A room takes harness_dir and spec')
         if config.get('batch') is not None and not KEY.match(str(config['batch'])): raise ValueError('Unknown batch')
         spec = self._room_spec(config.get('spec'))
-        spec['alerts'] = self.alerts.for_room(spec)  # the room keeps the alerts it ran with
+        spec['alerts'] = self.alerts.for_room(spec, spec.pop('test_alerts', []))  # the room keeps the alerts it ran with
         h = self.harness(config.get('harness_dir'))
         title = spec['title'] or (spec['goal'].strip().splitlines() or ['Room'])[0][:60]
         return self._launch(dict(kind='room', title=title, config=dict(config, spec=spec)), h,
@@ -822,6 +827,11 @@ class SandboxRuns:
             return dict(saved=env_id, validation=result)
         finally:
             shutil.rmtree(check_root, ignore_errors=True)
+
+    @staticmethod
+    def _env_home(h):
+        home = Path(h.paths().get('user_environments') or h.home / 'environments'); home.mkdir(parents=True, exist_ok=True)
+        return home
 
     def _stage_environment(self, h, home, env_id, spec, files):
         """Write a template to a scratch folder and let the harness check it."""

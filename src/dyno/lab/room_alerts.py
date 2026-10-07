@@ -54,6 +54,19 @@ class AlertLibrary:
         tmp = self.path.with_suffix('.tmp'); tmp.write_text(json.dumps(dict(alerts=alerts), indent=2)); tmp.replace(self.path)
 
     def save(self, body):
+        alert = self.normalize(body)
+        with self.runs.lock:
+            alerts = self.list()['alerts']
+            old = next((a for a in alerts if a['id'] == alert['id']), None)
+            if old: alert['builtin'] = old.get('builtin', False); alerts[alerts.index(old)] = alert
+            else: alerts.append(alert)
+            alert['updated'] = time.time()
+            self._store(alerts)
+        return alert
+
+    @staticmethod
+    def normalize(body):
+        """A checked, cleaned alert. Raises ValueError with what to fix."""
         allowed = {'id', 'name', 'description', 'severity', 'enabled', 'kind', 'reads', 'phrases', 'regex', 'question', 'model_port', 'model',
                    'builtin', 'updated'}  # the last two come back from a listing and are ignored
         if not isinstance(body, dict) or set(body) - allowed: raise ValueError('Unsupported alert fields')
@@ -81,13 +94,6 @@ class AlertLibrary:
             port = body.get('model_port')
             if port is not None and (type(port) is not int or not 1024 <= port <= 65535): raise ValueError('Choose a running model')
             alert.update(question=question, model_port=port, model=str(body.get('model') or '')[:2048] or None)
-        with self.runs.lock:
-            alerts = self.list()['alerts']
-            old = next((a for a in alerts if a['id'] == alert['id']), None)
-            if old: alert['builtin'] = old.get('builtin', False); alerts[alerts.index(old)] = alert
-            else: alerts.append(alert)
-            alert['updated'] = time.time()
-            self._store(alerts)
         return alert
 
     def delete(self, body):
@@ -97,12 +103,14 @@ class AlertLibrary:
             self._store(alerts)
         return dict(deleted=body['id'])
 
-    def for_room(self, spec):
-        """The enabled alerts in the harness's format. A model check without its own model uses the lead's."""
+    def for_room(self, spec, extra=()):
+        """The enabled alerts, plus the test's own (`extra`), in the harness's format. A model check without
+        its own model uses the lead's."""
         lead = (spec.get('agents') or [{}])[0]
-        out = []
-        for a in self.list()['alerts']:
-            if not a.get('enabled'): continue
+        out, seen = [], set()
+        for a in [*self.list()['alerts'], *extra]:
+            if not a.get('enabled') or a['id'] in seen: continue
+            seen.add(a['id'])
             item = {k: a[k] for k in ('id', 'name', 'severity', 'kind', 'reads') if k in a}
             if a['kind'] == 'phrases': item.update(phrases=a['phrases'], regex=a.get('regex', False))
             else:

@@ -113,6 +113,9 @@ The same service runs [agent sandbox tests](agent-sandbox-tests.md). A lead agen
 | GET | `/sandbox/environment-templates/{id}` | 200 | One template: networks, nodes, gateway rules, files |
 | POST | `/sandbox/environment-templates` | 201 | Save a template `{spec, files, replace}`; the harness checks it first |
 | POST | `/sandbox/environment-templates/from-compose` | 200 | Convert a Docker Compose file `{compose, id, title, save}`: `spec`, `warnings`, `errors`, `validation`, `saved`. See [Build an environment from Docker Compose](agent-sandbox-tests.md#build-an-environment-from-docker-compose) |
+| POST | `/sandbox/packages/export` | 200 | A shareable test package from `{"spec"}` or `{"room"}` (no model or port). See [Share a test](agent-sandbox-tests.md#share-a-test) |
+| POST | `/sandbox/packages/preview` | 200 | What importing `{"package"}` or `{"url"}` would create and run; nothing is saved |
+| POST | `/sandbox/packages/import` | 201 | Save the package's environment and prompt and return a `setup` to start from |
 | POST | `/sandbox/rooms/plan` | 200 | Check a test setup: how each rule will be watched, and `errors` to fix. Nothing runs |
 | POST | `/sandbox/runs` | 201 | Start a test with `{"kind": "room", "spec": {...}}`. Only one sandbox run at a time |
 | GET | `/sandbox/rooms` | 200 | Every test with verdict, team, models, rule results, prompt version and setup |

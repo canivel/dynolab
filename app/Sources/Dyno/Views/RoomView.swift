@@ -17,6 +17,18 @@ struct ScriptLine: Identifiable, Codable, Equatable {
     var id = UUID(); var after = "submit"; var round = 3; var name = ""; var text = ""
 }
 struct HistoryTurn: Codable, Equatable { var role: String; var content: String }
+/// An Observer alert that belongs to one test (from a shared test package), next to your library's.
+struct TestAlert: Codable, Equatable, Identifiable {
+    var id: String; var name: String; var kind: String; var reads: [String]
+    var description: String? = nil; var severity: String? = nil
+    var phrases: [String]? = nil; var regex: Bool? = nil; var question: String? = nil
+    var json: [String: Any] {
+        var d: [String: Any] = ["id": id, "name": name, "kind": kind, "reads": reads]
+        if let description { d["description"] = description }; if let severity { d["severity"] = severity }
+        if let phrases { d["phrases"] = phrases }; if let regex { d["regex"] = regex }; if let question { d["question"] = question }
+        return d
+    }
+}
 /// A saved agent prompt and the version a test runs with.
 struct PromptRef: Codable, Equatable, Hashable { var id: String; var version: Int }
 struct RoomAgent: Identifiable, Codable, Equatable {
@@ -81,6 +93,9 @@ struct RoomDraft: Codable, Equatable {
     var script: [ScriptLine]? = nil
     var rulesFrom: String? = nil
     var history: [HistoryTurn]? = nil
+    // From a shared test package.
+    var testAlerts: [TestAlert]? = nil
+    var title: String? = nil
 
     func spec(models: [Int: String]) -> [String: Any] {
         var s: [String: Any] = ["goal": goal, "limits": ["max_rounds": rounds, "max_agents": teamLimit, "follow_up_seconds": 300],
@@ -106,6 +121,8 @@ struct RoomDraft: Codable, Equatable {
         }
         if let from = rulesFrom, !from.isEmpty { s["rules_from"] = from }
         if let history, !history.isEmpty { s["history"] = history.map { ["role": $0.role, "content": $0.content] } }
+        if let testAlerts, !testAlerts.isEmpty { s["alerts"] = testAlerts.map(\.json) }
+        if let title, !title.isEmpty { s["title"] = title }
         return s
     }
 }
@@ -135,6 +152,11 @@ extension RoomDraft {
             return HistoryTurn(role: role, content: content)
         }
         history = turns.isEmpty ? nil : turns
+        if let list = spec["alerts"] as? [[String: Any]], !list.isEmpty,
+           let data = try? JSONSerialization.data(withJSONObject: list), let alerts = try? JSONDecoder().decode([TestAlert].self, from: data) {
+            testAlerts = alerts
+        }
+        if let t = spec["title"] as? String, !t.isEmpty { title = t }
         if let lead = (spec["agents"] as? [[String: Any]])?.first {
             let port = (lead["base_url"] as? String).flatMap { URLComponents(string: $0)?.port }
             agents = [RoomAgent(name: lead["name"] as? String ?? "Lead Agent", role: lead["role"] as? String ?? "", port: port)]
@@ -209,6 +231,8 @@ struct TestSetupView: View {
     @State private var working = false
     @State private var buildEnvironment = false
     @State private var importingCompose = false
+    @State private var importingTest = false
+    @State private var sharingTest = false
     @State private var envQuery = ""
     @State private var editing: EnvEdit?
     @State private var deleting: EnvChoice?
@@ -303,6 +327,17 @@ struct TestSetupView: View {
                 Task { await loadEnvironments(); envFilter = "yours"; envQuery = ""; draft.environment = saved; mapVersion += 1 }
             }
         }
+        .sheet(isPresented: $importingTest) {
+            TestPackageImportView(lab: model.researchLab, harnessDir: harnessDir) { setup in
+                var d = RoomDraft(spec: setup)
+                d.agents[0].port = servers.first?.port
+                draft = d
+                Task { await loadEnvironments(); await loadPrompts(); mapVersion += 1 }
+            }
+        }
+        .sheet(isPresented: $sharingTest) {
+            TestPackageShareView(lab: model.researchLab, harnessDir: harnessDir, spec: draft.spec(models: modelNames), suggestedTitle: draft.title ?? "")
+        }
         .sheet(isPresented: $importingCompose) {
             ComposeImportView(lab: model.researchLab, harnessDir: harnessDir) { saved in
                 Task { await loadEnvironments(); envFilter = "yours"; envQuery = ""; draft.environment = saved; mapVersion += 1 }
@@ -322,9 +357,16 @@ struct TestSetupView: View {
 
     private var main: some View {
         VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Set up a test").font(.title.bold())
-                Text("Pick where the agents work, what they must do, and the rules they must keep.").foregroundStyle(.secondary)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Set up a test").font(.title.bold())
+                    Text("Pick where the agents work, what they must do, and the rules they must keep.").foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button { importingTest = true } label: { Label("Import test…", systemImage: "square.and.arrow.down.on.square") }
+                    .help("Import a shared test package from a file or an https:// link.")
+                Button { sharingTest = true } label: { Label("Share…", systemImage: "square.and.arrow.up") }
+                    .help("Save this whole setup as a test package others can import.")
             }
             Card(title: "Environment", actionTitle: "New environment", action: { buildEnvironment = true }) {
                 HStack {
@@ -648,6 +690,14 @@ struct TestSetupView: View {
 
     private var alertsCard: some View {
         Card(title: "Observer alerts") {
+            ForEach(draft.testAlerts ?? []) { a in
+                HStack {
+                    Label(a.name, systemImage: "shippingbox").font(.caption)
+                    Spacer()
+                    Button { draft.testAlerts?.removeAll { $0.id == a.id }; if draft.testAlerts?.isEmpty == true { draft.testAlerts = nil } } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.borderless).foregroundStyle(.secondary).help("Remove this test's alert")
+                }.help("This test's own alert, from a shared test. It runs only in this test.")
+            }
             let on = alertList.filter { $0["enabled"] as? Bool == true }
             if on.isEmpty { Text("None on.").font(.caption).foregroundStyle(.secondary) }
             ForEach(on.indices, id: \.self) { i in
@@ -1637,9 +1687,22 @@ struct RoomExportMenu: View {
             Button("Conversation only, no Observer (Markdown)") { run(["format": "md", "observer": false]) }
             Divider()
             Button("All raw files (.zip)") { run(["format": "zip"]) }
+            Button("Test package to share (.dynotest.json)") { sharePackage() }
         }
         .fixedSize().disabled(working)
         .help(issue ?? "The full log has every turn: what each agent was sent, its thinking, every command and output, and the Observer. The zip has the room's raw files and the full log.")
+    }
+
+    private func sharePackage() {
+        working = true
+        Task { @MainActor in
+            defer { working = false }
+            do {
+                let package = try await lab.request("/sandbox/packages/export", body: ["room": roomID], timeout: 60)
+                _ = try saveTestPackage(package)
+                issue = nil
+            } catch { issue = error.localizedDescription }
+        }
     }
 
     private func run(_ body: [String: Any]) {

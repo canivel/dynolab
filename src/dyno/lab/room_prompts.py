@@ -39,6 +39,9 @@ class PromptLibrary:
         saved = sorted((p for p in (_load(f) for f in self.folder.glob('*.json')) if p), key=lambda p: p['name'].lower())
         return dict(prompts=[builtin, *saved], placeholders=defaults.get('placeholders', {}))
 
+    def list_saved(self):
+        return [p for p in (_load(f) for f in self.folder.glob('*.json')) if p]
+
     def get(self, identifier):
         if not NAME.match(identifier or ''): raise ValueError('Unknown prompt')
         prompt = _load(self.folder / f'{identifier}.json')

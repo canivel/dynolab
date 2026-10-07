@@ -118,6 +118,19 @@ class Lab:
         if title: body['title'] = title
         return self._request('/sandbox/environment-templates/from-compose', self._with_harness(body, harness_dir))
 
+    def export_test_package(self, spec=None, test_id=None, title=None, description=None, author=None):
+        """A shareable test package (environment, goal, rules, lead, prompt, alerts, script, history) from a setup
+        spec or a past test. Save it as JSON (for example name.dynotest.json); it holds no model or port."""
+        body = {k: v for k, v in dict(spec=spec, room=test_id, title=title, description=description, author=author).items() if v}
+        return self._request('/sandbox/packages/export', body)
+    def preview_test_package(self, package=None, url=None):
+        """What importing would create (environment, prompt) and what the test would run. Nothing is saved."""
+        return self._request('/sandbox/packages/preview', {k: v for k, v in dict(package=package, url=url).items() if v is not None})
+    def import_test_package(self, package=None, url=None):
+        """Import a package (an object, JSON text, or an https URL): saves the environment and prompt, reusing identical
+        ones, and returns `setup` to start from. Choose a running model for setup['agents'][0] before starting."""
+        return self._request('/sandbox/packages/import', {k: v for k, v in dict(package=package, url=url).items() if v is not None})
+
     def sandbox_runs(self): return self._request('/sandbox/runs')['runs']
     def sandbox_readiness(self): return self._request('/sandbox/readiness')
     def plan_agent_test(self, spec, harness_dir=None):
