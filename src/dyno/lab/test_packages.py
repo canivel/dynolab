@@ -20,11 +20,11 @@ import json
 import re
 import shutil
 import time
-import urllib.parse
 import urllib.request
 
 FORMAT, VERSION = 'dynolab-test', 1
 MAX_BYTES = 2_000_000
+RESEARCH = 'https://research.dynolab.dev'
 LIMIT_KEYS = ('max_rounds', 'max_seconds', 'steps_per_turn', 'max_agents', 'follow_up_seconds')
 RULE_KEYS = ('text', 'watch', 'delivery', 'at')
 
@@ -98,7 +98,7 @@ class TestPackages:
     # --- load -----------------------------------------------------------------------------
 
     def load(self, body):
-        """The package from `package` (an object or JSON text) or `url` (https only), checked."""
+        """The package from `package` (an object or JSON text) or `url` (a research.dynolab.dev link), checked."""
         if not isinstance(body, dict): raise ValueError('Send a package or a url')
         raw = body.get('package')
         if raw is None and body.get('url'):
@@ -119,14 +119,13 @@ class TestPackages:
 
     @staticmethod
     def _fetch(url):
-        parts = urllib.parse.urlparse(url)
-        if parts.scheme != 'https' or not parts.netloc: raise ValueError('Import from an https:// link')
-        # GitHub file pages hold HTML; their raw form holds the file.
-        m = re.fullmatch(r'https://github\.com/([^/]+)/([^/]+)/blob/(.+)', url)
-        if m: url = f'https://raw.githubusercontent.com/{m[1]}/{m[2]}/{m[3]}'
+        # Links come only from Dyno Research; anything else is imported as a file.
+        m = re.fullmatch(r'https://research\.dynolab\.dev/(?:api/studies/([0-9a-fA-F-]{36})/download|studies/([0-9a-fA-F-]{36}))/?', url.strip())
+        if not m: raise ValueError('Import links must come from https://research.dynolab.dev. Open other packages as a file.')
+        url = f'{RESEARCH}/api/studies/{(m[1] or m[2]).lower()}/download'
         request = urllib.request.Request(url, headers={'User-Agent': 'Dyno-Lab', 'Accept': 'application/json, text/plain'})
         with urllib.request.urlopen(request, timeout=20) as response:
-            if urllib.parse.urlparse(response.geturl()).scheme != 'https': raise ValueError('The link redirected away from https')
+            if not response.geturl().startswith(RESEARCH + '/'): raise ValueError('The link redirected away from research.dynolab.dev')
             data = response.read(MAX_BYTES + 1)
         if len(data) > MAX_BYTES: raise ValueError('A test package is at most 2 MB')
         return data.decode('utf-8', errors='replace')

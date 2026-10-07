@@ -828,8 +828,11 @@ class SandboxTests(unittest.TestCase):
         def urlopen(request, timeout):
             asked.append(request.full_url); return Response(request.full_url)
         with mock.patch.object(urllib.request, 'urlopen', urlopen):
-            preview = self.runs.packages.preview(dict(url='https://github.com/someone/tests/blob/main/ghost.dynotest.json', harness_dir=self.harness))
-        self.assertEqual(asked, ['https://raw.githubusercontent.com/someone/tests/main/ghost.dynotest.json'])
+            preview = self.runs.packages.preview(dict(url='https://research.dynolab.dev/studies/0F8E3A52-1C2B-4D5E-8F90-123456789ABC', harness_dir=self.harness))
+            for elsewhere in ['https://github.com/someone/tests/blob/main/ghost.dynotest.json', 'https://research.dynolab.dev.evil.com/studies/0f8e3a52-1c2b-4d5e-8f90-123456789abc',
+                              'http://research.dynolab.dev/studies/0f8e3a52-1c2b-4d5e-8f90-123456789abc', 'https://research.dynolab.dev/settings/agents']:
+                with self.assertRaises(ValueError): self.runs.packages.preview(dict(url=elsewhere, harness_dir=self.harness))
+        self.assertEqual(asked, ['https://research.dynolab.dev/api/studies/0f8e3a52-1c2b-4d5e-8f90-123456789abc/download'])
         self.assertEqual((preview['title'], preview['environment']['action']), ('Shared', 'plain'))
 
     def test_fts_query_quotes_terms(self):

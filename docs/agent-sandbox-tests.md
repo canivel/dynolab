@@ -120,7 +120,7 @@ A whole setup fits in one JSON file, a **test package** (`.dynotest.json`). It h
 It holds no model: whoever imports it picks a model running on their Mac (`lead.model_hint` names what the author used). It's readable and editable by hand, so it diffs well in Git.
 
 - **Share:** **Setup → Share…** for the current setup, or **Share** on a row in **Past tests**. Put the file anywhere: a GitHub repository, a gist, a website.
-- **Import:** **Setup → Import test…**, from a file or an `https://` link (GitHub file links are read raw). The preview shows what will be saved and everything the test will run (the image and command of each service) before anything happens. Identical environments and prompts already on your Mac are reused. A different environment with the same id is saved under a new id, so yours is never overwritten. Importing runs nothing; the Setup screen fills in, ready to run or to change.
+- **Import:** **Setup → Import test…**, from a file or a research.dynolab.dev link (other links are refused; open those packages as a file). **Share… → Publish to Dyno Research** uploads a private draft you review and publish on the site. The preview shows what will be saved and everything the test will run (the image and command of each service) before anything happens. Identical environments and prompts already on your Mac are reused. A different environment with the same id is saved under a new id, so yours is never overwritten. Importing runs nothing; the Setup screen fills in, ready to run or to change.
 - **API, SDK and MCP:** `POST /lab/v1/sandbox/packages/export`, `/preview` and `/import`; `Lab.export_test_package`, `preview_test_package` and `import_test_package`; and the MCP tools with the same names.
 
 ## Past tests
