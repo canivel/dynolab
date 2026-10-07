@@ -363,6 +363,8 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
                 self._execution_send(self.server.sandbox.room_end(self.path.split('/')[-2]))
             elif self.path == '/lab/v1/sandbox/environment-templates':
                 self._execution_send(self.server.sandbox.save_environment(body), 201)
+            elif self.path == '/lab/v1/sandbox/environment-templates/from-compose':
+                self._execution_send(self.server.sandbox.environment_from_compose(body))
             elif self.path == '/lab/v1/sandbox/environment-templates/delete':
                 self._execution_send(self.server.sandbox.delete_environment(body))
             elif self.path == '/lab/v1/sandbox/engine/setup':

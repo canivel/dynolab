@@ -1,3 +1,28 @@
+# Dyno Lab 0.6.2
+
+Dyno Lab 0.6.2 opens agent sandbox tests to scripts and AI assistants, and lets you build an environment from a Docker Compose file.
+
+## API, SDK and MCP
+
+- **Agent sandbox tests over HTTP, the Python SDK and MCP.**
+  - Plan, start, follow, message, end and export tests.
+  - Read the Observer's entries and verdict.
+  - Manage versioned agent prompts and Observer alerts.
+  - Use Evals: the overview, one cell, comparisons, batches, review and the report judge.
+- The OpenAPI schema documents every endpoint. MCP gets 21 new tools; tools that start tests or batches ask the assistant to get your go-ahead first.
+
+## Environments from Docker Compose
+
+- **Setup → Environment → Import Docker Compose…**, or `environment_from_compose` in the SDK and MCP. Services become nodes, networks become segments, and exposed ports become gateway rules. An `x-dyno` block per service sets what the agents may reach (allow, flag, deny or hidden) and the tripwire.
+- Dyno nodes run under gVisor with dropped capabilities and don't run an image's own start command. Well-known images (PostgreSQL, MySQL, MinIO, Vault, MailHog, nginx…) therefore become Dyno's stand-ins on the same port, and the import says so. Other images run with a `command:`. Anything the sandbox can't honour is left out with a warning, and the harness checks the result before it's saved.
+- Harness fix: nodes built from an outside image (for example `python:3.12-slim`) no longer stop as soon as they start.
+
+## Upgrade
+
+Install it from inside Dyno (Dyno Lab → Check for Updates…), or download the signed DMG.
+
+---
+
 # Dyno Lab 0.6.1
 
 This is the first 0.6 release. A `v0.6.0` tag was created by mistake on the 0.5.2 code; it has no release or downloads.

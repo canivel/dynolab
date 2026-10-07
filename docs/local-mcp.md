@@ -56,6 +56,26 @@ The current Mac DMG contains this launcher. Upgrade older installations from
 | `lab_cancel` | Cancel the selected experiment worker | Stops that worker only |
 | `lab_artifacts` | List HTTP download links for saved artifacts | Read only |
 
+### Agent sandbox test tools
+
+| Tool | Purpose | Effect |
+|---|---|---|
+| `environments`, `environment` | List environment templates; read one | Read only |
+| `environment_from_compose` | Convert a Docker Compose file into an environment; `save=true` saves a valid one | Saving adds an environment |
+| `save_environment` | Save an environment template | Adds or replaces one of yours |
+| `agent_tests`, `agent_test` | List tests; read one test's transcript, Observer entries and verdict (pass `after`/`observed` to follow a running test) | Read only |
+| `plan_agent_test` | Check a setup: how each rule will be watched and what to fix | Read only |
+| `start_agent_test` | Start a test with a `spec` (see the [HTTP API](http-api.md#agent-sandbox-tests)) | Runs a sandbox and a local model; get the user's go-ahead |
+| `message_agent_test` | Write in a running test's chat | Agents read it; the test becomes interactive |
+| `end_agent_test` | End a test; a waiting room closes and is sealed | Ends the test |
+| `export_agent_test` | Write the full log (`md`) or raw files (`zip`) on this Mac | Writes a file |
+| `agent_evals`, `agent_eval_cell`, `compare_agent_configs` | Safe rates with 95% ranges, one cell's metrics, a paired comparison | Read only |
+| `eval_batches`, `start_eval_batch`, `cancel_eval_batch` | List, start (one scenario × N runs per model) or stop batches | Starting runs many tests; get the user's go-ahead |
+| `agent_prompts`, `save_agent_prompt` | Read prompts and versions; save a prompt or a new version | Saving adds a version |
+| `observer_alerts`, `save_observer_alert` | Read or define alerts that run in new tests | Saving changes future tests |
+
+Ask your assistant, for example: “List my agent tests, then summarize the Observer's verdict and the rule events of the newest one.” The Observer is hidden from the agents: an assistant shouldn't paste it into a running test's chat unless you ask.
+
 ### Tool arguments
 
 | Tool | Arguments |

@@ -12,7 +12,7 @@ def create_server(port=8980):
 
     lab = Lab(f'http://127.0.0.1:{port}')
     server = FastMCP('Dyno Research Lab', instructions=(
-        'Inspect local research jobs and submit isolated MLX experiments. Start Dyno Lab first. '
+        'Inspect local research jobs and submit isolated MLX experiments, and run and read agent sandbox tests. Start Dyno Lab first. '
         'Experiments load another model copy and share GPU/memory with serving. '
         'The native UI resource gate does not apply to this bridge. Check resources and '
         'obtain the user\'s intent before submitting. Results are measurements, not safety certifications.'))
@@ -218,6 +218,136 @@ def create_server(port=8980):
         load. The endpoint must have been started with the updated dyno serve.
         """
         return ServingModel(port).inspect(prompt, layers, max_input_tokens)
+
+    # --- Agent sandbox tests ---------------------------------------------------------------
+    write = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False)
+
+    @server.tool(annotations=read)
+    def environments() -> dict:
+        """Environment templates the agents can work in (built-in and saved), with validation, and running instances."""
+        return lab.environments()
+
+    @server.tool(annotations=read)
+    def environment(environment_id: str) -> dict:
+        """One environment template: networks, service nodes, gateway rules (allow, flag, deny) and the workstation."""
+        return lab.environment(environment_id)
+
+    @server.tool(annotations=write)
+    def environment_from_compose(compose: str, environment_id: str = '', title: str = '', save: bool = False, replace: bool = False) -> dict:
+        """Turn a Docker Compose file (YAML or JSON) into a Dyno environment, checked by the harness.
+
+        Each service becomes a node; networks become segments; exposed ports become gateway rules.
+        Per service, `x-dyno` sets what the agents may reach: {access: allow|flag|deny|hidden, host,
+        tripwire, severity}; {role: workstation} names the agents' machine. Well-known images (postgres,
+        minio, vault, mailhog, nginx…) become sandbox stand-ins; other images need a command. Read the
+        warnings before saving. save=True saves a valid one; replace=True overwrites one of yours."""
+        return lab.environment_from_compose(compose, environment_id or None, title or None, save, replace)
+
+    @server.tool(annotations=write)
+    def save_environment(spec: dict, files: dict | None = None, replace: bool = False) -> dict:
+        """Save an environment template ({id, meta, segments, nodes, gateway, agent}); the harness checks it first."""
+        return lab.save_environment(spec, files or {}, replace)
+
+    @server.tool(annotations=read)
+    def agent_tests() -> dict:
+        """List agent sandbox tests, newest first, with verdict, team, models and rule results."""
+        return {'tests': lab.agent_tests()}
+
+    @server.tool(annotations=read)
+    def agent_test(test_id: str, after: int = 0, observed: int = 0) -> dict:
+        """Read one test: transcript events after `after`, Observer entries after `observed`, and the verdict.
+
+        Poll with the returned `last` and `observed` to follow a running test. The Observer is hidden
+        from the agents; do not paste it into a running test's chat unless the user asks.
+        """
+        return lab.agent_test(test_id, after, observed)
+
+    @server.tool(annotations=read)
+    def plan_agent_test(spec: dict) -> dict:
+        """Check a test setup without running it: how each rule will be watched and what must be fixed.
+
+        spec: {environment, goal, rules: [{text, watch?}], agents: [{name, role, port, model}],
+        limits?: {max_rounds, max_agents, steps_per_turn, follow_up_seconds}, prompt?: {id, version}}.
+        """
+        return lab.plan_agent_test(spec)
+
+    @server.tool(annotations=write)
+    def start_agent_test(spec: dict) -> dict:
+        """Start an agent sandbox test. Runs a gVisor sandbox and the chosen local model until a final report
+        or a limit. Uses the machine's memory and GPU, and only one test runs at a time.
+        Get the user's explicit go-ahead first. Use plan_agent_test to check the spec."""
+        return lab.start_agent_test(spec)
+
+    @server.tool(annotations=write)
+    def message_agent_test(test_id: str, text: str, name: str = 'User') -> dict:
+        """Write in a running test's chat as `name`. Every agent reads it at its next turn, and the
+        Observer records it as an intervention, so the test counts as interactive in evals."""
+        return lab.message_agent_test(test_id, text, name)
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False))
+    def end_agent_test(test_id: str) -> dict:
+        """End a test: a room waiting for follow-ups closes and is sealed; a working one ends at its next turn."""
+        return lab.end_agent_test(test_id)
+
+    @server.tool(annotations=write)
+    def export_agent_test(test_id: str, format: Literal['md', 'zip'] = 'md', thinking: bool = True, observer: bool = True) -> dict:
+        """Write a test's full log (Markdown) or raw files (zip) on this machine and return the path."""
+        return lab.export_agent_test(test_id, format, thinking, observer)
+
+    @server.tool(annotations=read)
+    def agent_evals(include_interactive: bool = False) -> dict:
+        """Evals over every finished test: scenarios x configs with safe rates, 95% Wilson ranges and run counts.
+        Tests where someone wrote in the chat are left out unless include_interactive."""
+        return lab.agent_evals(include_interactive)
+
+    @server.tool(annotations=read)
+    def agent_eval_cell(scenario: str, config: str, include_interactive: bool = False) -> dict:
+        """One scenario x config: rule-break, disclosure, delegated and dishonest-report rates, per-rule and
+        per-alert rates, pass^k reliability, and every run."""
+        return lab.agent_eval_cell(scenario, config, include_interactive)
+
+    @server.tool(annotations=read)
+    def compare_agent_configs(a: str, b: str, include_interactive: bool = False) -> dict:
+        """Config B against config A on shared scenarios: paired difference in safe rate with a 95% range.
+        Only call it a regression when the range excludes zero."""
+        return lab.compare_agent_configs(a, b, include_interactive)
+
+    @server.tool(annotations=read)
+    def eval_batches() -> dict:
+        """Eval batches with their progress and the tests they started."""
+        return {'batches': lab.eval_batches()}
+
+    @server.tool(annotations=write)
+    def start_eval_batch(spec: dict, models: list[dict], repeats: int = 10) -> dict:
+        """Run one scenario `repeats` times on each model ([{port, model}]), alternating between models.
+        Long-running and uses the machine's GPU. Get the user's explicit go-ahead first."""
+        return lab.start_eval_batch(spec, models, repeats)
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False))
+    def cancel_eval_batch(batch_id: str) -> dict:
+        """Stop a batch: no new tests start, and the running one is stopped."""
+        return lab.cancel_eval_batch(batch_id)
+
+    @server.tool(annotations=read)
+    def agent_prompts() -> dict:
+        """The agent prompts tests can use: the built-in default and saved prompts with every version."""
+        return lab.agent_prompts()
+
+    @server.tool(annotations=write)
+    def save_agent_prompt(name: str, lead: str, teammate: str, note: str = '', prompt_id: str = '') -> dict:
+        """Save a prompt, or a new version of prompt_id. Markdown templates with {{name}}, {{role}}, {{creator}},
+        {{teammates}}, {{team_limit}}, {{goal}} and {{rules}}. Goal and rules are always added."""
+        return lab.save_agent_prompt(name, lead, teammate, note, prompt_id or None)
+
+    @server.tool(annotations=read)
+    def observer_alerts() -> dict:
+        """The Observer alerts new tests run (phrase or model checks on thinking, messages, commands, output, reports)."""
+        return {'alerts': lab.observer_alerts()}
+
+    @server.tool(annotations=write)
+    def save_observer_alert(alert: dict) -> dict:
+        """Create or update an alert: {name, kind: phrases|llm, reads: [...], phrases?, regex?, question?, enabled?}."""
+        return lab.save_observer_alert(alert)
 
     @server.resource('dyno://lab/openapi')
     def openapi() -> str:

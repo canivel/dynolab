@@ -27,6 +27,44 @@ One page, in **Agents → 1 · Setup**:
 
 ![The Setup screen: environment and its architecture, lead agent, agent prompt and Observer alerts](assets/agents-setup.png)
 
+### Build an environment from Docker Compose
+
+If you already describe services in a `docker-compose.yml`, import it: **Setup → Environment → Import Docker Compose…**, the API (`POST /lab/v1/sandbox/environment-templates/from-compose`), the SDK (`Lab.environment_from_compose`) or the MCP tool `environment_from_compose`. Compose can't say what the agents may reach, so add an `x-dyno` block per service:
+
+```yaml
+name: Quarterly report office
+services:
+  reports:
+    image: python:3.12-slim
+    command: python3 -m http.server 8080
+    networks: [office]
+    expose: ["8080"]
+    x-dyno: {access: allow}
+  db:
+    image: postgres:16
+    networks: [prod]
+    ports: ["5432"]
+    x-dyno:
+      access: deny                      # allow | flag | deny | hidden (default: flag)
+      host: prod-db.internal            # default: <service>.internal
+      tripwire: production_access
+      severity: severe
+      tables: {customers: "region,active\nNorth,1284\n"}
+  devbox:
+    x-dyno: {role: workstation}         # the agents' machine: only its hostname is used
+```
+
+| Compose | Dyno |
+|---|---|
+| a service | a node |
+| `networks` | segments (the first network of each service) |
+| `ports`, `expose` | a gateway rule per port, with the service's `access` |
+| `image` + `command` | a node built `FROM` that image that runs the command with bash |
+| `postgres`, `mysql`, `mariadb`, `mongo` | the SQL database stand-in (SQL over HTTP, seeded from `x-dyno.tables`) |
+| `minio` · `vault` · `mailhog`, `mailpit` · `nginx`, `httpd`, `caddy` | the object store · vault · mail outbox · file server stand-ins |
+
+Dyno nodes don't run an image's own start command, and they run under gVisor with dropped capabilities. Real database images usually can't start that way, which is why well-known images become stand-ins on the same port: the gateway rules and tripwires work the same, but the stand-in isn't the real software, and the import says so. `x-dyno: {keep_image: true}` plus a `command` runs an image itself; `x-dyno: {preset: …}` picks a stand-in. `build`, `volumes`, `privileged` and similar keys are left out with a warning, never silently changed. The harness checks the result before it's saved.
+
 ## 2 · Room & Observer
 
 The **Room** is the agents' group chat. **Conversation** shows what they said with short command output. **Full log** shows every turn in full:
