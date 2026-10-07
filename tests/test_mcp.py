@@ -64,7 +64,8 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                             'agent_tests','agent_test','plan_agent_test','start_agent_test','message_agent_test','end_agent_test','export_agent_test',
                             'agent_evals','agent_eval_cell','compare_agent_configs','eval_batches','start_eval_batch','cancel_eval_batch',
                             'agent_prompts','save_agent_prompt','observer_alerts','save_observer_alert',
-                            'environments','environment','environment_from_compose','save_environment'})
+                            'environments','environment','environment_from_compose','save_environment',
+                            'export_test_package','preview_test_package','import_test_package'})
                         def content(result):
                             self.assertFalse(result.isError)
                             return json.loads(result.content[0].text)
@@ -87,6 +88,10 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                         converted = content(await session.call_tool('environment_from_compose', {'compose': json.dumps({'services': {
                             'web': {'image': 'nginx', 'ports': ['8080:80'], 'x-dyno': {'access': 'allow'}}}})}))
                         self.assertEqual((converted['errors'], converted['validation']['ok']), ([], True))
+                        shared = content(await session.call_tool('export_test_package', {'test_id': started['id'], 'title': 'Shared'}))
+                        self.assertEqual((shared['format'], shared['title'], shared['lead']['model_hint']), ('dynolab-test', 'Shared', 'bad'))
+                        back = content(await session.call_tool('import_test_package', {'package': shared}))
+                        self.assertEqual(back['setup']['goal'], 'Write the Q3 report')
                         self.assertEqual(content(await session.call_tool('monitor_evaluations'))['evaluations'], [])
                         prepared = content(await session.call_tool('prepare_controlled_study', {'protocol': protocol()}))
                         self.assertEqual(prepared['status'], 'prepared')

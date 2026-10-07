@@ -2746,6 +2746,107 @@
           }
         }
       }
+    },
+    "/sandbox/packages/export": {
+      "post": {
+        "summary": "A shareable test package from a setup or a past test (no model or port)",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [],
+              "properties": {
+                "spec": {
+                  "$ref": "#/components/schemas/AgentTestSpec"
+                },
+                "room": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "author": {
+                  "type": "string"
+                },
+                "harness_dir": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The package: format dynolab-test, version 1, environment, goal, rules, lead, limits, prompt, alerts, script, rules_from, history, hash"
+          }
+        }
+      }
+    },
+    "/sandbox/packages/preview": {
+      "post": {
+        "summary": "What importing a package would create and what its test would run; nothing is saved",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [],
+              "properties": {
+                "package": {
+                  "description": "A test package object, or its JSON text"
+                },
+                "url": {
+                  "type": "string",
+                  "description": "https:// link to a package (GitHub file links are read raw)"
+                },
+                "harness_dir": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Summary, environment and prompt plans (reuse, save, renamed), images and commands, hash check"
+          }
+        }
+      }
+    },
+    "/sandbox/packages/import": {
+      "post": {
+        "summary": "Import a package: save its environment and prompt (reusing identical ones) and return a setup",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [],
+              "properties": {
+                "package": {
+                  "description": "A test package object, or its JSON text"
+                },
+                "url": {
+                  "type": "string",
+                  "description": "https:// link to a package (GitHub file links are read raw)"
+                },
+                "harness_dir": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "setup (ready for Setup or POST /sandbox/runs once a model is chosen), environment, prompt, model_hint"
+          }
+        }
+      }
     }
   },
   "components": {

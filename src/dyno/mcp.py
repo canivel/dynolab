@@ -249,6 +249,24 @@ def create_server(port=8980):
         return lab.save_environment(spec, files or {}, replace)
 
     @server.tool(annotations=read)
+    def export_test_package(test_id: str = '', spec: dict | None = None, title: str = '', description: str = '') -> dict:
+        """Package a past test (test_id) or a setup (spec) so others can import it: environment with its files, goal,
+        rules, lead agent, prompt, alerts, script and history. Holds no model or port. Returns the package JSON."""
+        return lab.export_test_package(spec or None, test_id or None, title or None, description or None)
+
+    @server.tool(annotations=read)
+    def preview_test_package(url: str = '', package: dict | None = None) -> dict:
+        """Read a test package from an https URL (GitHub file links work) or an object, and show what importing would
+        create and what the test would run (images, commands). Nothing is saved."""
+        return lab.preview_test_package(package, url or None)
+
+    @server.tool(annotations=write)
+    def import_test_package(url: str = '', package: dict | None = None) -> dict:
+        """Import a test package: saves its environment and prompt (reusing identical ones; never overwrites yours) and
+        returns a setup to start with start_agent_test after choosing a running model. Preview it first."""
+        return lab.import_test_package(package, url or None)
+
+    @server.tool(annotations=read)
     def agent_tests() -> dict:
         """List agent sandbox tests, newest first, with verdict, team, models and rule results."""
         return {'tests': lab.agent_tests()}

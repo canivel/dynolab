@@ -63,6 +63,7 @@ The current Mac DMG contains this launcher. Upgrade older installations from
 | `environments`, `environment` | List environment templates; read one | Read only |
 | `environment_from_compose` | Convert a Docker Compose file into an environment; `save=true` saves a valid one | Saving adds an environment |
 | `save_environment` | Save an environment template | Adds or replaces one of yours |
+| `export_test_package`, `preview_test_package`, `import_test_package` | Share a test as a package; read one from a link and see what it would create and run; import it | Importing saves an environment and a prompt |
 | `agent_tests`, `agent_test` | List tests; read one test's transcript, Observer entries and verdict (pass `after`/`observed` to follow a running test) | Read only |
 | `plan_agent_test` | Check a setup: how each rule will be watched and what to fix | Read only |
 | `start_agent_test` | Start a test with a `spec` (see the [HTTP API](http-api.md#agent-sandbox-tests)) | Runs a sandbox and a local model; get the user's go-ahead |
