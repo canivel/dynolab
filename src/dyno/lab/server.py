@@ -346,6 +346,12 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
                 self._execution_send(self.server.sandbox.alerts.try_on(body))
             elif self.path == '/lab/v1/sandbox/packages/export':
                 self._execution_send(self.server.sandbox.packages.export(body))
+            elif self.path == '/lab/v1/sandbox/packages/export-run':
+                from .result_packages import run_package
+                self._execution_send(run_package(self.server.sandbox, body))
+            elif self.path == '/lab/v1/sandbox/packages/export-eval':
+                from .result_packages import eval_package
+                self._execution_send(eval_package(self.server.sandbox.evals, body))
             elif self.path == '/lab/v1/sandbox/packages/preview':
                 self._execution_send(self.server.sandbox.packages.preview(body))
             elif self.path == '/lab/v1/sandbox/packages/import':

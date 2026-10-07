@@ -4,11 +4,15 @@ import UniformTypeIdentifiers
 
 /// Writes a test package to a file the person chooses. Returns the file, or nil when they cancel.
 @MainActor
-func saveTestPackage(_ package: [String: Any]) throws -> URL? {
+func saveTestPackage(_ package: [String: Any]) throws -> URL? { try saveSharedPackage(package, suffix: ".dynotest.json") }
+
+/// Writes a package (a test, a run result or an Evals table) to a file the person chooses.
+@MainActor
+func saveSharedPackage(_ package: [String: Any], suffix: String) throws -> URL? {
     let data = try JSONSerialization.data(withJSONObject: package, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     let panel = NSSavePanel()
     let title = (package["title"] as? String ?? "test").lowercased().map { $0.isLetter || $0.isNumber ? String($0) : "-" }.joined()
-    panel.nameFieldStringValue = String(title.prefix(50)).trimmingCharacters(in: CharacterSet(charactersIn: "-")) + ".dynotest.json"
+    panel.nameFieldStringValue = String(title.prefix(50)).trimmingCharacters(in: CharacterSet(charactersIn: "-")) + suffix
     panel.canCreateDirectories = true
     guard panel.runModal() == .OK, let url = panel.url else { return nil }
     try data.write(to: url)
@@ -22,91 +26,19 @@ struct TestPackageShareView: View {
     var harnessDir: String
     var spec: [String: Any]
     var suggestedTitle: String
-    @Environment(\.dismiss) private var dismiss
-    @AppStorage("reviewerName") private var author = ""
-    @State private var title = ""
-    @State private var summary = ""
-    @State private var license = "CC-BY-4.0"
-    @State private var issue: String?
-    @State private var working = false
-    @State private var token = ResearchToken.load() ?? ""
-    @State private var hasToken = ResearchToken.load() != nil
-    @State private var published: URL?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Share this test", systemImage: "square.and.arrow.up").font(.title2.bold())
-            Text("Saves the whole setup in one file: the environment with its files, the goal, the rules, the lead agent, the prompt, alerts, script and history. It holds no model: whoever imports it picks one on their own Mac. Publish it to Dyno Research and others import it from its link, or send the file itself.")
-                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            TextField("Title", text: $title).textFieldStyle(.roundedBorder)
-            TextField("What it tests (optional)", text: $summary, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(2...5)
-            HStack {
-                TextField("Author (optional)", text: $author).textFieldStyle(.roundedBorder).frame(width: 260)
-                Picker("License", selection: $license) { Text("CC BY 4.0").tag("CC-BY-4.0"); Text("CC0").tag("CC0-1.0") }.frame(width: 200)
-            }
-            Divider()
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Publish to Dyno Research").font(.headline)
-                Text("Uploads a private draft to research.dynolab.dev with your research token. The page shows the environment as a diagram, the rules, the script, and Open in Dyno. You review it there and choose to publish; the token can't publish by itself.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                if hasToken {
-                    HStack {
-                        Label("Research token saved in the Keychain", systemImage: "key.fill").font(.caption).foregroundStyle(DynoBrand.accent)
-                        Button("Forget") { ResearchToken.delete(); hasToken = false; token = "" }.buttonStyle(.link).font(.caption)
-                    }
-                } else {
-                    HStack {
-                        SecureField("Research token (dyr_…, with drafts:write)", text: $token).textFieldStyle(.roundedBorder)
-                        Button("Save") { if ResearchToken.save(token.trimmingCharacters(in: .whitespacesAndNewlines)) { hasToken = true } }.disabled(token.isEmpty)
-                    }
-                    Link("Create a token at research.dynolab.dev/settings/agents ↗", destination: URL(string: "https://research.dynolab.dev/settings/agents")!).font(.caption)
-                }
-                if let published {
-                    Label("Uploaded as a private draft. Review and publish it on the page that just opened.", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(DynoBrand.accent)
-                    Link(published.absoluteString, destination: published).font(.caption)
-                }
-            }
-            if let issue { Text(issue).font(.caption).foregroundStyle(.orange) }
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(working ? "Packaging…" : "Save file…", action: share).disabled(working)
-                Button("Publish to Dyno Research…", action: publish).buttonStyle(.dynoPrimary).disabled(working || !hasToken)
-            }
-        }
-        .padding(20).frame(width: 560).background(DynoBrand.background).dynoTheme()
-        .onAppear { if title.isEmpty { title = suggestedTitle.isEmpty ? String((spec["goal"] as? String ?? "").prefix(80)) : suggestedTitle } }
+        ShareSheet(kind: .test, suggestedTitle: suggestedTitle.isEmpty ? String((spec["goal"] as? String ?? "").prefix(80)) : suggestedTitle,
+                   makePackage: makePackage) { EmptyView() }
     }
 
-    private func makePackage() async throws -> [String: Any] {
-        var body: [String: Any] = ["spec": spec, "title": title, "description": summary, "author": author]
+    private func makePackage(_ f: ShareFields) async throws -> [String: Any] {
+        var body: [String: Any] = ["spec": spec, "title": f.title, "description": f.summary, "author": f.author]
         if !harnessDir.isEmpty { body["harness_dir"] = harnessDir }
         var package = try await lab.request("/sandbox/packages/export", body: body, timeout: 60)
-        package["license"] = license
+        package["license"] = f.license
         package.removeValue(forKey: "hash")  // the license changed the content; Dyno Research hashes what it stores
         return package
-    }
-
-    private func share() {
-        working = true
-        Task { @MainActor in
-            defer { working = false }
-            do { if try saveTestPackage(try await makePackage()) != nil { dismiss() } }
-            catch { issue = error.localizedDescription }
-        }
-    }
-
-    private func publish() {
-        guard let token = ResearchToken.load() else { hasToken = false; return }
-        working = true; issue = nil
-        Task { @MainActor in
-            defer { working = false }
-            do {
-                let url = try await ResearchUpload.draft(try await makePackage(), token: token)
-                published = url
-                NSWorkspace.shared.open(url)
-            } catch { issue = error.localizedDescription }
-        }
     }
 }
 

@@ -255,8 +255,19 @@ def create_server(port=8980):
         return lab.export_test_package(spec or None, test_id or None, title or None, description or None)
 
     @server.tool(annotations=read)
+    def export_run_result(test_id: str, thinking: bool = False, title: str = '') -> dict:
+        """Package one finished test's result (dynolab-run) for Dyno Research: setup, config, team, a clipped timeline of
+        every step, the Observer's events and verdict. Thinking is left out unless thinking is true."""
+        return lab.export_run_result(test_id, thinking, title or None)
+
+    @server.tool(annotations=read)
+    def export_eval_result(batch: str = '', title: str = '') -> dict:
+        """Package an Evals table (dynolab-eval): one batch, or every finished run nobody wrote in. Rates with 95% intervals."""
+        return lab.export_eval_result(batch or None, title or None)
+
+    @server.tool(annotations=read)
     def preview_test_package(url: str = '', package: dict | None = None) -> dict:
-        """Read a test package from an https URL (GitHub file links work) or an object, and show what importing would
+        """Read a test package from a research.dynolab.dev link or an object, and show what importing would
         create and what the test would run (images, commands). Nothing is saved."""
         return lab.preview_test_package(package, url or None)
 

@@ -214,6 +214,7 @@ print(lab.export_agent_test(test["id"])["path"])   # the full log as Markdown
 | `environment_from_compose(compose, identifier=None, title=None, save=False)` | Docker Compose file → `spec`, `warnings`, `errors`, `validation`, `saved` |
 | `save_environment(spec, files=None, replace=False)` | Save a template; the harness checks it first |
 | `export_test_package(spec=None, test_id=None, title=None)` | A shareable test package (dict); save it as JSON |
+| `export_run_result(test_id, thinking=False, title=None)`, `export_eval_result(batch=None, title=None)` | A shareable result of one test (`dynolab-run`) or an Evals table (`dynolab-eval`) |
 | `preview_test_package(package=None, url=None)`, `import_test_package(package=None, url=None)` | What an import would create and run; import it and get `setup` |
 | `plan_agent_test(spec)` | Normalized spec with suggested detectors, `errors` and `warnings`; nothing runs |
 | `start_agent_test(spec)`, `stop_agent_test(id)`, `end_agent_test(id)` | Start a test; stop it now; end it (a waiting room closes and is sealed) |

@@ -344,7 +344,7 @@ class SandboxRuns:
     def _room_spec(self, spec, complete=True):
         """The spec the harness reads. Agents reach their models only through Dyno's loopback endpoints."""
         if not isinstance(spec, dict) or set(spec) - {'title', 'environment', 'goal', 'rules', 'agents', 'limits', 'prompt',
-                                                      'script', 'rules_from', 'history', 'alerts'}:
+                                                      'script', 'rules_from', 'history', 'alerts', 'source'}:
             raise ValueError('Unsupported room spec')
         out = dict(title=str(spec.get('title') or '')[:120], goal=str(spec.get('goal') or '')[:8000], rules=[], agents=[])
         prompts, out['prompt_ref'] = self.prompts.resolve(spec.get('prompt'))
@@ -414,6 +414,14 @@ class SandboxRuns:
         if 'max_rounds' in limits and (type(limits['max_rounds']) is not int or not 1 <= limits['max_rounds'] <= 50): raise ValueError('max_rounds must be 1–50')
         if 'max_seconds' in limits and (type(limits['max_seconds']) is not int or not 60 <= limits['max_seconds'] <= 7200): raise ValueError('max_seconds must be 60–7200')
         if limits: out['limits'] = dict(limits)
+        # Where a shared test came from (Dyno Research), so its results can link back to it.
+        source = spec.get('source')
+        if source:
+            if not isinstance(source, dict) or set(source) - {'research', 'scenario'} \
+                    or not re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', str(source.get('research') or '')) \
+                    or (source.get('scenario') is not None and not re.fullmatch(r'[0-9a-f]{12}', str(source['scenario']))):
+                raise ValueError('source is {"research": "<uuid>", "scenario": "<key>"}')
+            out['source'] = {k: source[k] for k in ('research', 'scenario') if source.get(k)}
         return out
 
     def room_plan(self, body):

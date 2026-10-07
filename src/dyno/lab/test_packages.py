@@ -8,7 +8,7 @@ their machine (`lead.model_hint` says what the author used).
     {"format": "dynolab-test", "version": 1, "title": ..., "description": ..., "author": ...,
      "environment": {"id", "spec", "files"} | null, "goal": ..., "rules": [...],
      "lead": {"name", "role", "model_hint"}, "limits": {...}, "prompt": {"name", "lead", "teammate"} | null,
-     "alerts": [...], "script": [...], "rules_from": ..., "history": [...], "hash": "sha256:..."}
+     "alerts": [...], "script": [...], "rules_from": ..., "history": [...], "scenario": "<Evals key>", "hash": "sha256:..."}
 
 Importing runs nothing. It saves the environment and the prompt (reusing identical ones) and returns a
 setup for the Setup screen; the environment only does anything inside the sandbox once a test starts.
@@ -21,6 +21,9 @@ import re
 import shutil
 import time
 import urllib.request
+from pathlib import Path
+
+from .evals import scenario_of
 
 FORMAT, VERSION = 'dynolab-test', 1
 MAX_BYTES = 2_000_000
@@ -31,6 +34,40 @@ RULE_KEYS = ('text', 'watch', 'delivery', 'at')
 
 def _canonical(package):
     return json.dumps({k: v for k, v in package.items() if k != 'hash'}, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
+
+
+def ran_environment(episode, env_id):
+    """The environment exactly as a past run used it, from the copy the harness keeps in the episode:
+    (spec, files), or None when the episode kept no copy."""
+    if not re.fullmatch(r'[A-Za-z0-9._-]{1,80}', str(env_id or '')): return None
+    folder = Path(episode) / 'definition' / 'environment' / str(env_id)
+    try: raw = (folder / 'environment.yaml').read_text(errors='replace')
+    except OSError: return None
+    try: spec = json.loads(raw)
+    except ValueError:
+        import yaml
+        try: spec = yaml.safe_load(raw)
+        except yaml.YAMLError: return None
+    if not isinstance(spec, dict): return None
+    files = {}
+    for n in spec.get('nodes') or []:
+        for f in n.get('files') or []:
+            src = str(f.get('source') or '')
+            path = folder / 'files' / src
+            if src and '/' not in src and '..' not in src and path.is_file():
+                files[src] = path.read_text(errors='replace')[:200_000]
+    return spec, files
+
+
+def environment_compose(spec, files):
+    """The environment as a Docker Compose file (Dyno's dialect), or None if it can't be written."""
+    try:
+        from .compose import to_compose
+        # Small files go inside the compose file; bigger ones are referenced as files/<name>, so the
+        # package doesn't carry them twice.
+        return to_compose(spec, files, inline=sum(len(v) for v in files.values()) <= 100_000)
+    except Exception:  # never let the extra file stop a share
+        return None
 
 
 def package_hash(package):
@@ -58,19 +95,25 @@ class TestPackages:
             record = self.runs.read_record(body['room'])
             if record.get('kind') != 'room': raise ValueError('Not a test')
             spec = dict((record.get('config') or {}).get('spec') or {})
+            scenario = scenario_of(spec)[0]  # as Evals and shared results key this run, before filling detectors in
             alerts = [a for a in spec.get('alerts') or []]
             # The detectors Dyno chose for rules without one are in the run's own definition.
             folder = next((f.parent for f in sorted((self.runs.root / body['room'] / 'episodes').glob('*/definition/room.json'))), None)
             planned = (json.loads((folder / 'room.json').read_text()).get('rules') or []) if folder else []
             if len(planned) == len(spec.get('rules') or []):
                 spec['rules'] = [dict(r, watch=r.get('watch') or q.get('watch')) for r, q in zip(spec['rules'], planned)]
+            ran = ran_environment(folder.parent, spec.get('environment')) if folder and spec.get('environment') else None
         elif isinstance(body.get('spec'), dict):
+            ran = None
             spec = self.runs._room_spec(body['spec'], complete=False)
+            scenario = scenario_of(spec)[0]
             alerts = spec.pop('test_alerts', []) + [a for a in self.runs.alerts.list()['alerts'] if a.get('enabled')]
         else:
             raise ValueError('Send the setup (spec) or a past test (room)')
         env = None
-        if spec.get('environment'):
+        if spec.get('environment') and ran:  # a past test: the environment as it ran, even if edited since
+            env = dict(id=spec['environment'], spec=ran[0], files=ran[1])
+        elif spec.get('environment'):
             detail = self.runs.environment_detail(hd, spec['environment'])
             env = dict(id=spec['environment'], spec=detail['spec'], files={k: v for k, v in detail['files'].items() if v is not None})
         prompt = None
@@ -91,7 +134,10 @@ class TestPackages:
             lead=dict(name=lead.get('name') or 'Lead Agent', role=lead.get('role') or '', model_hint=lead.get('model') or ''),
             limits={k: v for k, v in (spec.get('limits') or {}).items() if k in LIMIT_KEYS},
             prompt=prompt, alerts=portable, script=spec.get('script') or [], rules_from=spec.get('rules_from') or '',
-            history=spec.get('history') or [])
+            history=spec.get('history') or [], scenario=scenario)
+        if env:  # the same environment as a Docker Compose file, for people who don't use Dyno
+            compose = environment_compose(env['spec'], env['files'])
+            if compose: package['compose'] = compose
         package['hash'] = package_hash(package)
         return package
 
@@ -100,9 +146,9 @@ class TestPackages:
     def load(self, body):
         """The package from `package` (an object or JSON text) or `url` (a research.dynolab.dev link), checked."""
         if not isinstance(body, dict): raise ValueError('Send a package or a url')
-        raw = body.get('package')
+        raw, research = body.get('package'), None
         if raw is None and body.get('url'):
-            raw = self._fetch(str(body['url']))
+            raw, research = self._fetch(str(body['url']))
         if isinstance(raw, str):
             if len(raw.encode()) > MAX_BYTES: raise ValueError('A test package is at most 2 MB')
             try: raw = json.loads(raw)
@@ -115,6 +161,8 @@ class TestPackages:
         env = raw.get('environment')
         if env is not None and (not isinstance(env, dict) or not isinstance(env.get('spec'), dict) or not isinstance(env.get('files', {}), dict)):
             raise ValueError('The package environment needs a spec and files')
+        raw = {k: v for k, v in raw.items() if k != '_research'}
+        if research: raw['_research'] = research  # not part of the package; import keeps it as the setup's source
         return raw
 
     @staticmethod
@@ -122,13 +170,14 @@ class TestPackages:
         # Links come only from Dyno Research; anything else is imported as a file.
         m = re.fullmatch(r'https://research\.dynolab\.dev/(?:api/studies/([0-9a-fA-F-]{36})/download|studies/([0-9a-fA-F-]{36}))/?', url.strip())
         if not m: raise ValueError('Import links must come from https://research.dynolab.dev. Open other packages as a file.')
-        url = f'{RESEARCH}/api/studies/{(m[1] or m[2]).lower()}/download'
+        research = (m[1] or m[2]).lower()
+        url = f'{RESEARCH}/api/studies/{research}/download'
         request = urllib.request.Request(url, headers={'User-Agent': 'Dyno-Lab', 'Accept': 'application/json, text/plain'})
         with urllib.request.urlopen(request, timeout=20) as response:
             if not response.geturl().startswith(RESEARCH + '/'): raise ValueError('The link redirected away from research.dynolab.dev')
             data = response.read(MAX_BYTES + 1)
         if len(data) > MAX_BYTES: raise ValueError('A test package is at most 2 MB')
-        return data.decode('utf-8', errors='replace')
+        return data.decode('utf-8', errors='replace'), research
 
     # --- preview and import ---------------------------------------------------------------
 
@@ -175,7 +224,7 @@ class TestPackages:
                     created=package.get('created'), goal=package.get('goal'), rules=package.get('rules'), lead=package.get('lead'),
                     limits=package.get('limits'), alerts=len(package.get('alerts') or []), script=len(package.get('script') or []),
                     history=len(package.get('history') or []), environment=env, prompt=self._prompt_plan(package.get('prompt')),
-                    runs=runs_what, hash_ok=None if not claimed else claimed == package_hash(package))
+                    runs=runs_what, hash_ok=None if not claimed else claimed == package_hash({k: v for k, v in package.items() if k != '_research'}))
 
     def import_(self, body):
         """Save the environment and prompt (reusing identical ones) and return the setup to start from."""
@@ -202,4 +251,7 @@ class TestPackages:
                      limits={k: v for k, v in (package.get('limits') or {}).items() if k in LIMIT_KEYS},
                      prompt_ref=ref, alerts=[self.runs.alerts.normalize(a) for a in package.get('alerts') or []],
                      script=package.get('script') or [], rules_from=package.get('rules_from') or '', history=package.get('history') or [])
+        if package.get('_research'):  # results of this setup link back to the shared test while it stays that test
+            as_run = self.runs._room_spec({k: setup[k] for k in ('environment', 'goal', 'rules')}, complete=False)
+            setup['source'] = dict(research=package['_research'], scenario=scenario_of(as_run)[0])
         return dict(setup=setup, environment=env, prompt=prompt, model_hint=lead.get('model_hint') or '')

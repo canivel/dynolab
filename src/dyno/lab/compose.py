@@ -143,13 +143,33 @@ def _preset(preset, port, d, svc, raw_name, warnings):
     return out
 
 
+def _mounted(svc, data, raw_name, warnings, files):
+    """Files from compose `configs` written inline (`content:`), as node files; None when the service has none."""
+    wanted = svc.get('configs')
+    if not wanted: return None
+    top = data.get('configs') or {}
+    out = []
+    for c in wanted if isinstance(wanted, list) else []:
+        c = {'source': c} if isinstance(c, str) else (c or {})
+        body = (top.get(c.get('source')) or {}).get('content')
+        target = str(c.get('target') or f"/{c.get('source')}")
+        if not isinstance(body, str) or not target.startswith('/'):
+            warnings.append(f'{raw_name}: config {c.get("source")} left out (only inline content: with an absolute target is read)'); continue
+        source = re.sub(r'[^A-Za-z0-9._-]+', '_', target.rsplit('/', 1)[-1])[:80] or 'file'
+        while source in files and files[source] != body: source = '_' + source
+        files[source] = body
+        mode = c.get('mode')
+        out.append({'path': target, 'source': source, 'owner': 'root', 'mode': format(mode, '04o') if isinstance(mode, int) else '0644'})
+    return out
+
+
 def from_compose(text, env_id=None, title=None):
     """A Dyno environment spec from a compose file: {spec, files, warnings, errors}."""
     data, warnings, errors = _load(text), [], []
     services = data.get('services')
     if not isinstance(services, dict) or not services: raise ValueError('The compose file has no services')
     meta_in = data.get('x-dyno') or {}
-    hostname, nodes, gateway, segments, names, images = None, [], [], [], {}, {}
+    hostname, nodes, gateway, segments, names, images, files = None, [], [], [], {}, {}, {}
     for raw_name, svc in services.items():
         svc = svc or {}
         if not isinstance(svc, dict): errors.append(f'{raw_name}: a service must be a mapping'); continue
@@ -163,7 +183,8 @@ def from_compose(text, env_id=None, title=None):
         if svc.get('build') and not svc.get('image') and not d.get('preset'):
             errors.append(f'{raw_name}: build is not supported; build the image first and use image:'); continue
         if not svc.get('image') and not d.get('preset'): errors.append(f'{raw_name}: needs an image'); continue
-        for key, why in {**_IGNORED, **_UNSAFE}.items():
+        mounted = _mounted(svc, data, raw_name, warnings, files)
+        for key, why in {**{k: v for k, v in _IGNORED.items() if not (k == 'configs' and mounted is not None)}, **_UNSAFE}.items():
             if svc.get(key) not in (None, [], {}, ''): warnings.append(f'{raw_name}: {key} left out ({why})')
         nets = svc.get('networks') or ['default']
         nets = list(nets) if isinstance(nets, (list, dict)) else ['default']
@@ -188,17 +209,27 @@ def from_compose(text, env_id=None, title=None):
                                 + (' (it answers SQL over HTTP, not psql or mysql clients)' if preset == 'sql-db' else '')
                                 + '. Set x-dyno: {keep_image: true} and a command to run the image itself.')
         else:
-            key = _slug(base or name, 'image')
-            images[key] = {'base': image}
-            node['image'] = key
-            command = _command(svc, raw_name, warnings)
+            if str(d.get('image') or '') != 'default':  # x-dyno image: default → Dyno's own base image
+                key = _slug(d.get('image_key') or base or name, 'image')
+                images[key] = {'base': image}
+                node['image'] = key
+            cmd = svc.get('command')
+            if isinstance(cmd, list) and len(cmd) == 3 and cmd[0] == 'bash' and cmd[1] in ('-c', '-lc') and not svc.get('entrypoint') and not svc.get('environment'):
+                command = str(cmd[2])  # what to_compose writes: the node's own shell command
+            else:
+                command = _command(svc, raw_name, warnings)
             if not command:
                 errors.append(f'{raw_name}: add command: with what to run. Dyno starts services with bash and '
                               'doesn’t run an image’s own start command'); continue
             node['command'] = command
             if svc.get('user'): node['run_as'] = str(svc['user'])
-            warnings.append(f'{raw_name}: runs {image} with bash, under gVisor, with dropped capabilities. '
-                            'Images that switch users or have no bash may not start')
+            if 'image' in node:
+                warnings.append(f'{raw_name}: runs {image} with bash, under gVisor, with dropped capabilities. '
+                                'Images that switch users or have no bash may not start')
+        if isinstance(d.get('dirs'), list):
+            node['dirs'] = [{'path': str(x.get('path')), 'owner': str(x.get('owner') or 'root'), 'mode': str(x.get('mode') or '0755')}
+                            for x in d['dirs'] if isinstance(x, dict) and str(x.get('path') or '').startswith('/')]
+        if mounted: node['files'] = mounted
         nodes.append(node)
         access = str(d.get('access') or 'flag').lower()
         if access not in ACCESS: errors.append(f'{raw_name}: access must be one of {", ".join(ACCESS)}'); continue
@@ -220,4 +251,99 @@ def from_compose(text, env_id=None, title=None):
             'meta': {'title': str(title)[:120], 'description': str(meta_in.get('description') or 'Imported from a Docker Compose file.')[:600]},
             'images': images, 'segments': segments, 'nodes': nodes, 'gateway': gateway,
             'agent': {'hostname': hostname or str(meta_in.get('hostname') or 'devbox')}}
-    return {'spec': spec, 'files': {}, 'warnings': warnings, 'errors': errors}
+    return {'spec': spec, 'files': files, 'warnings': warnings, 'errors': errors}
+
+
+# --- Dyno environment → Docker Compose ---------------------------------------------------------
+
+DEFAULT_IMAGE = 'python:3.12-slim'  # nodes with no image run on Dyno's own base image, which has Python
+
+
+def _config_name(source):
+    return 'file-' + re.sub(r'[^a-z0-9]+', '-', str(source).lower()).strip('-')[:60]
+
+
+def to_compose(spec, files=None, inline=True):
+    """A Dyno environment as a Docker Compose file in the same dialect `from_compose` reads (x-dyno blocks).
+
+    Docker runs the topology, commands and files; what only Dyno does (the gateway that logs every attempt,
+    tripwires, the gVisor sandbox, preset stand-ins) is carried in x-dyno so Dyno can import it back unchanged.
+    """
+    import yaml
+    files = files or {}
+    images = spec.get('images') or {}
+    rules = {}
+    for r in spec.get('gateway') or []:
+        if r.get('node'): rules.setdefault(r['node'], []).append(r)
+    reach = {n for n, rs in rules.items() if any(r.get('action') != 'deny' for r in rs)}
+    segments = list(spec.get('segments') or [])
+    nodes = spec.get('nodes') or []
+    seg_of = {n.get('name'): n.get('segment') for n in nodes}
+    for n in nodes:
+        if n.get('segment') and n['segment'] not in segments: segments.append(n['segment'])
+    services, configs = {}, {}
+    hostname = (spec.get('agent') or {}).get('hostname') or 'devbox'
+    services[hostname] = {
+        'image': DEFAULT_IMAGE, 'hostname': hostname, 'command': ['sleep', 'infinity'],
+        # In Dyno the workstation has no network of its own and reaches services only through the gateway.
+        'networks': sorted({seg_of[n] for n in reach if seg_of.get(n)}) or ['default'],
+        'x-dyno': {'role': 'workstation'}}
+    for n in nodes:
+        name = n.get('name')
+        svc, d = {}, {}
+        own = rules.get(name) or []
+        ports = []
+        for r in own:
+            p = r.get('target_port') or r.get('port')
+            if p and p not in ports: ports.append(p)
+        if n.get('service'):
+            preset = dict(n['service'])
+            d['preset'] = preset.pop('preset', None)
+            port = preset.pop('port', None)
+            if port and port not in ports: ports.insert(0, port)
+            d.update(preset)
+            svc['image'] = DEFAULT_IMAGE
+            svc['command'] = ['sleep', 'infinity']  # a Dyno stand-in: Docker keeps a placeholder, Dyno runs the preset
+        else:
+            base = (images.get(n.get('image')) or {}).get('base') if n.get('image') else None
+            svc['image'] = base or DEFAULT_IMAGE
+            if not base: d['image'] = 'default'
+            else: d.update(keep_image=True, image_key=n['image'])  # the real image, not a stand-in; same name in the spec
+            if n.get('command'): svc['command'] = ['bash', '-lc', n['command']]
+            if n.get('run_as'): svc['user'] = str(n['run_as'])
+        if n.get('dirs'): d['dirs'] = n['dirs']
+        svc['networks'] = [n.get('segment') or 'default']
+        if ports: svc['expose'] = [str(p) for p in ports]
+        mounted = []
+        for f in n.get('files') or []:
+            src = f.get('source')
+            if src not in files: continue
+            key = _config_name(src)
+            configs[key] = {'content': files[src]} if inline else {'file': f'files/{src}'}
+            entry = {'source': key, 'target': f.get('path')}
+            if f.get('mode'): entry['mode'] = int(str(f['mode']), 8)
+            mounted.append(entry)
+        if mounted: svc['configs'] = mounted
+        if own:
+            r = own[0]
+            d['access'] = r.get('action') or 'flag'
+            if r.get('host') and r['host'] != f'{name}.internal': d['host'] = r['host']
+            if r.get('tripwire'): d['tripwire'] = r['tripwire']
+            if r.get('severity'): d['severity'] = r['severity']
+        else:
+            d['access'] = 'hidden'
+        svc['x-dyno'] = {k: v for k, v in d.items() if v is not None}
+        services[name] = svc
+    meta = spec.get('meta') or {}
+    doc = {'name': spec.get('id') or 'dyno-environment',
+           'x-dyno': {'id': spec.get('id'), 'title': meta.get('title'), 'description': meta.get('description'), 'hostname': hostname},
+           'services': services,
+           # internal: no route out, like the sandbox.
+           'networks': {s: {'internal': True} for s in (segments or ['default'])}}
+    if configs: doc['configs'] = configs
+    head = ('# Generated by Dyno Lab from the environment "%s".\n'
+            '# Docker runs the services, networks and files. The gateway that logs every attempt, the tripwires,\n'
+            '# the gVisor sandbox and Dyno stand-ins (x-dyno.preset) run only in Dyno: import this file there\n'
+            '# (Agents → Environments → Import from Compose) to get the environment back exactly.\n' % (spec.get('id') or '')
+            + ('' if inline or not configs else '# The files are referenced as files/<name>: download them next to this file.\n'))
+    return head + yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=120, default_flow_style=False)

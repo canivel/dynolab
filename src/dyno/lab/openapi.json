@@ -2786,6 +2786,92 @@
         }
       }
     },
+    "/sandbox/packages/export-run": {
+      "post": {
+        "summary": "A shareable result of one finished test (format dynolab-run) for Dyno Research",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "room"
+              ],
+              "properties": {
+                "room": {
+                  "type": "string"
+                },
+                "thinking": {
+                  "type": "boolean",
+                  "description": "Include the agents' thinking (default false)"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "author": {
+                  "type": "string"
+                },
+                "license": {
+                  "type": "string",
+                  "enum": [
+                    "CC-BY-4.0",
+                    "CC0-1.0"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "format dynolab-run, version 1, scenario, test_id, setup, config, model, started, duration_s, result, team, timeline, observer, stats, hash"
+          }
+        }
+      }
+    },
+    "/sandbox/packages/export-eval": {
+      "post": {
+        "summary": "A shareable Evals table (format dynolab-eval): one batch or every finished untouched run",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [],
+              "properties": {
+                "batch": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "author": {
+                  "type": "string"
+                },
+                "license": {
+                  "type": "string",
+                  "enum": [
+                    "CC-BY-4.0",
+                    "CC0-1.0"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "format dynolab-eval, version 1, batch, scenarios, configs, cells (rates with Wilson 95% intervals), runs, hash"
+          }
+        }
+      }
+    },
     "/sandbox/packages/preview": {
       "post": {
         "summary": "What importing a package would create and what its test would run; nothing is saved",
@@ -2801,7 +2887,7 @@
                 },
                 "url": {
                   "type": "string",
-                  "description": "https:// link to a package (GitHub file links are read raw)"
+                  "description": "A research.dynolab.dev study or download link; other links are refused"
                 },
                 "harness_dir": {
                   "type": "string"
@@ -2832,7 +2918,7 @@
                 },
                 "url": {
                   "type": "string",
-                  "description": "https:// link to a package (GitHub file links are read raw)"
+                  "description": "A research.dynolab.dev study or download link; other links are refused"
                 },
                 "harness_dir": {
                   "type": "string"
