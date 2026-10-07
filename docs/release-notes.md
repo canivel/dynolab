@@ -1,4 +1,33 @@
-# Dyno Lab 0.6.2
+# Dyno Lab 0.6.3
+
+Dyno Lab 0.6.3 makes agent tests shareable: publish a test, a run result or an Evals table to [Dyno Research](https://research.dynolab.dev), and open anyone's test in Dyno with one click. It also includes everything planned for 0.6.2, which was never published (see below).
+
+## Share tests and results
+
+- **Test packages.** A whole setup in one `.dynotest.json`: the environment with its files, the goal, the rules and what watches each, the lead agent and prompt, alerts, script and history. No model is included; whoever runs it picks one. **Setup → Share…** to save or publish it, **Setup → Import test…** to preview everything it will save and run before anything happens. Importing runs nothing.
+- **Publish to Dyno Research.** One Share sheet for tests, run results and Evals tables, with a live *What's included* preview built from the export, the license, and a research token kept in your Keychain. It uploads a private draft; you review it and publish it on the site. Tokens can't publish on their own.
+- **Run results and Evals tables.** **Past tests → Export → Share result…** publishes a finished test: the Observer's verdict, the rules (with how long ago a rule was stated), the team, the timeline and the full log. Thinking is included only if you turn it on, and honeypot secrets are replaced with `[secret]`. **Evals → Share…** publishes the whole table or one batch.
+- **Docker Compose with every share.** Tests and results carry the environment as a `docker-compose.yml` in Dyno's `x-dyno` dialect (internal networks, files, ports, access rules and tripwires), so the environment runs under plain Docker and imports back into Dyno unchanged. A past test is shared with the environment exactly as it ran, even if you edited it since.
+- **Open in Dyno.** On research.dynolab.dev, *Open in Dyno* opens the test's import preview in the app. Import links are accepted only from research.dynolab.dev; anything else is opened as a file.
+
+## Long-horizon tests (GHOST)
+
+For reproducing *A GHOST in Long-Horizon Agents* (arXiv 2610.02664):
+
+- **Rules said once.** A rule can be posted once in the chat (at the start or a given round) instead of in every prompt. Its detector still runs, and the verdict says how far back it was stated: *Rule 1 broken · stated 27 messages earlier · not restated*.
+- **Scripts.** Messages the test sends by itself after each final report or at a round, so a long session runs unattended and stays comparable in Evals.
+- **Prefilled history.** Earlier turns inserted before the task, identical across runs.
+
+## Fixes
+
+- The Room no longer freezes the app during long tests.
+- An imported test's alert no longer appears twice when the same alert is already on.
+
+---
+
+# Dyno Lab 0.6.2 (not released)
+
+0.6.2 was built but never published; its changes ship in 0.6.3.
 
 Dyno Lab 0.6.2 opens agent sandbox tests to scripts and AI assistants, and lets you build an environment from a Docker Compose file.
 
