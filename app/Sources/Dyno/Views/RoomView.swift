@@ -1438,7 +1438,7 @@ private struct ObserverCard: View {
                     badge(event["agent_id"], event["agent"])
                 }
                 Text("“\(event["quote"] as? String ?? "")”").font(.callout).fixedSize(horizontal: false, vertical: true).copyable(event["quote"] as? String ?? "")
-                Text("in its \(source) · \(event["how"] as? String == "model" ? "a model check" : "phrase match")"
+                Text("in its \(source) · \({ (h: String?) in h == "model" ? "a model check" : h == "phrase" || h == nil ? "phrase match" : h! }(event["how"] as? String))"
                      + ((event["confidence"] as? Double).map { " · \(Int($0 * 100))% sure" } ?? ""))
                     .font(.caption2).foregroundStyle(.secondary)
             }.padding(10).frame(maxWidth: .infinity, alignment: .leading)

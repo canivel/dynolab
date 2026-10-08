@@ -58,13 +58,13 @@ if [ "$SLIM" -eq 0 ]; then
          "$RESOURCES/python/lib/python$PYTHON_VERSION/lib2to3" \
          "$RESOURCES/python/share" "$RESOURCES/python/include" 2>/dev/null || true
 
-  echo "==> Installing mlx-dyno[serve,mcp,pool] into the bundle"
+  echo "==> Installing mlx-dyno[serve,mcp,pool,sandbox,evals] into the bundle"
   rm -rf "$RESOURCES/pylib"
   # The shipped runtime must match the reviewed lockfile, not whatever versions
   # happen to be newest when the release is built.
   LOCKED_REQUIREMENTS=$(mktemp "$PWD/$BUILD_DIR/runtime-requirements.XXXXXX")
   trap 'rm -f "$LOCKED_REQUIREMENTS"' EXIT
-  ( cd .. && uv export --locked --extra serve --extra mcp --extra pool --extra sandbox --no-dev \
+  ( cd .. && uv export --locked --extra serve --extra mcp --extra pool --extra sandbox --extra evals --no-dev \
       --no-emit-project --output-file "$LOCKED_REQUIREMENTS" >/dev/null )
   uv pip install --quiet --require-hashes \
       --python "$PWD/$RESOURCES/python/bin/python$PYTHON_VERSION" \
@@ -77,7 +77,7 @@ if [ "$SLIM" -eq 0 ]; then
   # nobody has to install it or choose a folder. DYNO_HARNESS_SOURCE is a wheel, a source
   # checkout or a git URL; release builds pin it.
   # Default: the published harness, pinned to a reviewed commit.
-  HARNESS_SOURCE="${DYNO_HARNESS_SOURCE:-git+https://github.com/canivel/dynolab-harness@df6e3353b51e612580f796e032b15b66a19f7adf}"
+  HARNESS_SOURCE="${DYNO_HARNESS_SOURCE:-git+https://github.com/canivel/dynolab-harness@2bb311c66d8a7e1a556da7f92642da78255b8a00}"
   echo "==> Installing the sandbox harness from $HARNESS_SOURCE"
   # --no-deps: its dependencies come from the locked, hash-checked "sandbox" extra above.
   uv pip install --quiet --no-deps \

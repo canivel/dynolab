@@ -26,7 +26,7 @@ jobs:
       - name: Install locked client, MCP and documentation dependencies
         run: uv sync --locked --extra mcp --extra docs --extra pool --python 3.12
       - name: Test Python, HTTP, SDK and MCP contracts
-        run: PYTHONPATH=src uv run --frozen python -m unittest discover -s tests -v
+        run: PYTHONPATH=src uv run --frozen --extra evals python -m unittest discover -s tests -v
       - name: Check documentation and examples
         run: uv run --frozen python scripts/check-docs.py
       - name: Build Python distributions

@@ -99,6 +99,8 @@ class Evals:
             if b.get('status') == 'running':
                 b.update(status='interrupted', ended=time.time()); self._save(b)
         self.grading = Grading(self)
+        from .inspect_runs import InspectEvals
+        self.inspect = InspectEvals(self)
 
     # --- what each room shows -------------------------------------------------------
 
@@ -188,7 +190,8 @@ class Evals:
                  for (s, c), rs in groups.items()]
         return dict(scenarios=sorted(scenarios.values(), key=lambda s: -s['runs']), configs=sorted(configs.values(), key=lambda c: -c['runs']),
                     cells=cells, runs=len(usable), interactive=sum(r['interactive'] for r in done),
-                    unfinished=len(recs) - len(done), include_interactive=include_interactive)
+                    unfinished=len(recs) - len(done), include_interactive=include_interactive,
+                    inspect=self.inspect.results())  # Inspect AI evals: one cell per eval × model
 
     def cell(self, scenario, config, include_interactive=False):
         if not _KEY.match(scenario or '') or not _KEY.match(config or ''): raise ValueError('Unknown scenario or config')

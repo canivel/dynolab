@@ -2484,6 +2484,383 @@
         }
       }
     },
+    "/sandbox/evals/inspect": {
+      "get": {
+        "summary": "Inspect AI evals: whether Inspect is installed (and its version), saved evals, recent runs",
+        "responses": {
+          "200": {
+            "description": "Status, evals and runs"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/inspect/defs": {
+      "post": {
+        "summary": "Create or update an eval: a dataset (samples, solver, scorer), an Inspect task file, or a library benchmark",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "title"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "dataset",
+                      "task_file",
+                      "library"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "epochs": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20
+                  },
+                  "dataset": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "input": {
+                          "type": "string"
+                        },
+                        "target": {},
+                        "id": {
+                          "type": "string"
+                        },
+                        "choices": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "solver": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "generate",
+                          "chain_of_thought",
+                          "multiple_choice"
+                        ]
+                      },
+                      "system_prompt": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "scorer": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "includes",
+                          "match",
+                          "exact",
+                          "pattern",
+                          "choice",
+                          "model_graded_qa",
+                          "model_graded_fact"
+                        ]
+                      },
+                      "ignore_case": {
+                        "type": "boolean"
+                      },
+                      "pattern": {
+                        "type": "string"
+                      },
+                      "instructions": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "task_file": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "code": {
+                        "type": "string"
+                      },
+                      "task": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "library": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "limit": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The saved eval"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/inspect/defs/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The eval"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/inspect/defs/{id}/delete": {
+      "post": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/inspect/import": {
+      "post": {
+        "summary": "A draft eval (not saved) from CSV, JSONL or JSON samples, or an Inspect .py task file",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "text"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "csv",
+                      "jsonl",
+                      "json",
+                      "py"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "draft and warnings"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/inspect/library": {
+      "get": {
+        "summary": "inspect_evals benchmarks that run on a local model without Docker, and whether the library is installed",
+        "responses": {
+          "200": {
+            "description": "The catalog"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/inspect/library/install": {
+      "post": {
+        "summary": "Install the inspect_evals package (needs internet)",
+        "responses": {
+          "202": {
+            "description": "Installing"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/inspect/runs": {
+      "post": {
+        "summary": "Run an eval with Inspect AI on one or more running models; a judge (grader) for judge-scored evals",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "def",
+                  "models"
+                ],
+                "properties": {
+                  "def": {
+                    "type": "string"
+                  },
+                  "models": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 8,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "port": {
+                          "type": "integer"
+                        },
+                        "model": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "grader": {
+                    "type": "object",
+                    "properties": {
+                      "port": {
+                        "type": "integer"
+                      },
+                      "model": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "epochs": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20
+                  },
+                  "limit": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The run"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/inspect/runs/{id}": {
+      "get": {
+        "summary": "A run: progress per model, accuracy, pass count with its 95% Wilson range, samples with outputs and scores, the Inspect log",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/inspect/runs/{id}/cancel": {
+      "post": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cancelled"
+          }
+        }
+      }
+    },
+    "/sandbox/evals/inspect/view": {
+      "post": {
+        "summary": "Start Inspect View (Inspect's own log viewer) for a run's logs and return its URL",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "run": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "url"
+          }
+        }
+      }
+    },
     "/sandbox/evals/review": {
       "get": {
         "responses": {
