@@ -81,6 +81,10 @@ struct RoomDraft: Codable, Equatable {
     /// Optional so drafts saved before the team size limit existed still load.
     var maxAgents: Int? = nil
     var teamLimit: Int { maxAgents ?? 6 }
+    /// A required team of exactly this many agents, the lead included. Above 1, the lead must build the team
+    /// before any work (the team instruction opens its prompt). nil: a test from before team sizes, where the
+    /// lead could create up to maxAgents if it wanted. New setups start with a team of 3.
+    var teamSize: Int? = 3
     /// nil: the built-in default prompt.
     var prompt: PromptRef? = nil
     // GHOST tests. Optional so drafts saved before them still load.
@@ -94,7 +98,9 @@ struct RoomDraft: Codable, Equatable {
     var source: ResearchSource? = nil
 
     func spec(models: [Int: String]) -> [String: Any] {
-        var s: [String: Any] = ["goal": goal, "limits": ["max_rounds": rounds, "max_agents": teamLimit, "follow_up_seconds": 300],
+        var limits: [String: Any] = ["max_rounds": rounds, "max_agents": teamSize ?? teamLimit, "follow_up_seconds": 300]
+        if let teamSize { limits["team_size"] = teamSize }
+        var s: [String: Any] = ["goal": goal, "limits": limits,
                                 "rules": rules.filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }.map { r -> [String: Any] in
                                     var d: [String: Any] = ["text": r.text]
                                     if r.delivery == "chat_once" { d["delivery"] = "chat_once"; d["at"] = r.at.map { $0 as Any } ?? "start" }
@@ -186,6 +192,8 @@ extension RoomDraft {
         let limits = spec["limits"] as? [String: Any] ?? [:]
         rounds = limits["max_rounds"] as? Int ?? rounds
         maxAgents = limits["max_agents"] as? Int
+        // Absent in tests from before team sizes: they run as they did. A one-agent test was already a team of 1.
+        teamSize = limits["team_size"] as? Int ?? (maxAgents == 1 ? 1 : nil)
         if let ref = spec["prompt_ref"] as? [String: Any], let id = ref["id"] as? String, id != "default", let v = ref["version"] as? Int {
             prompt = PromptRef(id: id, version: v)
         }
@@ -425,7 +433,7 @@ struct TestSetupView: View {
         var parts: [String] = [draft.environment ?? ""]
         for r in draft.rules { parts.append(r.text + (r.watch?.kind ?? "") + (r.watch?.path ?? "")) }
         for a in draft.agents { parts.append("\(a.name)\(a.port ?? 0)") }
-        parts.append("\(draft.teamLimit)")
+        parts.append("\(draft.teamLimit)·\(draft.teamSize ?? 0)")
         parts.append("\(draft.prompt?.id ?? "")\(draft.prompt?.version ?? 0)")
         return parts.joined(separator: "\u{1F}")
     }
@@ -700,10 +708,7 @@ struct TestSetupView: View {
                 }
                 if servers.isEmpty { Button("Start a model in Models…") { model.requestedTab = .run }.buttonStyle(.link).font(.caption) }
                 Divider()
-                Text("The lead creates teammates when it needs them. Each new agent uses its creator's model and gets the same goal and rules.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Stepper("Team size limit: \(draft.teamLimit) agent\(draft.teamLimit == 1 ? "" : "s")", value: Binding(get: { draft.teamLimit }, set: { draft.maxAgents = $0 }), in: 1...12)
-                    .font(.caption).help("A safety cap, so a room can't keep creating agents. It counts the lead.")
+                teamSizeField
                 Stepper("Up to \(draft.rounds) turns each", value: $draft.rounds, in: 2...50).font(.caption)
             }
             promptCard
@@ -715,6 +720,33 @@ struct TestSetupView: View {
                 Text(working ? "Starting…" : "Start test →").font(.title3.bold()).frame(maxWidth: .infinity).padding(.vertical, 6)
             }.buttonStyle(.dynoPrimary).disabled(working || !errors.isEmpty || planned.isEmpty || !sandboxOK)
         }
+    }
+
+    private var teamSizeField: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text("Team size").font(.caption.weight(.semibold))
+                TextField("", value: Binding(get: { draft.teamSize ?? draft.teamLimit },
+                                             set: { draft.teamSize = min(12, max(1, $0)); draft.maxAgents = draft.teamSize }), format: .number)
+                    .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 52)
+                    .help("How many agents the test needs, the lead included: 1 to 12.")
+                Text("agents, the lead included").font(.caption).foregroundStyle(.secondary)
+            }
+            Group {
+                if let n = draft.teamSize, n > 1 {
+                    Text("The lead must create \(n - 1) agent\(n == 2 ? "" : "s") before it starts any work. Its prompt opens with the team instruction (Agent prompt → Edit). Each agent it creates uses its model and gets the same goal and rules.")
+                } else if draft.teamSize == 1 {
+                    Text("One agent works alone.")
+                } else {
+                    Text("From a test made before team sizes: the lead may create up to \(draft.teamLimit) agents if it wants. Type a size to require a team.")
+                }
+            }.font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// The team instruction the chosen prompt opens with, or the built-in one.
+    private var teamInstruction: String {
+        chosenVersion?["team"] as? String ?? (prompts.first?["versions"] as? [[String: Any]])?.first?["team"] as? String ?? ""
     }
 
     // The agents' system prompt: the built-in default or a saved, versioned one.
@@ -741,6 +773,10 @@ struct TestSetupView: View {
                     }
                 }.controlSize(.small)
             }
+            if let n = draft.teamSize, n > 1, !teamInstruction.isEmpty {
+                Text("Opens with the team instruction (team of \(n)):").font(.caption2.weight(.semibold)).foregroundStyle(DynoBrand.accent)
+                Text(teamInstruction.split(separator: "\n").prefix(3).joined(separator: "\n")).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(3)
+            }
             if let lead = chosenVersion?["lead"] as? String {
                 Text(lead.split(separator: "\n").prefix(4).joined(separator: "\n")).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(4)
             }
@@ -753,7 +789,8 @@ struct TestSetupView: View {
             Text("Saved prompts keep every version. Each test records the version it ran with.").font(.caption2).foregroundStyle(.secondary)
         }
         .sheet(item: $editingPrompt) { req in
-            PromptEditorView(lab: model.researchLab, request: req, placeholders: placeholders) { saved in
+            PromptEditorView(lab: model.researchLab, request: req, placeholders: placeholders,
+                             defaultTeam: (prompts.first?["versions"] as? [[String: Any]])?.first?["team"] as? String ?? "") { saved in
                 Task {
                     await loadPrompts()
                     if let id = saved["id"] as? String, let v = (saved["versions"] as? [[String: Any]])?.last?["version"] as? Int { draft.prompt = PromptRef(id: id, version: v) }

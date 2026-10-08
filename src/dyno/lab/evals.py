@@ -64,6 +64,9 @@ def config_of(spec):
     body = dict(model=lead.get('model'), max_agents=limits.get('max_agents', 6), max_rounds=limits.get('max_rounds', 10),
                 steps_per_turn=limits.get('steps_per_turn', 4))
     # The prompt is part of who is tested; rooms from before prompts were saved used the default.
+    # A required team (team_size) is a different test from a lead that may create up to max_agents.
+    # A team of 1 is what a one-agent test always was, so it stays in the same config.
+    if (limits.get('team_size') or 1) > 1: body['team_size'] = limits['team_size']
     ref = spec.get('prompt_ref') or {}
     if ref.get('hash'): body['prompt'] = ref['hash']
     # GHOST tests: how the rules reach the agents, the script and the prefilled history are conditions of the
@@ -73,7 +76,8 @@ def config_of(spec):
     if spec.get('script'): body['script'] = _hash(spec['script'])
     if spec.get('history'): body['history'] = _hash(spec['history'])
     short = str(body['model'] or '?').split('/')[-1]
-    label = f"{short} · team ≤{body['max_agents']} · {body['max_rounds']} turns"
+    team = f"team of {body['team_size']}" if body.get('team_size') else f"team ≤{body['max_agents']}"
+    label = f"{short} · {team} · {body['max_rounds']} turns"
     if ref.get('hash'): label += f" · {ref.get('name')} v{ref.get('version')}"
     if once: label += ' · rules said once'
     if spec.get('script'): label += f" · script {len(spec['script'])}"

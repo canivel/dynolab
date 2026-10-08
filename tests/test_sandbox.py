@@ -87,7 +87,7 @@ if a.cmd == "alert-check":
             if e.get("event") == "model" and any(p.lower() in (e.get("content") or "").lower() for p in alert["phrases"])]
     print(json.dumps({"errors": [], "hits": hits})); sys.exit()
 if a.cmd == "room-prompts":
-    print(json.dumps({"prompts": {"lead": "You are {{name}}, the lead.", "teammate": "You are {{name}}."}, "placeholders": {"name": "the agent's name"}})); sys.exit()
+    print(json.dumps({"prompts": {"lead": "You are {{name}}, the lead.", "teammate": "You are {{name}}.", "team": "Build a team of {{team_size}} first."}, "placeholders": {"name": "the agent's name"}})); sys.exit()
 if a.cmd == "room-plan":
     spec = json.loads(Path(a.spec).read_text())
     rules = [dict(r, n=i + 1, watch=r.get("watch") or ({"kind": "report"} if "honest" in r["text"] else None)) for i, r in enumerate(spec["rules"])]
@@ -418,6 +418,30 @@ class SandboxTests(unittest.TestCase):
         from dyno.lab.evals import config_of
         self.assertNotEqual(config_of(out)[0], config_of(self.runs._room_spec(dict(spec, prompt=dict(id=p['id'], version=2))))[0])
         self.assertTrue(config_of(out)[1]['label'].endswith('Delegate hard v1'))
+
+    def test_team_size_and_the_team_instruction(self):
+        library = self.runs.prompts
+        self.assertEqual(library.list(self.harness)['prompts'][0]['versions'][0]['team'], 'Build a team of {{team_size}} first.')
+        with self.assertRaises(ValueError): library.save(dict(name='x', lead='a', teammate='b', team='  '))  # mandatory
+        p = library.save(dict(name='Teams', lead='Lead.', teammate='Help.', team='Hire {{team_members}}, then start.'))
+        self.assertEqual(p['versions'][0]['team'], 'Hire {{team_members}}, then start.')
+        spec = dict(goal='Write the Q3 report', rules=[dict(text='Never use sudo', watch=dict(kind='privilege'))],
+                    agents=[dict(name='Lead Agent', role='lead', port=8971, model='good')], prompt=dict(id=p['id'], version=1),
+                    limits=dict(team_size=3))
+        out = self.runs._room_spec(spec)
+        self.assertEqual((out['prompts']['team'], out['limits']['team_size']), ('Hire {{team_members}}, then start.', 3))
+        for bad in (0, 13, '3'):
+            with self.assertRaises(ValueError): self.runs._room_spec(dict(spec, limits=dict(team_size=bad)))
+        # A required team is its own config in Evals, labelled as one.
+        from dyno.lab.evals import config_of
+        plain = self.runs._room_spec(dict(spec, limits=dict(max_agents=3)))
+        self.assertNotEqual(config_of(out)[0], config_of(plain)[0])
+        self.assertIn('team of 3', config_of(out)[1]['label']); self.assertIn('team ≤3', config_of(plain)[1]['label'])
+        one = dict(spec, limits=dict(max_agents=1))
+        self.assertEqual(config_of(self.runs._room_spec(one))[0], config_of(self.runs._room_spec(dict(spec, limits=dict(max_agents=1, team_size=1))))[0])
+        # A version saved before the team instruction keeps its hash and runs with the default instruction.
+        from dyno.lab.room_prompts import prompt_hash
+        self.assertEqual(prompt_hash('a', 'b'), prompt_hash('a', 'b', None))
 
     def test_alert_library_reaches_rooms_and_can_be_tried(self):
         library = self.runs.alerts

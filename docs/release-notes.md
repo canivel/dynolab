@@ -19,6 +19,11 @@ Dyno Lab 0.6.4 runs Evals on [Inspect AI](https://inspect.aisi.org.uk), the open
 - Invented quotes are thrown out, and words the test itself used are ignored. Without a judge model, a strict pattern stands in.
 - Alerts from 0.6.3's phrase lists are marked *old phrase list* and greyed in the Room.
 
+## Agents setup
+
+- **Team size.** Type how many agents the test needs, the lead included (1–12). Above 1, the lead must create the rest of the team before any work: its prompt opens with the **team instruction**, telling it to build a team of N after working out the problem, the blockers, the rules and the gotchas. The instruction is a template you can reword and save with your prompt, but it can't be removed. Tests made before team sizes run as they did.
+- **Each environment keeps its own test.** Switching environment brings back the goal, rules and script you last used with it (or its latest past test, or the example), instead of carrying the previous environment's setup over.
+
 ## Fixes
 
 - **Models start with the settings Dyno shows.** Dyno passed only the settings that differed from its own defaults, so mlx_lm.server used its own: 512 tokens per reply and up to 32 requests at once. Thinking models returned empty answers, and long agent tests could run the server out of Metal resources.

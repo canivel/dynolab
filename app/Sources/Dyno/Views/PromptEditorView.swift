@@ -8,17 +8,21 @@ struct PromptEditRequest: Identifiable {
     var version: [String: Any]?
 }
 
-/// A Markdown editor for the agents' system prompts: one for the lead, one for agents it creates.
+/// A Markdown editor for the agents' system prompts: one for the lead, one for agents it creates, and the team
+/// instruction that opens the lead's prompt when a test requires a team.
 /// Saving never overwrites: it adds a version, and earlier versions stay as they were.
 struct PromptEditorView: View {
     var lab: ResearchLab
     var request: PromptEditRequest
     var placeholders: [String: String]
+    /// The built-in team instruction, for versions saved before there was one.
+    var defaultTeam: String = ""
     var onSaved: ([String: Any]) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var lead = ""
     @State private var teammate = ""
+    @State private var team = ""
     @State private var note = ""
     @State private var part = "lead"
     @State private var showPreview = true
@@ -31,10 +35,10 @@ struct PromptEditorView: View {
     private var savedID: String? { builtin ? nil : request.prompt?["id"] as? String }
     private var versions: [[String: Any]] { savedID == nil ? [] : (request.prompt?["versions"] as? [[String: Any]] ?? []) }
     private var nextVersion: Int { (versions.last?["version"] as? Int ?? 0) + 1 }
-    private var text: Binding<String> { part == "lead" ? $lead : $teammate }
+    private var text: Binding<String> { part == "lead" ? $lead : part == "team" ? $team : $teammate }
     private var changed: Bool {
         guard let last = versions.last else { return true }
-        return last["lead"] as? String != lead || last["teammate"] as? String != teammate
+        return last["lead"] as? String != lead || last["teammate"] as? String != teammate || (last["team"] as? String ?? defaultTeam) != team
     }
 
     var body: some View {
@@ -54,9 +58,10 @@ struct PromptEditorView: View {
                 if !versions.isEmpty { history.frame(width: 190) }
                 VStack(alignment: .leading, spacing: 8) {
                     Picker("", selection: $part) {
-                        Text("Lead agent").tag("lead"); Text("Agents it creates").tag("teammate")
-                    }.pickerStyle(.segmented).labelsHidden().frame(width: 320)
+                        Text("Lead agent").tag("lead"); Text("Agents it creates").tag("teammate"); Text("Team instruction").tag("team")
+                    }.pickerStyle(.segmented).labelsHidden().frame(width: 460)
                     Text(part == "lead" ? "The system prompt of the agent you set up. Tell it how to plan, delegate and report."
+                         : part == "team" ? "Opens the lead's prompt whenever the test's team size is more than 1: build the team of {{team_size}} before any work. Reword it as you like; it can't be empty."
                          : "The system prompt of every agent created during the test. Its creator's instructions come with its first message.")
                         .font(.caption).foregroundStyle(.secondary)
                     HSplitView {
@@ -72,7 +77,7 @@ struct PromptEditorView: View {
                 }
             }
             HStack(spacing: 10) {
-                Label("The goal and the rules are always included: if a prompt leaves out {{goal}} or {{rules}}, Dyno adds them at the end.", systemImage: "lock")
+                Label("The goal and the rules are always included: if a prompt leaves out {{goal}} or {{rules}}, Dyno adds them at the end. With a team size above 1, the team instruction always comes first.", systemImage: "lock")
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
             }
@@ -83,7 +88,7 @@ struct PromptEditorView: View {
                 Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(saving ? "Saving…" : savedID == nil ? "Save prompt" : "Save as v\(nextVersion)", action: save)
                     .buttonStyle(.dynoPrimary).keyboardShortcut("s", modifiers: .command)
-                    .disabled(saving || name.trimmingCharacters(in: .whitespaces).isEmpty || lead.isEmpty || teammate.isEmpty || (savedID != nil && !changed))
+                    .disabled(saving || name.trimmingCharacters(in: .whitespaces).isEmpty || lead.isEmpty || teammate.isEmpty || team.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (savedID != nil && !changed))
             }
         }
         .padding(20).frame(minWidth: 1000, idealWidth: 1180, minHeight: 640, idealHeight: 760)
@@ -94,6 +99,7 @@ struct PromptEditorView: View {
             let v = request.version ?? versions.last
             lead = v?["lead"] as? String ?? ""
             teammate = v?["teammate"] as? String ?? ""
+            team = v?["team"] as? String ?? defaultTeam
             base = v?["version"] as? Int
             let current = request.prompt?["name"] as? String ?? ""
             name = savedID != nil ? current : builtin ? "My prompt" : "New prompt"
@@ -108,7 +114,7 @@ struct PromptEditorView: View {
                     ForEach(versions.reversed().indices, id: \.self) { i in
                         let v = Array(versions.reversed())[i], n = v["version"] as? Int ?? 0
                         Button {
-                            lead = v["lead"] as? String ?? ""; teammate = v["teammate"] as? String ?? ""; base = n
+                            lead = v["lead"] as? String ?? ""; teammate = v["teammate"] as? String ?? ""; team = v["team"] as? String ?? defaultTeam; base = n
                         } label: {
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack {
@@ -141,7 +147,7 @@ struct PromptEditorView: View {
 
     private func save() {
         saving = true
-        var body: [String: Any] = ["name": name, "lead": lead, "teammate": teammate,
+        var body: [String: Any] = ["name": name, "lead": lead, "teammate": teammate, "team": team,
                                    "note": note.isEmpty && base != nil && savedID != nil && base != versions.last?["version"] as? Int ? "From v\(base!)" : note]
         if let savedID { body["id"] = savedID }
         Task {

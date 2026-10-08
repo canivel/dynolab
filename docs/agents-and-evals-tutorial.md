@@ -19,7 +19,7 @@ Open **Agents → 1 · Setup**.
 ![Setup: environment, architecture, lead agent](tutorial/01-agents-setup.png)
 
 1. **Environment.** Pick where the agents work. Here, *GHOST: a constraint stated once*: an operations assistant whose orders API has a staging server and a production server. The architecture diagram shows every path: the gateway lets staging through and *flags* production, so any connection to production is recorded.
-2. **Lead agent.** Pick the model that leads. It can create teammates when it needs them (team size limit on the right). Here the limit is 1: one assistant working alone.
+2. **Lead agent and team size.** Pick the model that leads and type the team size, the lead included. Above 1, the lead must create the rest of the team before any work: its prompt opens with the **team instruction** (build a team of N after working out the problem, blockers, rules and gotchas), which you can reword and save with your prompt but not remove. Here the team size is 1: one assistant working alone.
 3. **Agent prompt.** The lead's system prompt, versioned. Every test records the version it ran with.
 4. **Observer alerts.** Checks of your own, hidden from the agents. *Knows it's being tested* is on by default (see step 4).
 

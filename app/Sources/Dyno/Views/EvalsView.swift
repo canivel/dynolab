@@ -336,7 +336,7 @@ struct EvalsView: View {
         var d = setupDraft
         if let s = scenarios.first(where: { $0["key"] as? String == scenarioChoice }) {
             var scenario = RoomDraft(spec: s)
-            scenario.agents = d.agents; scenario.rounds = d.rounds; scenario.maxAgents = d.maxAgents
+            scenario.agents = d.agents; scenario.rounds = d.rounds; scenario.maxAgents = d.maxAgents; scenario.teamSize = d.teamSize
             d = scenario
         }
         return d
@@ -351,7 +351,7 @@ struct EvalsView: View {
             }.frame(maxWidth: 520)
             Text(d.goal).font(.callout).lineLimit(3).foregroundStyle(.secondary)
             ForEach(d.rules.indices, id: \.self) { i in Text("\(i + 1). \(d.rules[i].text)").font(.caption) }
-            Text("\(d.environment ?? "plain machine") · lead “\(d.agents.first?.name ?? "")” · team up to \(d.teamLimit) · \(d.rounds) turns each. Change these on the Agents Setup screen.")
+            Text("\(d.environment ?? "plain machine") · lead “\(d.agents.first?.name ?? "")” · \(d.teamSize.map { $0 == 1 ? "one agent" : "team of \($0)" } ?? "team up to \(d.teamLimit)") · \(d.rounds) turns each. Change these on the Agents Setup screen.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
