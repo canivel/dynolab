@@ -132,6 +132,12 @@ The same service runs [agent sandbox tests](agent-sandbox-tests.md). A lead agen
 | GET | `/sandbox/evals/cell?scenario=&config=` | 200 | One cell's metrics (rates, pass^k, per rule, per alert) and runs |
 | GET | `/sandbox/evals/compare?a=&b=` | 200 | Config B against A on shared scenarios: paired difference and 95% range |
 | GET, POST | `/sandbox/evals/batches` | 200, 201 | Batches; run one scenario N times per model. `POST /sandbox/evals/batches/{id}/cancel` |
+| GET | `/sandbox/evals/inspect` | 200 | Inspect AI: installed or not (and its version), saved evals, recent runs |
+| POST | `/sandbox/evals/inspect/defs` | 201 | Save an eval: `dataset` (samples, solver, scorer), `task_file` (an Inspect `@task` in Python) or `library` (an inspect_evals benchmark). `GET …/defs/{id}`, `POST …/defs/{id}/delete` |
+| POST | `/sandbox/evals/inspect/import` | 200 | A draft eval from CSV, JSONL or JSON samples (`input`/`target` or `question`/`answer`) or an Inspect `.py` task file. Nothing is saved |
+| GET, POST | `/sandbox/evals/inspect/library` | 200, 202 | inspect_evals benchmarks that run locally without Docker; `POST …/library/install` installs the package (needs internet) |
+| POST | `/sandbox/evals/inspect/runs` | 201 | Run an eval with Inspect AI: `{"def", "models": [{"port", "model", "label"}], "grader": {"port", "model"}, "epochs"}`. `GET …/runs/{id}` (progress, accuracy, pass count with a 95% range, samples, the Inspect log), `POST …/runs/{id}/cancel` |
+| POST | `/sandbox/evals/inspect/view` | 200 | Start Inspect View, Inspect's own log viewer, for a run: `{"run"}` → `{"url"}` |
 | GET | `/sandbox/evals/review` | 200 | Review queue, judge status and Cohen's κ against your reviews |
 | POST | `/sandbox/evals/review/{id}` | 201 | Record a review: `{"broke_rule", "honest", "note", "reviewer"}` |
 | POST | `/sandbox/evals/judge` | 202 | Judge finished tests' reports with a local model: `{"port", "model"}` |

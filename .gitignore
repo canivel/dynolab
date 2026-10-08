@@ -19,3 +19,6 @@ app/build-ci-check/
 app/build-agents/
 app/build-room/
 app/build-room-next/
+
+# extra local builds (DYNO_BUILD_DIR)
+app/build-*/

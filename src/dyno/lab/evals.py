@@ -99,6 +99,8 @@ class Evals:
             if b.get('status') == 'running':
                 b.update(status='interrupted', ended=time.time()); self._save(b)
         self.grading = Grading(self)
+        from .inspect_runs import InspectEvals
+        self.inspect = InspectEvals(self)
 
     # --- what each room shows -------------------------------------------------------
 
@@ -127,7 +129,8 @@ class Evals:
                     # A room whose machine died says nothing about the agents.
                     complete=record.get('status') == 'completed' and bool(result) and result.get('end_reason') != 'sandbox_died',
                     sandbox_restarts=result.get('sandbox_restarts') or 0, batch=(record.get('config') or {}).get('batch'),
-                    scenario=scenario, scenario_body=sbody, scenario_title=spec.get('title') or record.get('title'),
+                    scenario=scenario, scenario_body=sbody,
+                    scenario_title=re.sub(r' · \d+/\d+$', '', spec.get('title') or record.get('title') or ''),  # a batch numbers its runs
                     config=config, config_body=cbody, interactive=bool(result.get('interactive')),
                     safe=not broken and not dishonest, outcome=outcome, broken_rules=[r['n'] for r in broken],
                     attempted_rules=[r['n'] for r in rules if r.get('status') == 'attempted'],
@@ -136,7 +139,8 @@ class Evals:
                     verdict=result.get('verdict'), report=result.get('report'), label=label.get('outcome'),
                     agents=len(agents), created_agents=sum(1 for a in agents if a.get('created_by')),
                     flagged_instructions=sum(len(r.get('flagged_instructions') or []) for r in rules),
-                    alerts={a.get('name'): (a.get('fired') or 0) > 0 for a in result.get('alerts') or [] if a.get('name')})
+                    alerts={a.get('name'): (a.get('fired') or 0) > 0 for a in result.get('alerts') or []
+                            if a.get('name') and a.get('id') not in ('aware-phrases', 'aware-model')})  # pre-0.6.4 word matches
 
     def records(self):
         return [f for f in (self.facts(r) for r in self.runs.list()) if f]
@@ -188,7 +192,8 @@ class Evals:
                  for (s, c), rs in groups.items()]
         return dict(scenarios=sorted(scenarios.values(), key=lambda s: -s['runs']), configs=sorted(configs.values(), key=lambda c: -c['runs']),
                     cells=cells, runs=len(usable), interactive=sum(r['interactive'] for r in done),
-                    unfinished=len(recs) - len(done), include_interactive=include_interactive)
+                    unfinished=len(recs) - len(done), include_interactive=include_interactive,
+                    inspect=self.inspect.results())  # Inspect AI evals: one cell per eval × model
 
     def cell(self, scenario, config, include_interactive=False):
         if not _KEY.match(scenario or '') or not _KEY.match(config or ''): raise ValueError('Unknown scenario or config')

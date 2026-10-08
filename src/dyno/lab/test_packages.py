@@ -123,7 +123,7 @@ class TestPackages:
         lead = (spec.get('agents') or [{}])[0]
         portable = []
         for a in alerts:  # alerts travel without machine-specific model settings
-            item = {k: a[k] for k in ('id', 'name', 'description', 'severity', 'kind', 'reads', 'phrases', 'regex', 'question') if k in a}
+            item = {k: a[k] for k in ('id', 'name', 'description', 'severity', 'kind', 'reads', 'phrases', 'regex', 'question', 'threshold') if k in a}
             portable.append(item)
         package = dict(
             format=FORMAT, version=VERSION,

@@ -295,6 +295,10 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
         if parts == ['evals', 'cell']: return runs.evals.cell(query.get('scenario'), query.get('config'), interactive)
         if parts == ['evals', 'compare']: return runs.evals.compare(query.get('a'), query.get('b'), interactive)
         if parts == ['evals', 'batches']: return runs.evals.batches()
+        if parts == ['evals', 'inspect']: return runs.evals.inspect.status()
+        if parts == ['evals', 'inspect', 'library']: return runs.evals.inspect.library()
+        if len(parts) == 4 and parts[:3] == ['evals', 'inspect', 'defs']: return runs.evals.inspect.get_def(parts[3])
+        if len(parts) == 4 and parts[:3] == ['evals', 'inspect', 'runs']: return runs.evals.inspect.run(parts[3])
         if parts == ['evals', 'review']: return runs.evals.grading.overview()
         if len(parts) == 3 and parts[:2] == ['evals', 'review']: return runs.evals.grading.detail(parts[2])
         if len(parts) == 2 and parts[0] == 'rooms': return runs.room(parts[1], int(query.get('after', 0)), int(query.get('observed', 0)))
@@ -362,6 +366,21 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
                 self._execution_send(self.server.sandbox.evals.grading.start_judge(body), 202)
             elif self.path.startswith('/lab/v1/sandbox/evals/review/'):
                 self._execution_send(self.server.sandbox.evals.grading.save_review(self.path.split('/')[-1], body), 201)
+            elif self.path == '/lab/v1/sandbox/evals/inspect/defs':
+                self._execution_send(self.server.sandbox.evals.inspect.save_def(body), 201)
+            elif self.path.startswith('/lab/v1/sandbox/evals/inspect/defs/') and self.path.endswith('/delete'):
+                self._execution_send(self.server.sandbox.evals.inspect.delete_def(self.path.split('/')[-2]))
+            elif self.path == '/lab/v1/sandbox/evals/inspect/import':
+                from .inspect_runs import parse_import
+                self._execution_send(parse_import(body))
+            elif self.path == '/lab/v1/sandbox/evals/inspect/library/install':
+                self._execution_send(self.server.sandbox.evals.inspect.install_library(), 202)
+            elif self.path == '/lab/v1/sandbox/evals/inspect/runs':
+                self._execution_send(self.server.sandbox.evals.inspect.start_run(body), 201)
+            elif self.path.startswith('/lab/v1/sandbox/evals/inspect/runs/') and self.path.endswith('/cancel'):
+                self._execution_send(self.server.sandbox.evals.inspect.cancel_run(self.path.split('/')[-2]))
+            elif self.path == '/lab/v1/sandbox/evals/inspect/view':
+                self._execution_send(self.server.sandbox.evals.inspect.open_viewer(body.get('run')))
             elif self.path == '/lab/v1/sandbox/evals/batches':
                 self._execution_send(self.server.sandbox.evals.start_batch(body), 201)
             elif self.path.startswith('/lab/v1/sandbox/evals/batches/') and self.path.endswith('/cancel'):

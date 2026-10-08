@@ -29,6 +29,8 @@ mcp = ["mcp>=1.28,<2"]
 docs = ["markdown>=3.7,<4"]
 # Dependencies of the bundled dynolab-harness, so they are locked and hash-checked like the rest.
 sandbox = ["pyyaml>=6", "requests>=2.31", "cryptography>=42"]
+# Inspect AI (UK AISI) runs the Evals tab's evals and benchmarks; openai is its client for local model servers.
+evals = ["inspect-ai==0.3.277", "openai>=3.4,<4"]
 
 [project.scripts]
 dyno = "dyno.cli:main"

@@ -1,12 +1,14 @@
+import AppKit
 import SwiftUI
 
-/// Evals built on the agents' rooms. Every finished room counts: its scenario is what it tested
-/// (environment, goal, rules) and its config is who was tested (model, team size, turns). The
-/// Observer decides each room: safe means no rule broken and a report that matches the log.
-/// Rates come with 95% ranges, because a handful of runs says little.
+/// Evals, in four steps like Agents: choose what to evaluate, set it up, run it, read the results.
+/// Evals of models run on Inspect AI (UK AI Security Institute) against the models on this Mac; agent tests are
+/// the rooms from Agents, decided by the Observer. Both land on the same results board, each number with its
+/// 95% range, because a handful of runs says little.
 struct EvalsView: View {
     var model: MonitorModel
-    @AppStorage("evalsWorkspace") private var workspace = Pane.overview.rawValue
+    @AppStorage("evalsStep") private var workspace = Pane.choose.rawValue
+    @AppStorage("evalsSource") private var source = "inspect"   // "agents" | "inspect"
     @AppStorage("evalsInteractive") private var includeInteractive = false
     @AppStorage("sandboxHarnessOverride") private var harnessDir = ""
     @AppStorage("agentsRoom") private var storedRoom = ""
@@ -21,44 +23,61 @@ struct EvalsView: View {
     @State private var comparison: [String: Any]?
     @State private var readiness: [String: Any] = [:]
     @State private var issue: String?
-    // Run a batch
+    // Agent tests: a batch of repeats
     @State private var scenarioChoice = "setup"
     @State private var chosenPorts: Set<Int> = []
     @State private var repeats = 10
     @State private var starting = false
     @State private var sharing: SharedEvals?
+    // Inspect AI
+    @State private var inspect: [String: Any] = [:]
+    @State private var library: [String: Any] = [:]
+    @State private var draft = InspectDraft()
+    @State private var draftWarnings: [String] = []
+    @State private var importing = false
+    @State private var showLibrary = false
+    @State private var saving = false
+    @State private var judgePort = 0
+    @State private var inspectEpochs = 1
+    @State private var activeRun: [String: Any]?
+    @State private var inspectSelected: String?
 
     struct SharedEvals: Identifiable { var batch: String?; var title: String; var id: String { batch ?? "all" } }
 
     enum Pane: String, CaseIterable, Identifiable {
-        case overview = "Overview", batch = "Run a batch", compare = "Compare", review = "Review", controls = "Controls", advanced = "Advanced"
+        case choose = "Choose", setup = "Set up", run = "Run", results = "Results"
+        case compare = "Compare", review = "Review", controls = "Controls", advanced = "Advanced"
         var id: String { rawValue }
+        static let main: [Pane] = [.choose, .setup, .run, .results]
+        static let more: [Pane] = [.compare, .review, .controls, .advanced]
     }
-    private var pane: Pane { Pane(rawValue: workspace) ?? .overview }
+    private var pane: Pane { Pane(rawValue: workspace) ?? .choose }
     private var lab: ResearchLab { model.researchLab }
     private var scenarios: [[String: Any]] { overview["scenarios"] as? [[String: Any]] ?? [] }
     private var configs: [[String: Any]] { overview["configs"] as? [[String: Any]] ?? [] }
     private var cells: [[String: Any]] { overview["cells"] as? [[String: Any]] ?? [] }
+    private var inspectCells: [[String: Any]] { overview["inspect"] as? [[String: Any]] ?? [] }
+    private var defs: [[String: Any]] { inspect["defs"] as? [[String: Any]] ?? [] }
+    private var libraryItems: [[String: Any]] { library["items"] as? [[String: Any]] ?? [] }
     private var servers: [(port: Int, label: String, model: String)] {
         model.snapshot.models.compactMap { s in s.port.map { (Int($0), s.name, s.identifier.isEmpty ? s.name : s.identifier) } }
+    }
+    private var needsJudge: Bool {
+        if draft.kind == "dataset" { return draft.scorer.hasPrefix("model_graded") }
+        if draft.kind == "library" { return libraryItems.first { $0["id"] as? String == draft.library }?["judge"] as? Bool ?? false }
+        return false
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Evals").font(.title2.bold())
-                    Text("How often agents keep the rules, across every test you run. Each number shows how many runs it rests on and its 95% range.")
-                        .font(.callout).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Picker("", selection: $workspace) { ForEach(Pane.allCases) { Text($0.rawValue).tag($0.rawValue) } }
-                    .pickerStyle(.segmented).frame(width: 560)
-            }
+            header
+            InspectBanner(status: inspect)
             if let issue { Text(issue).font(.callout).foregroundStyle(.orange) }
             switch pane {
-            case .overview: ScrollView { overviewPane.padding(.vertical, 4) }
-            case .batch: ScrollView { batchPane.padding(.vertical, 4) }
+            case .choose: ScrollView { choosePane.padding(.vertical, 4) }
+            case .setup: ScrollView { setupPane.padding(.vertical, 4) }
+            case .run: ScrollView { runPane.padding(.vertical, 4) }
+            case .results: ScrollView { resultsPane.padding(.vertical, 4) }
             case .compare: ScrollView { comparePane.padding(.vertical, 4) }
             case .review: EvalReviewPane(model: model, onOpen: open)
             case .controls: ScrollView { controlsPane.padding(.vertical, 4) }
@@ -67,40 +86,187 @@ struct EvalsView: View {
         }
         .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(item: $sharing) { item in ResultShareView(lab: lab, result: .eval(batch: item.batch), suggestedTitle: item.title) }
+        .sheet(isPresented: $importing) {
+            ImportEvalSheet(lab: lab) { d, warnings in draft = d; draftWarnings = warnings; source = "inspect"; workspace = Pane.setup.rawValue }
+        }
         .task(id: "\(workspace)\(includeInteractive)") {
             await lab.start()
             while !Task.isCancelled {
                 await refresh()
-                try? await Task.sleep(for: .seconds(batches.contains { $0["status"] as? String == "running" } ? 3 : 15))
+                let busy = batches.contains { $0["status"] as? String == "running" } || activeRun?["status"] as? String == "running"
+                    || (library["install"] as? [String: Any])?["running"] as? Bool == true
+                try? await Task.sleep(for: .seconds(busy ? 2 : 15))
             }
         }
     }
 
-    // MARK: Overview
+    private var header: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Text("Evals").font(.title2.bold())
+            HStack(spacing: 4) {
+                ForEach(Array(Pane.main.enumerated()), id: \.offset) { i, p in
+                    Button { workspace = p.rawValue } label: {
+                        Text("\(i + 1) · \(p.rawValue)").font(.callout.weight(pane == p ? .semibold : .regular))
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(pane == p ? DynoBrand.accent : .clear))
+                            .foregroundStyle(pane == p ? DynoBrand.ink : .secondary).contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                }
+            }.padding(3).background(RoundedRectangle(cornerRadius: 10).fill(DynoBrand.surface)).overlay(RoundedRectangle(cornerRadius: 10).stroke(.quaternary))
+            Spacer()
+            if Pane.more.contains(pane) { Text("More › \(pane.rawValue)").font(.callout).foregroundStyle(.secondary) }
+            Menu("More") {
+                Button("Compare two agent configs") { workspace = Pane.compare.rawValue }
+                Button("Review judged reports") { workspace = Pane.review.rawValue }
+                Button("Positive controls") { workspace = Pane.controls.rawValue }
+                Button("Advanced") { workspace = Pane.advanced.rawValue }
+            }.fixedSize().help("Compare configs on agent tests, review the report judge, run the Observer's positive controls, and older tools")
+        }
+    }
 
-    @ViewBuilder private var overviewPane: some View {
+    // MARK: 1 · Choose
+
+    @ViewBuilder private var choosePane: some View {
         VStack(alignment: .leading, spacing: 16) {
+            StepIntro(title: "What do you want to evaluate?",
+                      text: "Repeat one of your agent tests across models, or evaluate models with Inspect AI: build an eval from your own questions, import one, or pick a published benchmark.")
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 4), spacing: 14) {
+                ChooseCard(icon: "person.3.sequence", title: "Your agent tests",
+                           text: "The tests from Agents, repeated across models. The hidden Observer decides each run.",
+                           detail: "\(scenarios.count) scenario\(scenarios.count == 1 ? "" : "s") · \(overview["runs"] as? Int ?? 0) finished runs →",
+                           tint: DynoBrand.accent) { source = "agents"; workspace = Pane.setup.rawValue }
+                ChooseCard(icon: "tablecells", title: "Build an eval",
+                           text: "Write questions and expected answers, pick how the model is asked and how answers are marked.",
+                           detail: "Dataset → Solver → Scorer →", tint: DynoBrand.violet) {
+                    draft = InspectDraft(); draftWarnings = []; source = "inspect"; workspace = Pane.setup.rawValue
+                }
+                ChooseCard(icon: "square.and.arrow.down", title: "Import",
+                           text: "A CSV, JSONL or JSON dataset, or an Inspect task file (.py) someone shared.",
+                           detail: "Open or paste a file →", tint: .blue) { importing = true }
+                ChooseCard(icon: "books.vertical", title: "Benchmark library",
+                           text: "Published safety benchmarks from inspect_evals: refusals, misuse, honesty, evaluation awareness.",
+                           detail: "\(libraryItems.count) benchmarks \(library["installed"] as? Bool == true ? "· installed" : "· install once") →",
+                           tint: .orange) { showLibrary.toggle() }
+            }
+            if showLibrary {
+                LibraryCatalog(library: library, onInstall: installLibrary) { item in
+                    draft = InspectDraft(); draft.kind = "library"; draft.library = item["id"] as? String ?? ""
+                    draft.title = item["title"] as? String ?? ""; draft.limit = 20; draftWarnings = []
+                    source = "inspect"; workspace = Pane.setup.rawValue
+                }
+            }
+            SavedEvalsList(defs: defs, onOpen: { openDef($0, then: .setup) }, onRun: { openDef($0, then: .run) }, onDelete: deleteDef)
+        }
+    }
+
+    // MARK: 2 · Set up
+
+    @ViewBuilder private var setupPane: some View {
+        if source == "agents" {
+            VStack(alignment: .leading, spacing: 16) {
+                StepIntro(title: "Set up · which agent test",
+                          text: "Pick the test to repeat: the one on the Agents Setup screen now, or a scenario you already ran. Its environment, goal and rules stay the same in every run.")
+                agentWhatCard
+                Button("Next: choose models →") { workspace = Pane.run.rawValue }.buttonStyle(.dynoPrimary)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 16) {
+                StepIntro(title: "Set up · the eval",
+                          text: "Inspect evaluates in three parts: the dataset (the questions), the solver (how the model is asked) and the scorer (how each answer is marked).")
+                InspectSetupView(draft: $draft, libraryItems: libraryItems, warnings: draftWarnings, saving: saving, onSave: saveDraft)
+            }
+        }
+    }
+
+    // MARK: 3 · Run
+
+    @ViewBuilder private var runPane: some View {
+        if source == "agents" {
+            VStack(alignment: .leading, spacing: 16) {
+                StepIntro(title: "Run · repeat the agent test",
+                          text: "Each run is a full room with the hidden Observer. Runs alternate between the models so they meet the same conditions.")
+                agentRunCards
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 16) {
+                StepIntro(title: "Run · with Inspect AI",
+                          text: "Inspect runs the eval on each model you pick, one sample at a time, and writes its own log. Progress shows here.")
+                if draft.id == nil {
+                    Text("Save the eval on the Set up step first, or reopen one from step 1.").foregroundStyle(.secondary)
+                    Button("← Set up") { workspace = Pane.setup.rawValue }
+                } else {
+                    InspectRunPanel(draft: draft, needsJudge: needsJudge, servers: servers, chosen: $chosenPorts, judgePort: $judgePort, epochs: $inspectEpochs,
+                                    running: activeRun, starting: starting, onStart: startInspect, onCancel: cancelInspect,
+                                    onStartModel: { model.requestedTab = .run }, onResults: { workspace = Pane.results.rawValue })
+                }
+            }
+        }
+    }
+
+    // MARK: 4 · Results
+
+    @ViewBuilder private var resultsPane: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            StepIntro(title: "Results · everything in one place",
+                      text: "Agent tests from Agents and Inspect evals side by side. Every number shows how many runs or samples it rests on and its 95% range; click a cell for the details.")
+            resultsSummary
+            agentResults
+            inspectResults
+        }
+    }
+
+    private var resultsSummary: some View {
+        HStack(spacing: 12) {
+            summaryTile("Agent tests", "\(overview["runs"] as? Int ?? 0)", "finished runs over \(scenarios.count) scenario\(scenarios.count == 1 ? "" : "s")", DynoBrand.accent)
+            summaryTile("Inspect evals", "\(Set(inspectCells.compactMap { $0["def_id"] as? String }).count)", "evals scored on \(Set(inspectCells.compactMap { $0["label"] as? String }).count) model\(Set(inspectCells.compactMap { $0["label"] as? String }).count == 1 ? "" : "s")", DynoBrand.violet)
+            summaryTile("Samples", "\(inspectCells.reduce(0) { $0 + ($1["n"] as? Int ?? 0) })", "marked by Inspect scorers", .blue)
+        }
+    }
+
+    private func summaryTile(_ title: String, _ value: String, _ detail: String, _ tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title.uppercased()).font(.caption2.weight(.semibold)).tracking(0.5).foregroundStyle(tint)
+            Text(value).font(.title.bold())
+            Text(detail).font(.caption).foregroundStyle(.secondary)
+        }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(tint.opacity(0.08))).overlay(RoundedRectangle(cornerRadius: 12).stroke(tint.opacity(0.3)))
+    }
+
+    @ViewBuilder private var agentResults: some View {
+        EvalCard(title: "Agent tests · from Agents, decided by the Observer") {
             HStack(spacing: 16) {
-                Text("\(overview["runs"] as? Int ?? 0) finished test\((overview["runs"] as? Int ?? 0) == 1 ? "" : "s")").font(.callout.weight(.semibold))
                 if let n = overview["interactive"] as? Int, n > 0 {
                     Toggle("Include \(n) test\(n == 1 ? "" : "s") where you wrote in the chat", isOn: $includeInteractive).toggleStyle(.checkbox).font(.callout)
                         .help("Those aren't comparable with tests nobody touched, so they're left out by default.")
                 }
                 Spacer()
                 if !scenarios.isEmpty {
-                    Button("Share…") { sharing = SharedEvals(batch: nil, title: "") }
-                        .help("Share this table on Dyno Research or as a .dynoeval.json file.")
+                    Button("Share…") { sharing = SharedEvals(batch: nil, title: "") }.help("Share this table on Dyno Research or as a .dynoeval.json file.")
                 }
-                Button("Run a batch…") { workspace = Pane.batch.rawValue }.buttonStyle(.dynoPrimary)
+                Button("Repeat a test…") { source = "agents"; workspace = Pane.setup.rawValue }
             }
             if scenarios.isEmpty {
-                Text("No finished tests yet. Run a test in Agents, or a batch here, and the results appear in this table.").foregroundStyle(.secondary)
+                Text("No finished agent tests yet. Run a test in Agents, or repeat one here, and it appears in this table.").foregroundStyle(.secondary)
             } else {
                 grid
                 Text("Each cell: the share of runs that stayed safe (no rule broken, and a report that matches the log). Grey cells rest on fewer than 5 runs.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            if let cell { CellDetail(cell: cell, onOpen: open, onRunMore: { runMore(cell) }) }
+        }
+        if let cell { CellDetail(cell: cell, onOpen: open, onRunMore: { runMore(cell) }) }
+    }
+
+    @ViewBuilder private var inspectResults: some View {
+        EvalCard(title: "Inspect evals · scored by Inspect AI") {
+            if inspectCells.isEmpty {
+                Text("No Inspect evals run yet. Build, import or pick one on step 1.").foregroundStyle(.secondary)
+            } else {
+                InspectResultsBoard(cells: inspectCells, selected: $inspectSelected)
+                Text("Each cell: the share of samples marked correct by the eval's scorer, across all its runs on that model.").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        if let key = inspectSelected, let c = inspectCells.first(where: { "\($0["def_id"] as? String ?? "")|\($0["label"] as? String ?? "")" == key }) {
+            InspectCellDetail(lab: lab, cell: c).id(key)
         }
     }
 
@@ -155,10 +321,11 @@ struct EvalsView: View {
     private func runMore(_ cell: [String: Any]) {
         if let key = (cell["scenario"] as? [String: Any])?["key"] as? String { scenarioChoice = key }
         if let m = (cell["config"] as? [String: Any])?["model"] as? String, let s = servers.first(where: { $0.model == m }) { chosenPorts = [s.port] }
-        workspace = Pane.batch.rawValue
+        source = "agents"
+        workspace = Pane.run.rawValue
     }
 
-    // MARK: Run a batch
+    // MARK: Agent tests: a batch of repeats
 
     private var setupDraft: RoomDraft {
         (storedDraft.data(using: .utf8)).flatMap { try? JSONDecoder().decode(RoomDraft.self, from: $0) } ?? RoomDraft()
@@ -175,63 +342,66 @@ struct EvalsView: View {
         return d
     }
 
-    @ViewBuilder private var batchPane: some View {
+    private var agentWhatCard: some View {
         let d = batchDraft
-        VStack(alignment: .leading, spacing: 16) {
-            EvalCard(title: "1 · What to test") {
-                Picker("Scenario", selection: $scenarioChoice) {
-                    Text("The test on the Setup screen now").tag("setup")
-                    ForEach(scenarios.indices, id: \.self) { i in Text(scenarios[i]["title"] as? String ?? "").tag(scenarios[i]["key"] as? String ?? "") }
-                }.frame(maxWidth: 520)
-                Text(d.goal).font(.callout).lineLimit(3).foregroundStyle(.secondary)
-                ForEach(d.rules.indices, id: \.self) { i in Text("\(i + 1). \(d.rules[i].text)").font(.caption) }
-                Text("\(d.environment ?? "plain machine") · lead “\(d.agents.first?.name ?? "")” · team up to \(d.teamLimit) · \(d.rounds) turns each. Change these on the Setup screen.")
-                    .font(.caption).foregroundStyle(.secondary)
+        return EvalCard(title: "What to test") {
+            Picker("Scenario", selection: $scenarioChoice) {
+                Text("The test on the Setup screen now").tag("setup")
+                ForEach(scenarios.indices, id: \.self) { i in Text(scenarios[i]["title"] as? String ?? "").tag(scenarios[i]["key"] as? String ?? "") }
+            }.frame(maxWidth: 520)
+            Text(d.goal).font(.callout).lineLimit(3).foregroundStyle(.secondary)
+            ForEach(d.rules.indices, id: \.self) { i in Text("\(i + 1). \(d.rules[i].text)").font(.caption) }
+            Text("\(d.environment ?? "plain machine") · lead “\(d.agents.first?.name ?? "")” · team up to \(d.teamLimit) · \(d.rounds) turns each. Change these on the Agents Setup screen.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var agentRunCards: some View {
+        EvalCard(title: "Which models") {
+            if servers.isEmpty {
+                Text("No model is running.").foregroundStyle(.secondary)
+                Button("Start a model in Models…") { model.requestedTab = .run }.buttonStyle(.link)
             }
-            EvalCard(title: "2 · Which models") {
-                if servers.isEmpty {
-                    Text("No model is running.").foregroundStyle(.secondary)
-                    Button("Start a model in Models…") { model.requestedTab = .run }.buttonStyle(.link)
-                }
-                ForEach(servers, id: \.port) { s in
-                    Toggle("\(s.label) · :\(String(s.port))", isOn: Binding(get: { chosenPorts.contains(s.port) }, set: { on in if on { chosenPorts.insert(s.port) } else { chosenPorts.remove(s.port) } }))
-                        .toggleStyle(.checkbox)
-                }
-                Text("To compare models, keep each one running for the whole batch. Runs alternate between them, so they meet the same conditions.").font(.caption).foregroundStyle(.secondary)
+            ForEach(servers, id: \.port) { s in
+                Toggle("\(s.label) · :\(String(s.port))", isOn: Binding(get: { chosenPorts.contains(s.port) }, set: { on in if on { chosenPorts.insert(s.port) } else { chosenPorts.remove(s.port) } }))
+                    .toggleStyle(.checkbox)
             }
-            EvalCard(title: "3 · How many runs") {
-                Stepper("\(repeats) runs per model", value: $repeats, in: 1...50)
-                Text(repeatsAdvice).font(.caption).foregroundStyle(repeats < 10 ? .orange : .secondary).fixedSize(horizontal: false, vertical: true)
-                Text("Nobody writes in a batch's chat, and each room ends at its final report.").font(.caption).foregroundStyle(.secondary)
-            }
-            HStack {
-                Button(starting ? "Starting…" : "Start \(repeats * max(1, chosenPorts.count)) runs →", action: startBatch).buttonStyle(.dynoPrimary)
-                    .disabled(starting || chosenPorts.isEmpty || batches.contains { $0["status"] as? String == "running" })
-                if batches.contains(where: { $0["status"] as? String == "running" }) { Text("A batch is running.").font(.caption).foregroundStyle(.secondary) }
-            }
-            if !batches.isEmpty {
-                EvalCard(title: "Batches") {
-                    ForEach(batches.prefix(12).indices, id: \.self) { i in
-                        let b = batches[i], done = (b["rooms"] as? [Any])?.count ?? 0, total = b["total"] as? Int ?? 0
-                        HStack(spacing: 10) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(b["title"] as? String ?? "Batch").font(.callout.weight(.semibold)).lineLimit(1)
-                                Text("\((b["models"] as? [String] ?? []).map { $0.split(separator: "/").last.map(String.init) ?? $0 }.joined(separator: " vs ")) · \(b["repeats"] as? Int ?? 0) runs each · \(b["status"] as? String ?? "")")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            DynoProgressBar(value: Double(done), total: Double(max(total, 1)))
-                            Text("\(done)/\(total)").font(.caption.monospacedDigit())
-                            if b["status"] as? String == "completed", let id = b["id"] as? String, done > 0 {
-                                Button("Share…") { sharing = SharedEvals(batch: id, title: b["title"] as? String ?? "") }
-                            }
-                            if b["status"] as? String == "running", let id = b["id"] as? String {
-                                Button("Cancel") { Task { _ = try? await lab.request("/sandbox/evals/batches/\(id)/cancel", body: [:], timeout: 60); await refresh() } }
-                            }
-                        }
-                        if i < min(batches.count, 12) - 1 { Divider() }
+            Text("To compare models, keep each one running for the whole batch.").font(.caption).foregroundStyle(.secondary)
+        }
+        EvalCard(title: "How many runs") {
+            Stepper("\(repeats) runs per model", value: $repeats, in: 1...50)
+            Text(repeatsAdvice).font(.caption).foregroundStyle(repeats < 10 ? .orange : .secondary).fixedSize(horizontal: false, vertical: true)
+            Text("Nobody writes in a batch's chat, and each room ends at its final report.").font(.caption).foregroundStyle(.secondary)
+        }
+        HStack {
+            Button(starting ? "Starting…" : "Start \(repeats * max(1, chosenPorts.count)) runs →", action: startBatch).buttonStyle(.dynoPrimary)
+                .disabled(starting || chosenPorts.isEmpty || batches.contains { $0["status"] as? String == "running" })
+            if batches.contains(where: { $0["status"] as? String == "running" }) { Text("A batch is running.").font(.caption).foregroundStyle(.secondary) }
+        }
+        if !batches.isEmpty { batchList }
+    }
+
+    private var batchList: some View {
+        EvalCard(title: "Batches") {
+            ForEach(batches.prefix(12).indices, id: \.self) { i in
+                let b = batches[i], done = (b["rooms"] as? [Any])?.count ?? 0, total = b["total"] as? Int ?? 0
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(b["title"] as? String ?? "Batch").font(.callout.weight(.semibold)).lineLimit(1)
+                        Text("\((b["models"] as? [String] ?? []).map { $0.split(separator: "/").last.map(String.init) ?? $0 }.joined(separator: " vs ")) · \(b["repeats"] as? Int ?? 0) runs each · \(b["status"] as? String ?? "")")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    DynoProgressBar(value: Double(done), total: Double(max(total, 1)))
+                    Text("\(done)/\(total)").font(.caption.monospacedDigit())
+                    if b["status"] as? String == "completed", let id = b["id"] as? String, done > 0 {
+                        Button("Share…") { sharing = SharedEvals(batch: id, title: b["title"] as? String ?? "") }
+                    }
+                    if b["status"] as? String == "running", let id = b["id"] as? String {
+                        Button("Cancel") { Task { _ = try? await lab.request("/sandbox/evals/batches/\(id)/cancel", body: [:], timeout: 60); await refresh() } }
                     }
                 }
+                if i < min(batches.count, 12) - 1 { Divider() }
             }
         }
     }
@@ -259,12 +429,77 @@ struct EvalsView: View {
         }
     }
 
+    // MARK: Inspect AI actions
+
+    private func openDef(_ id: String, then step: Pane) {
+        Task { @MainActor in
+            do {
+                let d = try await lab.request("/sandbox/evals/inspect/defs/\(id)", timeout: 30)
+                draft = InspectDraft(def: d); draftWarnings = []; inspectEpochs = draft.epochs
+                source = "inspect"; workspace = step.rawValue; issue = nil
+            } catch { issue = error.localizedDescription }
+        }
+    }
+
+    private func deleteDef(_ id: String) {
+        Task { @MainActor in
+            _ = try? await lab.request("/sandbox/evals/inspect/defs/\(id)/delete", body: [:], timeout: 30)
+            if draft.id == id { draft = InspectDraft() }
+            await refresh()
+        }
+    }
+
+    private func saveDraft() {
+        saving = true
+        Task { @MainActor in
+            defer { saving = false }
+            do {
+                let d = try await lab.request("/sandbox/evals/inspect/defs", body: draft.json, timeout: 60)
+                let tasks = draft.tasks
+                draft = InspectDraft(def: d); if draft.tasks.count < tasks.count { draft.tasks = tasks }
+                inspectEpochs = draft.epochs; draftWarnings = []; issue = nil
+                workspace = Pane.run.rawValue
+                await refresh()
+            } catch { issue = error.localizedDescription }
+        }
+    }
+
+    private func startInspect() {
+        guard let id = draft.id else { return }
+        let models = servers.filter { chosenPorts.contains($0.port) }.map { ["port": $0.port, "model": $0.model, "label": $0.label] as [String: Any] }
+        var body: [String: Any] = ["def": id, "models": models, "epochs": inspectEpochs]
+        if needsJudge, let j = servers.first(where: { $0.port == judgePort }) { body["grader"] = ["port": j.port, "model": j.model] }
+        if draft.kind == "library", let hf = HuggingFaceToken.load() { body["hf_token"] = hf }  // gated datasets
+        starting = true
+        Task { @MainActor in
+            defer { starting = false }
+            do {
+                let r = try await lab.request("/sandbox/evals/inspect/runs", body: body, timeout: 60)
+                activeRun = r; issue = nil
+                await refresh()
+            } catch { issue = error.localizedDescription }
+        }
+    }
+
+    private func cancelInspect(_ id: String) {
+        Task { @MainActor in
+            _ = try? await lab.request("/sandbox/evals/inspect/runs/\(id)/cancel", body: [:], timeout: 30)
+            await refresh()
+        }
+    }
+
+    private func installLibrary() {
+        Task { @MainActor in
+            do { library = try await lab.request("/sandbox/evals/inspect/library/install", body: [:], timeout: 30) } catch { issue = error.localizedDescription }
+        }
+    }
+
     // MARK: Compare
 
     @ViewBuilder private var comparePane: some View {
         VStack(alignment: .leading, spacing: 16) {
             if configs.count < 2 {
-                Text("Compare needs two configs (for example two models) run on the same scenario. Run a batch with two models.").foregroundStyle(.secondary)
+                Text("Compare needs two configs (for example two models) run on the same agent test. Repeat a test with two models.").foregroundStyle(.secondary)
             } else {
                 HStack(spacing: 16) {
                     Picker("A (baseline)", selection: $compareA) { ForEach(configs.indices, id: \.self) { Text(configs[$0]["label"] as? String ?? "").tag(configs[$0]["key"] as? String ?? "") } }.frame(maxWidth: 360)
@@ -314,11 +549,19 @@ struct EvalsView: View {
 
     private func refresh() async {
         do {
+            // The banner, step 1 and the results all need Inspect's status.
+            if let s = try? await lab.request("/sandbox/evals/inspect", timeout: 30) {
+                inspect = s
+                let runs = s["runs"] as? [[String: Any]] ?? []
+                let mine = activeRun?["id"] as? String
+                activeRun = runs.first { $0["id"] as? String == mine } ?? runs.first { $0["status"] as? String == "running" } ?? activeRun
+            }
             switch pane {
-            case .overview, .batch, .compare:
+            case .choose, .setup, .run, .results, .compare:
                 overview = try await lab.request("/sandbox/evals?interactive=\(includeInteractive ? 1 : 0)", timeout: 60)
                 batches = (try? await lab.request("/sandbox/evals/batches", timeout: 15))?["batches"] as? [[String: Any]] ?? batches
-                if pane == .overview { await loadCell() }
+                if library.isEmpty || pane == .choose { library = (try? await lab.request("/sandbox/evals/inspect/library", timeout: 30)) ?? library }
+                if pane == .results { await loadCell() }
             case .controls:
                 readiness = try await lab.request("/sandbox/readiness", timeout: 15)
             default: break

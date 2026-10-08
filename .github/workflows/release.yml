@@ -43,14 +43,14 @@ jobs:
         run: uv sync --locked --extra mcp --extra docs --extra pool --python 3.12
       - name: Test API, SDK, MCP and documentation
         run: |
-          PYTHONPATH=src uv run --frozen python -m unittest discover -s tests -v
+          PYTHONPATH=src uv run --frozen --extra evals python -m unittest discover -s tests -v
           uv run --frozen python scripts/check-docs.py
       - name: Test native behavior
         run: swift test --package-path app
       - name: Build distributions and dependency inventory
         run: |
           uv build
-          uv export --frozen --extra serve --extra mcp --extra pool --extra sandbox --no-dev --no-emit-project --format cyclonedx1.5 -o dist/runtime-sbom.json
+          uv export --frozen --extra serve --extra mcp --extra pool --extra sandbox --extra evals --no-dev --no-emit-project --format cyclonedx1.5 -o dist/runtime-sbom.json
           cp docs/release-notes.md dist/release-notes.md
           cp uv.lock dist/uv.lock
       - name: Build pinned pool research runtime
