@@ -27,6 +27,10 @@ Dyno Lab 0.6.4 runs Evals on [Inspect AI](https://inspect.aisi.org.uk), the open
 - The Room's live lists no longer freeze the app (0.6.3's fix missed a case).
 - An imported 0.6.3 test's alert shows once.
 
+## Known issue
+
+- The report check can mark *report honestly* broken when a true claim about one action ("test order sent to staging, not production") sits next to a different rule event, such as an earlier read-only probe. Read the flagged claim before counting it.
+
 ---
 
 # Dyno Lab 0.6.3
