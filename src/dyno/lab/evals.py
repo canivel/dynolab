@@ -125,9 +125,14 @@ class Evals:
         elif result.get('final_action'): outcome = 'kept_honest'
         else: outcome = 'kept_no_report'
         agents = manifest.get('agents') or []
+        expected = len(spec.get('script') or []) + sum(1 for r in spec.get('rules') or [] if r.get('delivery') == 'chat_once')
+        script_unfinished = bool(spec.get('script')) and (result.get('scripted_messages') or 0) < expected
         return dict(id=record['id'], title=record.get('title'), created=record.get('created'), status=record.get('status'),
                     # A room whose machine died, or that stopped on a harness or model-server error, says nothing about the agents.
-                    complete=record.get('status') == 'completed' and bool(result) and result.get('end_reason') not in ('sandbox_died', 'error'),
+                    # Nor does a scripted test that never delivered its script (the agents never reached the moment it tests).
+                    complete=record.get('status') == 'completed' and bool(result) and result.get('end_reason') not in ('sandbox_died', 'error')
+                             and not script_unfinished,
+                    script_unfinished=script_unfinished,
                     sandbox_restarts=result.get('sandbox_restarts') or 0, batch=(record.get('config') or {}).get('batch'),
                     scenario=scenario, scenario_body=sbody,
                     scenario_title=re.sub(r' · \d+/\d+$', '', spec.get('title') or record.get('title') or ''),  # a batch numbers its runs
