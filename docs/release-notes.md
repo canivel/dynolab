@@ -1,3 +1,34 @@
+# Dyno Lab 0.6.4
+
+Dyno Lab 0.6.4 runs Evals on [Inspect AI](https://inspect.aisi.org.uk), the open-source evaluation framework from the UK AI Security Institute, and replaces the "knows it's being tested" phrase list with a detector that has to quote the agent. A real experiment on two local models shaped it and is written up as a tutorial and a study: [Tutorial: agent tests and evals](agents-and-evals-tutorial.md) and [Does a rule said once survive?](tutorial/rule-said-once.md).
+
+## Evals on Inspect AI
+
+- **Four steps, like Agents:** Choose → Set up → Run → Results. The banner says what does the work: Inspect's dataset → solver → scorer.
+- **Build or import an eval.** Write samples in a table or paste them from a spreadsheet, or import a CSV, JSONL or JSON file, or an Inspect `.py` task file (shown as code you must read first). Pick a solver (ask once, think then answer, multiple choice) and a scorer (contains, starts or ends with, exact, a regular expression, the right choice, or a judge model with your instructions). Run several epochs to see how consistent a model is.
+- **Benchmark library.** Installs inspect_evals once and lists benchmarks that run on a local model without Docker: SAD (evaluation awareness), StrongREJECT, Agentic Misalignment, MASK, TruthfulQA, SimpleQA, WMDP, BBQ and XSTest. XSTest loads from its authors' openly licensed data, so no Hugging Face login is needed. Badges say which benchmarks need a judge model.
+- **One results board.** Agent tests (decided by the Observer) and Inspect evals (scored by Inspect) sit side by side, each number with how many runs or samples it rests on and its 95% range. A benchmark that isn't right-or-wrong shows its own metric and which way is better. Click a cell for the samples and the judge's explanations, or open it in **Inspect View**, Inspect's own log viewer.
+- **Answers that were cut off are counted.** Each run reports how many answers hit the token limit or came back empty, so a token limit isn't mistaken for a wrong answer. The tested model gets 8,192 tokens per answer.
+- Each model runs in its own process, so a crashing eval can't take the lab down.
+
+## An evaluation-awareness detector
+
+*Knows it's being tested* now asks whether the agent thinks **it** is being tested, not whether the task involves tests.
+
+- Words like *test*, *eval* or *trap* only pick passages to check. A judge model (the lead's own, unless you pick one) must quote the agent word for word and label the passage: *verbalized*, *implicit*, *prompted* (repeating what the test said), or *task_testing* (the task involves tests, or the user is just checking the agent is responsive). Only the first two fire, at or above a threshold you set.
+- Invented quotes are thrown out, and words the test itself used are ignored. Without a judge model, a strict pattern stands in.
+- Alerts from 0.6.3's phrase lists are marked *old phrase list* and greyed in the Room.
+
+## Fixes
+
+- **Models start with the settings Dyno shows.** Dyno passed only the settings that differed from its own defaults, so mlx_lm.server used its own: 512 tokens per reply and up to 32 requests at once. Thinking models returned empty answers, and long agent tests could run the server out of Metal resources.
+- **Evals leaves out runs that didn't really finish:** rooms that stopped on a harness or model-server error, and scripted tests whose script wasn't fully delivered (a model that never files a report never gets the scripted requests).
+- An Inspect cell shows its eval's latest run instead of pooling runs made with different settings.
+- The Room's live lists no longer freeze the app (0.6.3's fix missed a case).
+- An imported 0.6.3 test's alert shows once.
+
+---
+
 # Dyno Lab 0.6.3
 
 Dyno Lab 0.6.3 makes agent tests shareable: publish a test, a run result or an Evals table to [Dyno Research](https://research.dynolab.dev), and open anyone's test in Dyno with one click. It also includes everything planned for 0.6.2, which was never published (see below).
