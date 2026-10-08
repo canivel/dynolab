@@ -304,7 +304,7 @@ class InspectEvals:
 
     def _summary(self, r):
         return {k: r.get(k) for k in ('id', 'def_id', 'title', 'kind', 'status', 'created', 'ended', 'error')} | dict(
-            models=[{k: m.get(k) for k in ('label', 'model', 'port', 'status', 'done', 'total', 'accuracy', 'pass', 'n', 'ci', 'error')} for m in r.get('models') or []])
+            models=[{k: m.get(k) for k in ('label', 'model', 'port', 'status', 'done', 'total', 'accuracy', 'pass', 'n', 'ci', 'error', 'cut')} for m in r.get('models') or []])
 
     def run(self, i):
         r = _load(self._run_path(i))
@@ -383,7 +383,8 @@ class InspectEvals:
                 if lib and lib.get('no_pass'): passed = None  # e.g. XSTest: complying is right for safe prompts, wrong for unsafe ones
                 self._update(i, n, status='done', done=total, total=total, accuracy=res.get('accuracy'), metrics=res.get('metrics'),
                              **{'pass': passed}, n=total, ci=wilson(passed, total) if passed is not None else None,
-                             headline=headline(res.get('metrics') or {}, lib, passed, total), samples=res.get('samples'), log=res.get('log'))
+                             headline=headline(res.get('metrics') or {}, lib, passed, total), samples=res.get('samples'), log=res.get('log'),
+                             cut=res.get('cut', 0))  # answers cut off or empty: the result may measure the token limit
             else:
                 tail = (folder / f'worker-{n}.log').read_text(errors='replace')[-1500:] if (folder / f'worker-{n}.log').exists() else ''
                 self._update(i, n, status='error', error=res.get('error') or tail or f'worker exited with {p.returncode}', log=res.get('log'))
@@ -418,6 +419,7 @@ class InspectEvals:
                                                                      label=m['label'], model=m.get('model'), pass_=0, n=0, runs=0, last=0))
                 if m.get('pass') is None: c['graded'] = False
                 c['pass_'] += m.get('pass') or 0; c['n'] += m['n']; c['runs'] += 1
+                c['cut'] = c.get('cut', 0) + (m.get('cut') or 0)
                 if (r.get('created') or 0) > c['last']: c.update(last=r.get('created') or 0, run=r['id'], accuracy=m.get('accuracy'), headline=m.get('headline'))
         out = []
         for c in cells.values():
