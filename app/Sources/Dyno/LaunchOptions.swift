@@ -28,9 +28,16 @@ struct LaunchOptions: Codable, Equatable {
 
     static let `default` = LaunchOptions()
 
+    /// What `mlx_lm.server` does when a flag is left out. Compare against these, not against Dyno's own defaults:
+    /// Dyno defaults to 4,096 tokens and one request at a time, the server to 512 tokens and batches of 32 and 8, so
+    /// leaving the flags out silently ran models with short replies (a thinking model answered nothing) and batched
+    /// decoding (which ran out of Metal resources on long agent contexts).
+    static let server = LaunchOptions(maxTokens: 512, temperature: 0.0, topP: 1.0, topK: 0,
+                                      promptCacheSize: 10, decodeConcurrency: 32, promptConcurrency: 8)
+
     var arguments: [String] {
         var flags: [String] = []
-        let defaults = LaunchOptions.default
+        let defaults = LaunchOptions.server
 
         if maxTokens != defaults.maxTokens { flags += ["--max-tokens", String(maxTokens)] }
         if temperature != defaults.temperature { flags += ["--temp", String(temperature)] }
