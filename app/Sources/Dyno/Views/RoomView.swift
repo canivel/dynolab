@@ -64,17 +64,6 @@ struct RoomExample {
                                        "Report honestly what you did."])
         }
     }
-
-    /// Whether a draft still holds an example unchanged, so switching environment may replace it.
-    static func isExample(_ d: RoomDraft) -> Bool {
-        // The first build's default draft counts too.
-        if d.goal.hasPrefix("Write the Q3 report for the finance team: total sales per region") { return true }
-        let ids: [String?] = [nil, "segmented-office", "segmented-office-open", "egress-allowlist", "bastion-admin"]
-        return ids.contains { id in
-            let e = forEnvironment(id)
-            return e.goal == d.goal && e.rules == d.rules.map(\.text) && d.rules.allSatisfy { $0.watch == nil }
-        }
-    }
 }
 
 struct ResearchSource: Codable, Equatable {
@@ -132,6 +121,28 @@ struct RoomDraft: Codable, Equatable {
         if let title, !title.isEmpty { s["title"] = title }
         if let source { s["source"] = ["research": source.research, "scenario": source.scenario].compactMapValues { $0 } }
         return s
+    }
+}
+
+/// What a test asks of the agents in one environment: kept per environment, so switching back finds it again.
+struct EnvironmentSetup: Codable, Equatable {
+    var goal: String
+    var rules: [RoomRule]
+    var script: [ScriptLine]?
+    var rulesFrom: String?
+    var history: [HistoryTurn]?
+    var testAlerts: [TestAlert]?
+    var title: String?
+    var source: ResearchSource?
+}
+
+extension RoomDraft {
+    var setup: EnvironmentSetup {
+        EnvironmentSetup(goal: goal, rules: rules, script: script, rulesFrom: rulesFrom, history: history, testAlerts: testAlerts, title: title, source: source)
+    }
+    mutating func apply(_ s: EnvironmentSetup) {
+        goal = s.goal; rules = s.rules; script = s.script; rulesFrom = s.rulesFrom
+        history = s.history; testAlerts = s.testAlerts; title = s.title; source = s.source
     }
 }
 
@@ -233,6 +244,8 @@ struct TestSetupView: View {
     var onStarted: ([String: Any]) -> Void
     var onAdvanced: (String) -> Void
     @AppStorage("roomDraft") private var stored = ""
+    /// The goal, rules, script and history last used with each environment, by environment id.
+    @AppStorage("roomSetups") private var storedSetups = ""
     @State private var draft = RoomDraft()
     @State private var loaded = false
     @State private var envs: [[String: Any]] = []
@@ -268,6 +281,37 @@ struct TestSetupView: View {
     private var plannedRules: [[String: Any]] { planned["rules"] as? [[String: Any]] ?? [] }
     private var errors: [String] { planned["errors"] as? [String] ?? [] }
     private var warnings: [String] { planned["warnings"] as? [String] ?? [] }
+
+    /// Picking another environment brings its own test: the setup last used with it here, else its latest past
+    /// test, else the built-in example. The setup being left is kept for when you come back.
+    private func choose(_ env: String?) async {
+        guard env != draft.environment else { return }
+        var setups = (try? JSONDecoder().decode([String: EnvironmentSetup].self, from: Data(storedSetups.utf8))) ?? [:]
+        setups[draft.environment ?? ""] = draft.setup
+        if let data = try? JSONEncoder().encode(setups) { storedSetups = String(decoding: data, as: UTF8.self) }
+        draft.environment = env
+        if let saved = setups[env ?? ""] { draft.apply(saved); return }
+        let past = await latestSetup(for: env)
+        guard draft.environment == env else { return }  // another card was picked meanwhile
+        if let past { draft.apply(past); return }
+        let e = RoomExample.forEnvironment(env)
+        draft.apply(EnvironmentSetup(goal: e.goal, rules: e.rules.map { RoomRule(text: $0) }))
+    }
+    /// The goal, rules and script of the newest past test in an environment.
+    private func latestSetup(for env: String?) async -> EnvironmentSetup? {
+        guard let env, let runs = try? await model.researchLab.request("/sandbox/runs", timeout: 10)["runs"] as? [[String: Any]] else { return nil }
+        let spec = runs.filter { $0["kind"] as? String == "room" }
+            .compactMap { r -> (Double, [String: Any])? in
+                guard let s = (r["config"] as? [String: Any])?["spec"] as? [String: Any], s["environment"] as? String == env else { return nil }
+                return (r["created"] as? Double ?? 0, s)
+            }
+            .max { $0.0 < $1.0 }?.1
+        guard let spec else { return nil }
+        var setup = RoomDraft(spec: spec).setup
+        // A batch run is titled "Name · 3/8"; the test itself is "Name".
+        if let t = setup.title, let r = t.range(of: #" · \d+/\d+$"#, options: .regularExpression) { setup.title = String(t[..<r.lowerBound]) }
+        return setup
+    }
 
     private func useExample() {
         let e = RoomExample.forEnvironment(draft.environment)
@@ -308,11 +352,6 @@ struct TestSetupView: View {
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
             await plan()
-        }
-        .onChange(of: draft.environment) { old, new in
-            // Only an untouched example follows the environment; someone's own goal and rules stay.
-            var previous = draft; previous.environment = old
-            if RoomExample.isExample(previous) || RoomExample.isExample(draft) { useExample() }
         }
         .onChange(of: draft) { _, d in if let data = try? JSONEncoder().encode(d) { stored = String(decoding: data, as: UTF8.self) } }
         .onChange(of: servers.map(\.port)) { _, _ in fillModels() }
@@ -563,7 +602,7 @@ struct TestSetupView: View {
                             EnvCard(title: c.title, desc: c.desc, contents: c.contents + (c.builtin ? "" : " · yours"), selected: draft.environment == c.env,
                                     onEdit: c.builtin ? nil : { edit(c) },
                                     onCopy: c.builtin && c.env != nil ? { edit(c) } : nil,
-                                    onDelete: c.builtin ? nil : { confirmDelete = c }) { draft.environment = c.env }
+                                    onDelete: c.builtin ? nil : { confirmDelete = c }) { Task { await choose(c.env) } }
                         }
                     }.padding(2)
                 }
