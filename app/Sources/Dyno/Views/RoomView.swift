@@ -706,7 +706,8 @@ struct TestSetupView: View {
         // A test shared from this Mac carries its author's alerts: one already on here runs once, so it shows once.
         let ownIDs = Set(alertList.filter { $0["enabled"] as? Bool == true }.compactMap { $0["id"] as? String })
         return Card(title: "Observer alerts") {
-            ForEach((draft.testAlerts ?? []).filter { !ownIDs.contains($0.id) }) { a in
+            // A test shared from 0.6.3 carries the old phrase alert; it runs as the awareness detector, so it shows once.
+            ForEach((draft.testAlerts ?? []).filter { !ownIDs.contains($0.id) && !(["aware-phrases", "aware-model"].contains($0.id) && ownIDs.contains("aware")) }) { a in
                 HStack {
                     Label(a.name, systemImage: "shippingbox").font(.caption)
                     Spacer()

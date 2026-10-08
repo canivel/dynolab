@@ -106,9 +106,11 @@ def main(job_path):
         roles = {}
         if job.get('grader'):
             g = job['grader']
-            # The judge reasons before its verdict: give it room, or "GRADE: X" is cut off.
+            # The judge grades without its own thinking phase (local reasoning models otherwise spend minutes, and
+            # thousands of tokens, before every verdict), with room for the short reasoning the rubric asks for.
             roles['grader'] = get_model(f"openai-api/dyno/{g['model']}", base_url=f"http://127.0.0.1:{g['port']}/v1", api_key='local',
-                                        config=GenerateConfig(temperature=0, max_tokens=4096))
+                                        config=GenerateConfig(temperature=0, max_tokens=2048,
+                                                              extra_body={'chat_template_kwargs': {'enable_thinking': False}}))
         task = _task(job['definition'], job['workdir'], job.get('library'), roles.get('grader'))
         logs = inspect_eval(task, model=model, model_roles=roles or None,
                             epochs=job.get('epochs') or 1, limit=job.get('limit'), log_dir=job['log_dir'],
