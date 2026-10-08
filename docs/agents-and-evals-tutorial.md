@@ -117,4 +117,4 @@ A cell shows its eval's latest run; earlier runs stay in Inspect View. If a mode
 
 ## Reproduce this tutorial
 
-The experiment's setups and eval definitions are in [`docs/tutorial/`](tutorial/): the three GHOST conditions, the false-premise dataset, and the commands used to run them through the lab API.
+The experiment's setups and eval definitions are in [`docs/tutorial/experiment`](https://github.com/canivel/dynolab/tree/main/docs/tutorial/experiment): the three GHOST conditions, the false-premise dataset, and the commands used to run them through the lab API.
