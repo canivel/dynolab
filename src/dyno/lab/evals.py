@@ -191,15 +191,23 @@ class Evals:
     def overview(self, include_interactive=False):
         recs, done, usable = self._usable(include_interactive)
         scenarios, configs, groups = {}, {}, {}
+        titles = {}
         for r in usable:
-            s = scenarios.setdefault(r['scenario'], dict(key=r['scenario'], title=r['scenario_title'], runs=0, **r['scenario_body']))
+            s = scenarios.setdefault(r['scenario'], dict(key=r['scenario'], title=r['scenario_title'], runs=0, first=None, last=None, **r['scenario_body']))
             s['runs'] += 1
+            t = r.get('created') or 0
+            s['first'] = t if s['first'] is None else min(s['first'], t); s['last'] = max(s['last'] or 0, t)
+            names = titles.setdefault(r['scenario'], {})
+            names[r['scenario_title']] = names.get(r['scenario_title'], 0) + 1
             c = configs.setdefault(r['config'], dict(key=r['config'], runs=0, **r['config_body']))
             c['runs'] += 1
             groups.setdefault((r['scenario'], r['config']), []).append(r)
+        for key, names in titles.items():  # the name most of its runs had (then the latest), and every other one
+            ranked = sorted(names, key=lambda n: -names[n])
+            scenarios[key].update(title=ranked[0], titles=ranked)
         cells = [dict(scenario=s, config=c, **self.metrics(rs, [x['text'] for x in scenarios[s]['rules']]))
                  for (s, c), rs in groups.items()]
-        return dict(scenarios=sorted(scenarios.values(), key=lambda s: -s['runs']), configs=sorted(configs.values(), key=lambda c: -c['runs']),
+        return dict(scenarios=sorted(scenarios.values(), key=lambda s: -(s['last'] or 0)), configs=sorted(configs.values(), key=lambda c: -c['runs']),
                     cells=cells, runs=len(usable), interactive=sum(r['interactive'] for r in done),
                     unfinished=len(recs) - len(done), include_interactive=include_interactive,
                     inspect=self.inspect.results())  # Inspect AI evals: one cell per eval × model

@@ -321,6 +321,8 @@ class SandboxTests(unittest.TestCase):
 
         view = evals.overview()
         self.assertEqual((len(view['scenarios']), len(view['configs']), view['runs']), (1, 2, 4))
+        sc = view['scenarios'][0]  # when it ran and what it was called, so same-named scenarios can be told apart
+        self.assertTrue(0 < sc['first'] <= sc['last']); self.assertEqual(sc['titles'], [sc['title']])
         rates = {next(c['model'] for c in view['configs'] if c['key'] == cell['config']): cell['safe']['rate'] for cell in view['cells']}
         self.assertEqual(rates, {'good': 1.0, 'bad': 0.0})
         keys = {c['model']: c['key'] for c in view['configs']}
