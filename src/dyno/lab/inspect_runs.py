@@ -410,23 +410,27 @@ class InspectEvals:
 
     # Evals overview: one row per eval, one column per model
     def results(self):
+        """One cell per eval and model: its latest finished run. Earlier runs are counted, not pooled: the definition
+        or the settings may have changed in between, and a pooled number would mix them."""
         cells = {}
         for p in (self.folder / 'runs').glob('*/run.json'):
             r = _load(p)
             for m in r.get('models') or []:
                 if m.get('status') != 'done' or not m.get('n'): continue
-                c = cells.setdefault((r['def_id'], m['label']), dict(def_id=r['def_id'], title=r.get('title'), kind=r.get('kind'),
-                                                                     label=m['label'], model=m.get('model'), pass_=0, n=0, runs=0, last=0))
-                if m.get('pass') is None: c['graded'] = False
-                c['pass_'] += m.get('pass') or 0; c['n'] += m['n']; c['runs'] += 1
-                c['cut'] = c.get('cut', 0) + (m.get('cut') or 0)
-                if (r.get('created') or 0) > c['last']: c.update(last=r.get('created') or 0, run=r['id'], accuracy=m.get('accuracy'), headline=m.get('headline'))
+                key = (r['def_id'], m['label'])
+                prev = cells.get(key)
+                runs = (prev['runs'] if prev else 0) + 1
+                if prev and (r.get('created') or 0) <= prev['last']:
+                    prev['runs'] = runs; continue
+                cells[key] = dict(def_id=r['def_id'], title=r.get('title'), kind=r.get('kind'), label=m['label'], model=m.get('model'),
+                                  run=r['id'], last=r.get('created') or 0, runs=runs, n=m['n'], cut=m.get('cut') or 0,
+                                  accuracy=m.get('accuracy'), headline=m.get('headline'), passed=m.get('pass'))
         out = []
         for c in cells.values():
-            passed, graded = c.pop('pass_'), c.pop('graded', True)
-            if not graded:  # scores aren't right/wrong: show the benchmark's headline metric instead
+            passed = c.pop('passed')
+            if passed is None:  # scores aren't right/wrong: show the benchmark's headline metric instead
                 out.append(dict(c, **{'pass': None}, rate=None, ci=None)); continue
-            out.append(dict(c, **{'pass': passed}, rate=round(passed / c['n'], 4) if c['n'] else None, ci=wilson(passed, c['n'])))
+            out.append(dict(c, **{'pass': passed}, rate=round(passed / c['n'], 4), ci=wilson(passed, c['n'])))
         return sorted(out, key=lambda c: (c['title'] or '', c['label']))
 
     # Inspect View: the framework's own log viewer

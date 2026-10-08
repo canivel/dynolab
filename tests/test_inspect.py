@@ -68,6 +68,18 @@ class HeadlineTests(unittest.TestCase):
         self.assertFalse(any(x.get('gated') for x in LIBRARY))  # nothing needs a Hugging Face token
 
 
+class ResultsTests(unittest.TestCase):
+    def test_a_cell_shows_the_latest_run_not_a_pool(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inspect = SandboxRuns(Path(tmp) / 'lab').evals.inspect
+            for rid, created, passed in [('old', 1, 10), ('new', 2, 19)]:  # e.g. before and after a token-limit fix
+                folder = inspect.folder / 'runs' / rid; folder.mkdir(parents=True)
+                (folder / 'run.json').write_text(json.dumps(dict(id=rid, def_id='d1', title='Premises', kind='dataset', created=created, status='done',
+                                                                 models=[dict(label='27B', status='done', n=20, **{'pass': passed}, accuracy=passed / 20)])))
+            [cell] = inspect.results()
+            self.assertEqual((cell['run'], cell['pass'], cell['n'], cell['rate'], cell['runs']), ('new', 19, 20, 0.95, 2))
+
+
 @unittest.skipUnless(available()[0], 'Inspect AI is not installed (uv run --extra evals)')
 class InspectRunTests(unittest.TestCase):
     def setUp(self):

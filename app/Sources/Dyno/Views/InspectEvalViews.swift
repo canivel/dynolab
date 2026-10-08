@@ -753,7 +753,7 @@ struct InspectCellDetail: View {
                     stat("Correct", evalPercent(cell["rate"]), evalColor(cell["rate"] as? Double))
                     stat("Samples", "\(cell["pass"] as? Int ?? 0) of \(cell["n"] as? Int ?? 0)", .primary)
                 }
-                stat("Runs", "\(cell["runs"] as? Int ?? 1)", .primary)
+                stat("Runs", "\(cell["runs"] as? Int ?? 1)", .primary).help("This cell shows the latest run. Earlier runs of the same eval are kept in Inspect View.")
                 if let cut = cell["cut"] as? Int, cut > 0 { stat("Cut off", "\(cut)", .orange) }
                 Spacer()
                 Button(opening ? "Opening…" : "Open in Inspect View ↗", action: openViewer).buttonStyle(.dynoPrimary).disabled(opening)
