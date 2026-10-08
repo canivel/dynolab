@@ -283,19 +283,39 @@ struct TestSetupView: View {
     private var warnings: [String] { planned["warnings"] as? [String] ?? [] }
 
     /// Picking another environment brings its own test: the setup last used with it here, else its latest past
-    /// test, else the built-in example. The setup being left is kept for when you come back.
+    /// test, else the built-in example. The setup being left is kept for when you come back, if it fits there.
     private func choose(_ env: String?) async {
         guard env != draft.environment else { return }
-        var setups = (try? JSONDecoder().decode([String: EnvironmentSetup].self, from: Data(storedSetups.utf8))) ?? [:]
-        setups[draft.environment ?? ""] = draft.setup
+        var setups = savedSetups
+        if fits(draft.setup, draft.environment) { setups[draft.environment ?? ""] = draft.setup }
         if let data = try? JSONEncoder().encode(setups) { storedSetups = String(decoding: data, as: UTF8.self) }
         draft.environment = env
-        if let saved = setups[env ?? ""] { draft.apply(saved); return }
+        await bringSetup(for: env, saved: setups)
+    }
+    private var savedSetups: [String: EnvironmentSetup] {
+        (try? JSONDecoder().decode([String: EnvironmentSetup].self, from: Data(storedSetups.utf8))) ?? [:]
+    }
+    private func bringSetup(for env: String?, saved: [String: EnvironmentSetup]) async {
+        if let s = saved[env ?? ""], fits(s, env) { draft.apply(s); return }
         let past = await latestSetup(for: env)
         guard draft.environment == env else { return }  // another card was picked meanwhile
-        if let past { draft.apply(past); return }
+        if let past, fits(past, env) { draft.apply(past); return }
         let e = RoomExample.forEnvironment(env)
         draft.apply(EnvironmentSetup(goal: e.goal, rules: e.rules.map { RoomRule(text: $0) }))
+    }
+    /// Whether a setup belongs to an environment: every *.internal host its goal and rules name is one the
+    /// environment has. A setup carried over from another environment names that one's hosts instead.
+    private func fits(_ s: EnvironmentSetup, _ env: String?) -> Bool {
+        // An untouched example isn't anyone's setup: the environment's own past test is a better start.
+        let e = RoomExample.forEnvironment(env)
+        if s.goal == e.goal && s.rules.map(\.text) == e.rules && (s.script ?? []).isEmpty && RoomExample.forEnvironment(nil).goal == e.goal { return false }
+        guard let t = envs.first(where: { $0["id"] as? String == env }) else { return true }
+        var known = Set(((t["gateway"] as? [[String: Any]]) ?? []).compactMap { ($0["host"] as? String)?.lowercased() })
+        for n in (t["nodes"] as? [[String: Any]]) ?? [] { if let name = (n["name"] as? String)?.lowercased() { known.insert(name + ".internal") } }
+        guard !known.isEmpty else { return true }
+        let text = ([s.goal] + s.rules.map(\.text) + s.rules.flatMap { $0.watch?.hosts ?? [] }).joined(separator: " ").lowercased()
+        let named = text.matches(of: try! Regex(#"[a-z0-9-]+\.internal\b"#)).map { String(text[$0.range]) }
+        return named.allSatisfy(known.contains)
     }
     /// The goal, rules and script of the newest past test in an environment.
     private func latestSetup(for env: String?) async -> EnvironmentSetup? {
@@ -347,6 +367,8 @@ struct TestSetupView: View {
                 if await loadEnvironments() { break }
                 try? await Task.sleep(for: .seconds(2))
             }
+            // A setup left over from another environment (before each kept its own) is replaced by this one's.
+            if !fits(draft.setup, draft.environment) { await bringSetup(for: draft.environment, saved: savedSetups) }
         }
         .task(id: planKey) {
             try? await Task.sleep(for: .milliseconds(500))
