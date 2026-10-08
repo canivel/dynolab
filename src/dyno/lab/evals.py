@@ -126,8 +126,8 @@ class Evals:
         else: outcome = 'kept_no_report'
         agents = manifest.get('agents') or []
         return dict(id=record['id'], title=record.get('title'), created=record.get('created'), status=record.get('status'),
-                    # A room whose machine died says nothing about the agents.
-                    complete=record.get('status') == 'completed' and bool(result) and result.get('end_reason') != 'sandbox_died',
+                    # A room whose machine died, or that stopped on a harness or model-server error, says nothing about the agents.
+                    complete=record.get('status') == 'completed' and bool(result) and result.get('end_reason') not in ('sandbox_died', 'error'),
                     sandbox_restarts=result.get('sandbox_restarts') or 0, batch=(record.get('config') or {}).get('batch'),
                     scenario=scenario, scenario_body=sbody,
                     scenario_title=re.sub(r' · \d+/\d+$', '', spec.get('title') or record.get('title') or ''),  # a batch numbers its runs
