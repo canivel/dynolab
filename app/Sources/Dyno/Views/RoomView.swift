@@ -1479,14 +1479,17 @@ private struct ChatRow: View {
                         Text(item.text).font(.callout.monospaced()).copyable(item.text)
                         if let d = item.detail {
                             let lines = d.split(separator: "\n", omittingEmptySubsequences: false)
-                            Text(expanded ? d : lines.prefix(3).joined(separator: "\n") + (lines.count > 3 ? "\n…" : ""))
-                                .font(.caption.monospaced()).foregroundStyle(item.exit == 0 || item.exit == nil ? Color.secondary : Color.orange).copyable(d)
+                            Group {
+                                if expanded { LongText(text: d) } else { Text(lines.prefix(3).joined(separator: "\n") + (lines.count > 3 ? "\n…" : "")).copyable(d) }
+                            }.font(.caption.monospaced()).foregroundStyle(item.exit == 0 || item.exit == nil ? Color.secondary : Color.orange)
                             if lines.count > 3 { Button(expanded ? "Less" : "All \(lines.count) lines") { expanded.toggle() }.buttonStyle(.link).font(.caption) }
                         }
                     }.padding(8).frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 8).fill(DynoBrand.background)).overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
                 case .thinking:
-                    Text(item.text).font(.caption).foregroundStyle(.secondary).italic().lineLimit(expanded ? nil : 4).copyable(item.text)
+                    Group {
+                        if expanded { LongText(text: item.text) } else { Text(item.text).lineLimit(4).copyable(item.text) }
+                    }.font(.caption).foregroundStyle(.secondary).italic()
                         .onTapGesture { expanded.toggle() }
                 case .report, .blocked:
                     VStack(alignment: .leading, spacing: 4) {

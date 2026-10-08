@@ -209,7 +209,7 @@ struct ExecutionView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
                         DisclosureGroup("Request input & parameters", isExpanded: $showInput) {
-                            code(trace.input ?? "").padding(.top, 8)
+                            code(trace.input ?? "", live: trace.isRunning).padding(.top, 8)
                         }
                         .font(.system(size: 12, weight: .semibold))
                         if let parent = trace.parentId, !parent.isEmpty {
@@ -224,7 +224,7 @@ struct ExecutionView: View {
                                     Spacer()
                                     Text(String(format: "+%.2fs", event.time - trace.started)).monospacedDigit()
                                 }.font(.system(size: 11, weight: .semibold)).foregroundStyle(event.kind == "thinking" ? Color.purple : .secondary)
-                                code(event.text)
+                                code(event.text, live: trace.isRunning)
                             }.padding(12).background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.035)))
                         }
                         if !(trace.events ?? []).contains(where: { $0.kind == "thinking" }) {
@@ -244,9 +244,9 @@ struct ExecutionView: View {
             }
         }
     }
-    private func code(_ text: String) -> some View {
-        Text(text).font(.system(size: 12, design: .monospaced))
-            .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+    /// While a request runs its text keeps growing: no text selection then (it loops layout in a growing stack).
+    private func code(_ text: String, live: Bool = false) -> some View {
+        LongText(text: text, selectable: !live).font(.system(size: 12, design: .monospaced))
     }
     private func statusColor(_ status: String) -> Color {
         switch status {

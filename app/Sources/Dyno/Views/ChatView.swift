@@ -355,9 +355,8 @@ private struct MessageRow: View {
             }
 
             if !message.text.isEmpty || !message.isStreaming {
-                Text(message.text.isEmpty && message.isStreaming ? "…" : message.text)
+                LongText(text: message.text.isEmpty && message.isStreaming ? "…" : message.text)
                     .font(.system(size: 13))
-                    .copyable(message.text)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 12).padding(.vertical, 10)
                     .background(RoundedRectangle(cornerRadius: 10)
@@ -404,10 +403,9 @@ private struct MessageRow: View {
             .buttonStyle(.plain)
 
             if thinkingExpanded {
-                Text(message.reasoning)
+                LongText(text: message.reasoning)
                     .font(.system(size: 11.5, design: .monospaced))
                     .foregroundStyle(.secondary)
-                    .copyable(message.reasoning)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(11)
                     .background(RoundedRectangle(cornerRadius: 8)
