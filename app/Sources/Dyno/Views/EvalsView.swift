@@ -336,7 +336,7 @@ struct EvalsView: View {
         var d = setupDraft
         if let s = scenarios.first(where: { $0["key"] as? String == scenarioChoice }) {
             var scenario = RoomDraft(spec: s)
-            scenario.agents = d.agents; scenario.rounds = d.rounds; scenario.maxAgents = d.maxAgents
+            scenario.agents = d.agents; scenario.rounds = d.rounds; scenario.maxAgents = d.maxAgents; scenario.teamSize = d.teamSize
             d = scenario
         }
         return d
@@ -345,15 +345,81 @@ struct EvalsView: View {
     private var agentWhatCard: some View {
         let d = batchDraft
         return EvalCard(title: "What to test") {
-            Picker("Scenario", selection: $scenarioChoice) {
-                Text("The test on the Setup screen now").tag("setup")
-                ForEach(scenarios.indices, id: \.self) { i in Text(scenarios[i]["title"] as? String ?? "").tag(scenarios[i]["key"] as? String ?? "") }
-            }.frame(maxWidth: 520)
+            scenarioList
+            Divider()
             Text(d.goal).font(.callout).lineLimit(3).foregroundStyle(.secondary)
             ForEach(d.rules.indices, id: \.self) { i in Text("\(i + 1). \(d.rules[i].text)").font(.caption) }
-            Text("\(d.environment ?? "plain machine") · lead “\(d.agents.first?.name ?? "")” · team up to \(d.teamLimit) · \(d.rounds) turns each. Change these on the Agents Setup screen.")
+            Text("\(d.environment ?? "plain machine") · lead “\(d.agents.first?.name ?? "")” · \(d.teamSize.map { $0 == 1 ? "one agent" : "team of \($0)" } ?? "team up to \(d.teamLimit)") · \(d.rounds) turns each. Change these on the Agents Setup screen.")
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    /// Every scenario already run, newest first: what it's called, where it ran, when, and what sets it apart from
+    /// another scenario with the same name.
+    private var scenarioList: some View {
+        ScrollView {
+            VStack(spacing: 6) {
+                scenarioRow(key: "setup", title: "The test on the Setup screen now", hint: nil,
+                            detail: "\(setupDraft.environment ?? "plain machine") · \(setupDraft.rules.count) rule\(setupDraft.rules.count == 1 ? "" : "s") · not run in Evals yet unless it matches one below",
+                            goal: setupDraft.goal, aka: [])
+                ForEach(scenarios.indices, id: \.self) { i in
+                    let sc = scenarios[i]
+                    let rules = sc["rules"] as? [[String: Any]] ?? []
+                    let runs = sc["runs"] as? Int ?? 0
+                    let title = sc["title"] as? String ?? ""
+                    scenarioRow(key: sc["key"] as? String ?? "", title: title, hint: difference(sc),
+                                detail: "\(sc["environment"] as? String ?? "plain machine") · \(rules.count) rule\(rules.count == 1 ? "" : "s") · \(runs) run\(runs == 1 ? "" : "s") · \(when(sc))",
+                                goal: sc["goal"] as? String ?? "", aka: (sc["titles"] as? [String] ?? []).filter { $0 != title })
+                }
+            }.padding(2)
+        }.frame(maxHeight: 300)
+    }
+
+    private func scenarioRow(key: String, title: String, hint: String?, detail: String, goal: String, aka: [String]) -> some View {
+        let on = scenarioChoice == key
+        return Button { scenarioChoice = key } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: on ? "largecircle.fill.circle" : "circle").foregroundStyle(on ? DynoBrand.accent : .secondary).padding(.top, 2)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(title.isEmpty ? "Untitled test" : title).font(.callout.weight(.semibold)).lineLimit(1)
+                        if let hint { Text(hint).font(.caption2.weight(.semibold)).padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Capsule().fill(Color.orange.opacity(0.18))).foregroundStyle(.orange) }
+                    }
+                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                    Text(goal.split(separator: "\n").first.map(String.init) ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    if !aka.isEmpty { Text("Also run as: " + aka.prefix(3).joined(separator: " · ")).font(.caption2).foregroundStyle(.tertiary).lineLimit(1) }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(8).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+            .background(RoundedRectangle(cornerRadius: 8).fill(on ? DynoBrand.accent.opacity(0.12) : DynoBrand.background))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(on ? DynoBrand.accent.opacity(0.6) : Color.clear))
+        }.buttonStyle(.plain)
+    }
+
+    /// "Last run Oct 8, 5:40 AM", with the first run's date when the runs span more than a day.
+    private func when(_ sc: [String: Any]) -> String {
+        guard let last = sc["last"] as? Double, last > 0 else { return "no date" }
+        let l = Date(timeIntervalSince1970: last)
+        var text = "last run " + l.formatted(date: .abbreviated, time: .shortened)
+        if let first = sc["first"] as? Double, last - first > 86_400 { text += ", first " + Date(timeIntervalSince1970: first).formatted(date: .abbreviated, time: .omitted) }
+        return text
+    }
+
+    /// What sets a scenario apart from others with the same name: its environment, goal, rules or rule watchers.
+    private func difference(_ sc: [String: Any]) -> String? {
+        let title = sc["title"] as? String ?? ""
+        let twins = scenarios.filter { $0["title"] as? String == title && $0["key"] as? String != sc["key"] as? String }
+        guard !twins.isEmpty else { return nil }
+        let texts = { (x: [String: Any]) in (x["rules"] as? [[String: Any]] ?? []).map { $0["text"] as? String ?? "" } }
+        let watches = { (x: [String: Any]) in (x["rules"] as? [[String: Any]] ?? []).map { String(describing: $0["watch"] ?? "") } }
+        var parts: [String] = []
+        if twins.contains(where: { $0["environment"] as? String != sc["environment"] as? String }) { parts.append("environment") }
+        if twins.contains(where: { $0["goal"] as? String != sc["goal"] as? String }) { parts.append("goal") }
+        if twins.contains(where: { texts($0) != texts(sc) }) { parts.append("rules") }
+        else if twins.contains(where: { watches($0) != watches(sc) }) { parts.append("rule watchers") }
+        return "same name, different " + (parts.isEmpty ? "setup" : parts.joined(separator: " and "))
     }
 
     @ViewBuilder private var agentRunCards: some View {

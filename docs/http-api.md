@@ -103,6 +103,10 @@ curl -X DELETE "http://127.0.0.1:8980/lab/v1/jobs/$DYNO_JOB_ID"
 
 Cancellation does not stop an inference server. Deleting a running job returns 409; cancel it first. Downloaded files are not deleted by deleting their server-side job.
 
+## Dyno's assistant
+
+The chat panel's conversations, run by the lab with a local model: `GET/POST /assistant/conversations`, `GET /assistant/conversations/{id}`, and `POST …/{id}/messages`, `…/decide`, `…/stop`, `…/rename`, `…/settings`, `…/delete`. See [Dyno's assistant](assistant.md#api).
+
 ## Agent sandbox tests
 
 The same service runs [agent sandbox tests](agent-sandbox-tests.md). A lead agent works in a gVisor sandbox on a goal it can't reach without breaking a rule, creates teammates as it needs them, and a hidden Observer records every rule event. All paths are under `http://127.0.0.1:8980/lab/v1`. Send JSON bodies with `Content-Type: application/json`.
@@ -126,7 +130,7 @@ The same service runs [agent sandbox tests](agent-sandbox-tests.md). A lead agen
 | POST | `/sandbox/rooms/{id}/end` | 200 | End test. A room waiting for follow-ups closes and is sealed |
 | POST | `/sandbox/runs/{id}/cancel` | 200 | Stop a test now (not sealed) |
 | POST | `/sandbox/rooms/{id}/export` | 200 | Write the full log (`"format": "md"`) or raw files (`"zip"`); returns its `path` |
-| GET, POST | `/sandbox/prompts` | 200, 201 | Agent prompts with every version; save a prompt or a new version |
+| GET, POST | `/sandbox/prompts` | 200, 201 | Agent prompts with every version; save a prompt or a new version: `{"name", "lead", "teammate", "team"}` (`team`: the team instruction) |
 | GET, POST | `/sandbox/alerts` | 200, 201 | Observer alerts; create or update one. `POST /sandbox/alerts/delete`, `POST /sandbox/alerts/try` |
 | GET | `/sandbox/evals?interactive=0` | 200 | Scenarios × configs with safe rates, 95% Wilson ranges and run counts |
 | GET | `/sandbox/evals/cell?scenario=&config=` | 200 | One cell's metrics (rates, pass^k, per rule, per alert) and runs |
@@ -154,11 +158,11 @@ A test setup (`spec`):
     {"text": "Report honestly what you did."}
   ],
   "agents": [{"name": "Lead Agent", "role": "team lead", "port": 8971, "model": "mlx-community/Qwen3-8B-4bit"}],
-  "limits": {"max_rounds": 10, "max_agents": 6, "follow_up_seconds": 300}
+  "limits": {"max_rounds": 10, "team_size": 3, "follow_up_seconds": 300}
 }
 ```
 
-`port` and `model` name a model already running on this Mac; agents only reach loopback endpoints. Add `"prompt": {"id": "…", "version": 2}` to use a saved prompt version. Rules without a `watch` get one suggested from their wording; `/sandbox/rooms/plan` shows it.
+`port` and `model` name a model already running on this Mac; agents only reach loopback endpoints. `team_size` requires a team of that many agents, the lead included: above 1, the lead's prompt opens with the team instruction (the saved prompt's, or the default) and the lead must build the team before any work. Without it, `max_agents` (default 6) only caps how many agents the lead may create. Add `"prompt": {"id": "…", "version": 2}` to use a saved prompt version. Rules without a `watch` get one suggested from their wording; `/sandbox/rooms/plan` shows it.
 
 ```bash
 curl -s http://127.0.0.1:8980/lab/v1/sandbox/runs -H 'Content-Type: application/json' \

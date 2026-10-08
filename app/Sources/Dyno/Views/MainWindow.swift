@@ -14,6 +14,10 @@ struct MainWindow: View {
     /// Chat is a mode rather than a tab: it is reached from its own button and
     /// leaves the tab you were on selected, so going back lands where you were.
     @State private var showingChat = false
+    /// The assistant panel beside every tab: open, or minimized to a rail. Remembered across launches.
+    @AppStorage("assistantOpen") private var assistantOpen = true
+    @AppStorage("assistantWidth") private var assistantWidth = 400.0
+    @State private var dragStart: Double?
     @State private var poolSession = PoolSession()
     @State private var modelFormat = "MLX"
 
@@ -75,13 +79,15 @@ struct MainWindow: View {
                 // together. Coloured explicitly: .borderedProminent goes grey
                 // whenever the window is not key.
                 Button {
-                    withAnimation(.easeInOut(duration: 0.12)) { showingChat.toggle() }
+                    withAnimation(.easeInOut(duration: 0.12)) {
+                        if showingChat { showingChat = false } else { assistantOpen.toggle() }
+                    }
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: showingChat
-                              ? "chevron.left" : "bubble.left.and.text.bubble.right")
+                              ? "chevron.left" : "sparkles")
                             .font(.system(size: 12, weight: .semibold))
-                        Text(showingChat ? "Back" : "Chat")
+                        Text(showingChat ? "Back" : "Assistant")
                             .font(.system(size: 12.5, weight: .semibold))
                     }
                     .foregroundStyle(showingChat ? DynoBrand.accent : DynoBrand.ink)
@@ -97,22 +103,37 @@ struct MainWindow: View {
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut("j", modifiers: .command)
-                .help(showingChat ? "Back to the dashboard (⌘J)" : "Chat with a model (⌘J)")
+                .help(showingChat ? "Back to the dashboard" : assistantOpen ? "Minimize the assistant (⌘J)" : "Open the assistant (⌘J)")
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             Divider()
 
-            if showingChat {
-                ChatView(model: model)
-            } else {
-                dashboard
+            HStack(spacing: 0) {
+                Group {
+                    if showingChat { ChatView(model: model) } else { dashboard }
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                Divider()
+                if assistantOpen {
+                    AssistantPanel(model: model, onMinimize: { withAnimation(.easeInOut(duration: 0.12)) { assistantOpen = false } },
+                                   onPlainChat: { showingChat = true })
+                        .frame(width: assistantWidth)
+                        .overlay(alignment: .leading) { resizeHandle }
+                } else {
+                    AssistantRail(model: model) { withAnimation(.easeInOut(duration: 0.12)) { assistantOpen = true } }
+                }
             }
         }
         .frame(minWidth: 800, minHeight: 540)
         .background(DynoBrand.background)
         .dynoTheme()
-        .onAppear { AppUpdates.shared.stopPool = { poolSession.stop() } }
+        .onAppear {
+            AppUpdates.shared.stopPool = { poolSession.stop() }
+            model.currentTab = tab
+            // Actions the assistant takes in Dyno (open a screen, fill Agents → Setup) work even while it's minimized.
+            model.assistant.onAction = { [model] e in AssistantActions.apply(e, model: model) }
+        }
+        .onChange(of: tab) { _, t in model.currentTab = t }
         // One view asking to show another — Chat sending you to Models when
         // nothing is loaded — goes through the model rather than reaching into
         // this view's state directly.
@@ -124,11 +145,25 @@ struct MainWindow: View {
             }
         }
         .onChange(of: model.wantsChat) { _, wanted in
+            // "Chat" from the menu bar opens the assistant.
             if wanted {
-                showingChat = true
+                assistantOpen = true
                 model.wantsChat = false
             }
         }
+    }
+
+    /// Drag the panel's left edge to make it wider or narrower.
+    private var resizeHandle: some View {
+        Color.clear.frame(width: 6).contentShape(Rectangle())
+            .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+            .gesture(DragGesture(minimumDistance: 1)
+                .onChanged { v in
+                    let start = dragStart ?? assistantWidth
+                    dragStart = start
+                    assistantWidth = min(640, max(320, start - v.translation.width))
+                }
+                .onEnded { _ in dragStart = nil })
     }
 
     @ViewBuilder

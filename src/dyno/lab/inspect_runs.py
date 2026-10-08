@@ -219,7 +219,8 @@ class InspectEvals:
                                   library=(d.get('library') or {}).get('id'), scorer=(d.get('scorer') or {}).get('kind')))
         return sorted(out, key=lambda d: -(d.get('updated') or 0))
 
-    def save_def(self, body):
+    def save_def(self, body, save=True):
+        """Check an eval definition and save it. save=False only checks it (the assistant proposes it first)."""
         if not isinstance(body, dict): raise ValueError('Send an eval')
         kind = body.get('kind')
         if kind not in ('dataset', 'task_file', 'library'): raise ValueError('kind must be dataset, task_file or library')
@@ -257,7 +258,7 @@ class InspectEvals:
             lib = body.get('library') or {}
             if lib.get('id') not in {x['id'] for x in LIBRARY}: raise ValueError('Unknown benchmark')
             d['library'] = dict(id=lib['id'], limit=lib.get('limit') if isinstance(lib.get('limit'), int) and lib['limit'] > 0 else None)
-        _save(self._def_path(d['id']), d)
+        if save: _save(self._def_path(d['id']), d)
         return d
 
     def delete_def(self, i):

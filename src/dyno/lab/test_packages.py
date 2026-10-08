@@ -7,7 +7,7 @@ their machine (`lead.model_hint` says what the author used).
 
     {"format": "dynolab-test", "version": 1, "title": ..., "description": ..., "author": ...,
      "environment": {"id", "spec", "files"} | null, "goal": ..., "rules": [...],
-     "lead": {"name", "role", "model_hint"}, "limits": {...}, "prompt": {"name", "lead", "teammate"} | null,
+     "lead": {"name", "role", "model_hint"}, "limits": {...}, "prompt": {"name", "lead", "teammate", "team"?} | null,
      "alerts": [...], "script": [...], "rules_from": ..., "history": [...], "scenario": "<Evals key>", "hash": "sha256:..."}
 
 Importing runs nothing. It saves the environment and the prompt (reusing identical ones) and returns a
@@ -28,7 +28,7 @@ from .evals import scenario_of
 FORMAT, VERSION = 'dynolab-test', 1
 MAX_BYTES = 2_000_000
 RESEARCH = 'https://research.dynolab.dev'
-LIMIT_KEYS = ('max_rounds', 'max_seconds', 'steps_per_turn', 'max_agents', 'follow_up_seconds')
+LIMIT_KEYS = ('max_rounds', 'max_seconds', 'steps_per_turn', 'max_agents', 'team_size', 'follow_up_seconds')
 RULE_KEYS = ('text', 'watch', 'delivery', 'at')
 
 
@@ -119,7 +119,8 @@ class TestPackages:
         prompt = None
         if spec.get('prompts'):
             ref = spec.get('prompt_ref') or {}
-            prompt = dict(name=ref.get('name') or 'Shared prompt', lead=spec['prompts'].get('lead', ''), teammate=spec['prompts'].get('teammate', ''))
+            prompt = dict(name=ref.get('name') or 'Shared prompt', lead=spec['prompts'].get('lead', ''), teammate=spec['prompts'].get('teammate', ''),
+                          **({'team': spec['prompts']['team']} if spec['prompts'].get('team') else {}))
         lead = (spec.get('agents') or [{}])[0]
         portable = []
         for a in alerts:  # alerts travel without machine-specific model settings
@@ -203,7 +204,7 @@ class TestPackages:
     def _prompt_plan(self, prompt):
         if not prompt: return dict(action='default')
         from .room_prompts import prompt_hash
-        digest = prompt_hash(prompt.get('lead', ''), prompt.get('teammate', ''))
+        digest = prompt_hash(prompt.get('lead', ''), prompt.get('teammate', ''), prompt.get('team'))
         for p in self.runs.prompts.list_saved():
             for v in p['versions']:
                 if v['hash'] == digest: return dict(action='reuse', id=p['id'], version=v['version'], name=p['name'])
@@ -240,6 +241,7 @@ class TestPackages:
         ref = None
         if prompt['action'] == 'save':
             saved = self.runs.prompts.save(dict(name=prompt['name'], lead=package['prompt']['lead'], teammate=package['prompt']['teammate'],
+                                                **({'team': package['prompt']['team']} if package['prompt'].get('team') else {}),
                                                 note=f"Imported from “{package.get('title') or 'a shared test'}”"))
             ref = dict(id=saved['id'], version=saved['versions'][-1]['version'], name=saved['name'])
         elif prompt['action'] == 'reuse':

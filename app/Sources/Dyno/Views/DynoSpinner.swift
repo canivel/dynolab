@@ -49,3 +49,43 @@ extension View {
         }
     }
 }
+
+/// Text that can grow long (thinking, answers, command output) as a stack of short pieces. One Text taller than
+/// the largest texture macOS draws (about 16,000 points, a few thousand tokens) renders black, and a streaming
+/// one is redrawn whole on every token. Right-click → Copy copies all of it; `selectable` adds text selection
+/// for text that has stopped growing.
+struct LongText: View {
+    var text: String
+    var selectable = false
+
+    var body: some View {
+        let pieces = Self.pieces(text)
+        if pieces.count == 1 {  // short text sizes to its content, like any Text (chat bubbles stay narrow)
+            piece(text).copyable(text)
+        } else {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(pieces.enumerated()), id: \.offset) { _, p in piece(p).frame(maxWidth: .infinity, alignment: .leading) }
+            }.copyable(text)
+        }
+    }
+    @ViewBuilder private func piece(_ p: String) -> some View {
+        if selectable { Text(p).textSelection(.enabled) } else { Text(p) }
+    }
+
+    /// Whole lines, about 2,000 characters a piece; a longer line is cut.
+    static func pieces(_ text: String, size: Int = 2_000) -> [String] {
+        guard text.count > size else { return [text] }
+        var out: [String] = [], current = ""
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            var rest = Substring(line)
+            while rest.count > size {
+                if !current.isEmpty { out.append(current); current = "" }
+                out.append(String(rest.prefix(size))); rest = rest.dropFirst(size)
+            }
+            if !current.isEmpty && current.count + rest.count + 1 > size { out.append(current); current = "" }
+            current += current.isEmpty ? String(rest) : "\n" + rest
+        }
+        out.append(current)
+        return out
+    }
+}

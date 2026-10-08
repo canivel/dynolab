@@ -64,17 +64,6 @@ struct RoomExample {
                                        "Report honestly what you did."])
         }
     }
-
-    /// Whether a draft still holds an example unchanged, so switching environment may replace it.
-    static func isExample(_ d: RoomDraft) -> Bool {
-        // The first build's default draft counts too.
-        if d.goal.hasPrefix("Write the Q3 report for the finance team: total sales per region") { return true }
-        let ids: [String?] = [nil, "segmented-office", "segmented-office-open", "egress-allowlist", "bastion-admin"]
-        return ids.contains { id in
-            let e = forEnvironment(id)
-            return e.goal == d.goal && e.rules == d.rules.map(\.text) && d.rules.allSatisfy { $0.watch == nil }
-        }
-    }
 }
 
 struct ResearchSource: Codable, Equatable {
@@ -92,6 +81,10 @@ struct RoomDraft: Codable, Equatable {
     /// Optional so drafts saved before the team size limit existed still load.
     var maxAgents: Int? = nil
     var teamLimit: Int { maxAgents ?? 6 }
+    /// A required team of exactly this many agents, the lead included. Above 1, the lead must build the team
+    /// before any work (the team instruction opens its prompt). nil: a test from before team sizes, where the
+    /// lead could create up to maxAgents if it wanted. New setups start with a team of 3.
+    var teamSize: Int? = 3
     /// nil: the built-in default prompt.
     var prompt: PromptRef? = nil
     // GHOST tests. Optional so drafts saved before them still load.
@@ -105,7 +98,9 @@ struct RoomDraft: Codable, Equatable {
     var source: ResearchSource? = nil
 
     func spec(models: [Int: String]) -> [String: Any] {
-        var s: [String: Any] = ["goal": goal, "limits": ["max_rounds": rounds, "max_agents": teamLimit, "follow_up_seconds": 300],
+        var limits: [String: Any] = ["max_rounds": rounds, "max_agents": teamSize ?? teamLimit, "follow_up_seconds": 300]
+        if let teamSize { limits["team_size"] = teamSize }
+        var s: [String: Any] = ["goal": goal, "limits": limits,
                                 "rules": rules.filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }.map { r -> [String: Any] in
                                     var d: [String: Any] = ["text": r.text]
                                     if r.delivery == "chat_once" { d["delivery"] = "chat_once"; d["at"] = r.at.map { $0 as Any } ?? "start" }
@@ -132,6 +127,28 @@ struct RoomDraft: Codable, Equatable {
         if let title, !title.isEmpty { s["title"] = title }
         if let source { s["source"] = ["research": source.research, "scenario": source.scenario].compactMapValues { $0 } }
         return s
+    }
+}
+
+/// What a test asks of the agents in one environment: kept per environment, so switching back finds it again.
+struct EnvironmentSetup: Codable, Equatable {
+    var goal: String
+    var rules: [RoomRule]
+    var script: [ScriptLine]?
+    var rulesFrom: String?
+    var history: [HistoryTurn]?
+    var testAlerts: [TestAlert]?
+    var title: String?
+    var source: ResearchSource?
+}
+
+extension RoomDraft {
+    var setup: EnvironmentSetup {
+        EnvironmentSetup(goal: goal, rules: rules, script: script, rulesFrom: rulesFrom, history: history, testAlerts: testAlerts, title: title, source: source)
+    }
+    mutating func apply(_ s: EnvironmentSetup) {
+        goal = s.goal; rules = s.rules; script = s.script; rulesFrom = s.rulesFrom
+        history = s.history; testAlerts = s.testAlerts; title = s.title; source = s.source
     }
 }
 
@@ -175,6 +192,8 @@ extension RoomDraft {
         let limits = spec["limits"] as? [String: Any] ?? [:]
         rounds = limits["max_rounds"] as? Int ?? rounds
         maxAgents = limits["max_agents"] as? Int
+        // Absent in tests from before team sizes: they run as they did. A one-agent test was already a team of 1.
+        teamSize = limits["team_size"] as? Int ?? (maxAgents == 1 ? 1 : nil)
         if let ref = spec["prompt_ref"] as? [String: Any], let id = ref["id"] as? String, id != "default", let v = ref["version"] as? Int {
             prompt = PromptRef(id: id, version: v)
         }
@@ -233,8 +252,12 @@ struct TestSetupView: View {
     var onStarted: ([String: Any]) -> Void
     var onAdvanced: (String) -> Void
     @AppStorage("roomDraft") private var stored = ""
+    /// The goal, rules, script and history last used with each environment, by environment id.
+    @AppStorage("roomSetups") private var storedSetups = ""
     @State private var draft = RoomDraft()
     @State private var loaded = false
+    /// The setup on screen came from the assistant: keep it as proposed, even if it doesn't match a saved one.
+    @State private var fromAssistant = false
     @State private var envs: [[String: Any]] = []
     @State private var planned: [String: Any] = [:]
     @State private var newRule = ""
@@ -268,6 +291,66 @@ struct TestSetupView: View {
     private var plannedRules: [[String: Any]] { planned["rules"] as? [[String: Any]] ?? [] }
     private var errors: [String] { planned["errors"] as? [String] ?? [] }
     private var warnings: [String] { planned["warnings"] as? [String] ?? [] }
+
+    /// Picking another environment brings its own test: the setup last used with it here, else its latest past
+    /// test, else the built-in example. The setup being left is kept for when you come back, if it fits there.
+    private func takeAssistantDraft(_ d: RoomDraft?) {
+        guard var d else { return }
+        model.incomingDraft = nil
+        if d.agents.first?.port == nil { d.agents[0].port = draft.agents.first?.port ?? servers.first?.port }
+        draft = d
+        loaded = true; fromAssistant = true
+        Task { await loadEnvironments(); await loadPrompts(); mapVersion += 1 }
+    }
+
+    private func choose(_ env: String?) async {
+        guard env != draft.environment else { return }
+        var setups = savedSetups
+        if fits(draft.setup, draft.environment) { setups[draft.environment ?? ""] = draft.setup }
+        if let data = try? JSONEncoder().encode(setups) { storedSetups = String(decoding: data, as: UTF8.self) }
+        draft.environment = env
+        await bringSetup(for: env, saved: setups)
+    }
+    private var savedSetups: [String: EnvironmentSetup] {
+        (try? JSONDecoder().decode([String: EnvironmentSetup].self, from: Data(storedSetups.utf8))) ?? [:]
+    }
+    private func bringSetup(for env: String?, saved: [String: EnvironmentSetup]) async {
+        if let s = saved[env ?? ""], fits(s, env) { draft.apply(s); return }
+        let past = await latestSetup(for: env)
+        guard draft.environment == env else { return }  // another card was picked meanwhile
+        if let past, fits(past, env) { draft.apply(past); return }
+        let e = RoomExample.forEnvironment(env)
+        draft.apply(EnvironmentSetup(goal: e.goal, rules: e.rules.map { RoomRule(text: $0) }))
+    }
+    /// Whether a setup belongs to an environment: every *.internal host its goal and rules name is one the
+    /// environment has. A setup carried over from another environment names that one's hosts instead.
+    private func fits(_ s: EnvironmentSetup, _ env: String?) -> Bool {
+        // An untouched example isn't anyone's setup: the environment's own past test is a better start.
+        let e = RoomExample.forEnvironment(env)
+        if s.goal == e.goal && s.rules.map(\.text) == e.rules && (s.script ?? []).isEmpty && RoomExample.forEnvironment(nil).goal == e.goal { return false }
+        guard let t = envs.first(where: { $0["id"] as? String == env }) else { return true }
+        var known = Set(((t["gateway"] as? [[String: Any]]) ?? []).compactMap { ($0["host"] as? String)?.lowercased() })
+        for n in (t["nodes"] as? [[String: Any]]) ?? [] { if let name = (n["name"] as? String)?.lowercased() { known.insert(name + ".internal") } }
+        guard !known.isEmpty else { return true }
+        let text = ([s.goal] + s.rules.map(\.text) + s.rules.flatMap { $0.watch?.hosts ?? [] }).joined(separator: " ").lowercased()
+        let named = text.matches(of: try! Regex(#"[a-z0-9-]+\.internal\b"#)).map { String(text[$0.range]) }
+        return named.allSatisfy(known.contains)
+    }
+    /// The goal, rules and script of the newest past test in an environment.
+    private func latestSetup(for env: String?) async -> EnvironmentSetup? {
+        guard let env, let runs = try? await model.researchLab.request("/sandbox/runs", timeout: 10)["runs"] as? [[String: Any]] else { return nil }
+        let spec = runs.filter { $0["kind"] as? String == "room" }
+            .compactMap { r -> (Double, [String: Any])? in
+                guard let s = (r["config"] as? [String: Any])?["spec"] as? [String: Any], s["environment"] as? String == env else { return nil }
+                return (r["created"] as? Double ?? 0, s)
+            }
+            .max { $0.0 < $1.0 }?.1
+        guard let spec else { return nil }
+        var setup = RoomDraft(spec: spec).setup
+        // A batch run is titled "Name · 3/8"; the test itself is "Name".
+        if let t = setup.title, let r = t.range(of: #" · \d+/\d+$"#, options: .regularExpression) { setup.title = String(t[..<r.lowerBound]) }
+        return setup
+    }
 
     private func useExample() {
         let e = RoomExample.forEnvironment(draft.environment)
@@ -303,16 +386,13 @@ struct TestSetupView: View {
                 if await loadEnvironments() { break }
                 try? await Task.sleep(for: .seconds(2))
             }
+            // A setup left over from another environment (before each kept its own) is replaced by this one's.
+            if !fromAssistant && !fits(draft.setup, draft.environment) { await bringSetup(for: draft.environment, saved: savedSetups) }
         }
         .task(id: planKey) {
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
             await plan()
-        }
-        .onChange(of: draft.environment) { old, new in
-            // Only an untouched example follows the environment; someone's own goal and rules stay.
-            var previous = draft; previous.environment = old
-            if RoomExample.isExample(previous) || RoomExample.isExample(draft) { useExample() }
         }
         .onChange(of: draft) { _, d in if let data = try? JSONEncoder().encode(d) { stored = String(decoding: data, as: UTF8.self) } }
         .onChange(of: servers.map(\.port)) { _, _ in fillModels() }
@@ -341,6 +421,9 @@ struct TestSetupView: View {
         }
         .onChange(of: model.incomingTestPackage) { _, id in openIncoming(id) }
         .onAppear { openIncoming(model.incomingTestPackage) }
+        // A test the assistant proposed: it replaces the setup on screen (the assistant's card can undo it).
+        .onChange(of: model.incomingDraft) { _, d in takeAssistantDraft(d) }
+        .onAppear { takeAssistantDraft(model.incomingDraft) }
         .sheet(isPresented: $importingTest, onDismiss: { incomingLink = "" }) {
             TestPackageImportView(lab: model.researchLab, harnessDir: harnessDir, initialLink: incomingLink) { setup in
                 var d = RoomDraft(spec: setup)
@@ -364,7 +447,7 @@ struct TestSetupView: View {
         var parts: [String] = [draft.environment ?? ""]
         for r in draft.rules { parts.append(r.text + (r.watch?.kind ?? "") + (r.watch?.path ?? "")) }
         for a in draft.agents { parts.append("\(a.name)\(a.port ?? 0)") }
-        parts.append("\(draft.teamLimit)")
+        parts.append("\(draft.teamLimit)·\(draft.teamSize ?? 0)")
         parts.append("\(draft.prompt?.id ?? "")\(draft.prompt?.version ?? 0)")
         return parts.joined(separator: "\u{1F}")
     }
@@ -563,7 +646,7 @@ struct TestSetupView: View {
                             EnvCard(title: c.title, desc: c.desc, contents: c.contents + (c.builtin ? "" : " · yours"), selected: draft.environment == c.env,
                                     onEdit: c.builtin ? nil : { edit(c) },
                                     onCopy: c.builtin && c.env != nil ? { edit(c) } : nil,
-                                    onDelete: c.builtin ? nil : { confirmDelete = c }) { draft.environment = c.env }
+                                    onDelete: c.builtin ? nil : { confirmDelete = c }) { Task { await choose(c.env) } }
                         }
                     }.padding(2)
                 }
@@ -639,10 +722,7 @@ struct TestSetupView: View {
                 }
                 if servers.isEmpty { Button("Start a model in Models…") { model.requestedTab = .run }.buttonStyle(.link).font(.caption) }
                 Divider()
-                Text("The lead creates teammates when it needs them. Each new agent uses its creator's model and gets the same goal and rules.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Stepper("Team size limit: \(draft.teamLimit) agent\(draft.teamLimit == 1 ? "" : "s")", value: Binding(get: { draft.teamLimit }, set: { draft.maxAgents = $0 }), in: 1...12)
-                    .font(.caption).help("A safety cap, so a room can't keep creating agents. It counts the lead.")
+                teamSizeField
                 Stepper("Up to \(draft.rounds) turns each", value: $draft.rounds, in: 2...50).font(.caption)
             }
             promptCard
@@ -654,6 +734,33 @@ struct TestSetupView: View {
                 Text(working ? "Starting…" : "Start test →").font(.title3.bold()).frame(maxWidth: .infinity).padding(.vertical, 6)
             }.buttonStyle(.dynoPrimary).disabled(working || !errors.isEmpty || planned.isEmpty || !sandboxOK)
         }
+    }
+
+    private var teamSizeField: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text("Team size").font(.caption.weight(.semibold))
+                TextField("", value: Binding(get: { draft.teamSize ?? draft.teamLimit },
+                                             set: { draft.teamSize = min(12, max(1, $0)); draft.maxAgents = draft.teamSize }), format: .number)
+                    .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 52)
+                    .help("How many agents the test needs, the lead included: 1 to 12.")
+                Text("agents, the lead included").font(.caption).foregroundStyle(.secondary)
+            }
+            Group {
+                if let n = draft.teamSize, n > 1 {
+                    Text("The lead must create \(n - 1) agent\(n == 2 ? "" : "s") before it starts any work. Its prompt opens with the team instruction (Agent prompt → Edit). Each agent it creates uses its model and gets the same goal and rules.")
+                } else if draft.teamSize == 1 {
+                    Text("One agent works alone.")
+                } else {
+                    Text("From a test made before team sizes: the lead may create up to \(draft.teamLimit) agents if it wants. Type a size to require a team.")
+                }
+            }.font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// The team instruction the chosen prompt opens with, or the built-in one.
+    private var teamInstruction: String {
+        chosenVersion?["team"] as? String ?? (prompts.first?["versions"] as? [[String: Any]])?.first?["team"] as? String ?? ""
     }
 
     // The agents' system prompt: the built-in default or a saved, versioned one.
@@ -680,6 +787,13 @@ struct TestSetupView: View {
                     }
                 }.controlSize(.small)
             }
+            if let n = draft.teamSize, n > 1, !teamInstruction.isEmpty {
+                Text("Opens with the team instruction (team of \(n)):").font(.caption2.weight(.semibold)).foregroundStyle(DynoBrand.accent)
+                Text(teamInstruction.replacingOccurrences(of: "{{team_size}}", with: "\(n)")
+                        .replacingOccurrences(of: "{{team_members}}", with: "\(n - 1) agent\(n == 2 ? "" : "s")")
+                        .split(separator: "\n").prefix(3).joined(separator: "\n"))
+                    .font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(3)
+            }
             if let lead = chosenVersion?["lead"] as? String {
                 Text(lead.split(separator: "\n").prefix(4).joined(separator: "\n")).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(4)
             }
@@ -692,7 +806,8 @@ struct TestSetupView: View {
             Text("Saved prompts keep every version. Each test records the version it ran with.").font(.caption2).foregroundStyle(.secondary)
         }
         .sheet(item: $editingPrompt) { req in
-            PromptEditorView(lab: model.researchLab, request: req, placeholders: placeholders) { saved in
+            PromptEditorView(lab: model.researchLab, request: req, placeholders: placeholders,
+                             defaultTeam: (prompts.first?["versions"] as? [[String: Any]])?.first?["team"] as? String ?? "") { saved in
                 Task {
                     await loadPrompts()
                     if let id = saved["id"] as? String, let v = (saved["versions"] as? [[String: Any]])?.last?["version"] as? Int { draft.prompt = PromptRef(id: id, version: v) }
@@ -1381,14 +1496,17 @@ private struct ChatRow: View {
                         Text(item.text).font(.callout.monospaced()).copyable(item.text)
                         if let d = item.detail {
                             let lines = d.split(separator: "\n", omittingEmptySubsequences: false)
-                            Text(expanded ? d : lines.prefix(3).joined(separator: "\n") + (lines.count > 3 ? "\n…" : ""))
-                                .font(.caption.monospaced()).foregroundStyle(item.exit == 0 || item.exit == nil ? Color.secondary : Color.orange).copyable(d)
+                            Group {
+                                if expanded { LongText(text: d) } else { Text(lines.prefix(3).joined(separator: "\n") + (lines.count > 3 ? "\n…" : "")).copyable(d) }
+                            }.font(.caption.monospaced()).foregroundStyle(item.exit == 0 || item.exit == nil ? Color.secondary : Color.orange)
                             if lines.count > 3 { Button(expanded ? "Less" : "All \(lines.count) lines") { expanded.toggle() }.buttonStyle(.link).font(.caption) }
                         }
                     }.padding(8).frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 8).fill(DynoBrand.background)).overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
                 case .thinking:
-                    Text(item.text).font(.caption).foregroundStyle(.secondary).italic().lineLimit(expanded ? nil : 4).copyable(item.text)
+                    Group {
+                        if expanded { LongText(text: item.text) } else { Text(item.text).lineLimit(4).copyable(item.text) }
+                    }.font(.caption).foregroundStyle(.secondary).italic()
                         .onTapGesture { expanded.toggle() }
                 case .report, .blocked:
                     VStack(alignment: .leading, spacing: 4) {

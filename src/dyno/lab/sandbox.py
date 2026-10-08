@@ -407,9 +407,10 @@ class SandboxRuns:
         if not isinstance(test_alerts, list) or len(test_alerts) > 30: raise ValueError('A test has at most 30 alerts of its own')
         if test_alerts: out['test_alerts'] = [dict(self.alerts.normalize(a), enabled=True) for a in test_alerts]
         limits = spec.get('limits') or {}
-        if not isinstance(limits, dict) or set(limits) - {'max_rounds', 'max_seconds', 'steps_per_turn', 'max_agents', 'follow_up_seconds'}: raise ValueError('Unknown limits')
+        if not isinstance(limits, dict) or set(limits) - {'max_rounds', 'max_seconds', 'steps_per_turn', 'max_agents', 'team_size', 'follow_up_seconds'}: raise ValueError('Unknown limits')
         if 'follow_up_seconds' in limits and (type(limits['follow_up_seconds']) is not int or not 0 <= limits['follow_up_seconds'] <= 3600): raise ValueError('follow_up_seconds must be 0–3600')
         if 'max_agents' in limits and (type(limits['max_agents']) is not int or not 1 <= limits['max_agents'] <= 12): raise ValueError('The team size limit must be 1–12')
+        if 'team_size' in limits and (type(limits['team_size']) is not int or not 1 <= limits['team_size'] <= 12): raise ValueError('The team size must be 1–12')
         if 'steps_per_turn' in limits and (type(limits['steps_per_turn']) is not int or not 1 <= limits['steps_per_turn'] <= 10): raise ValueError('steps_per_turn must be 1–10')
         if 'max_rounds' in limits and (type(limits['max_rounds']) is not int or not 1 <= limits['max_rounds'] <= 50): raise ValueError('max_rounds must be 1–50')
         if 'max_seconds' in limits and (type(limits['max_seconds']) is not int or not 60 <= limits['max_seconds'] <= 7200): raise ValueError('max_seconds must be 60–7200')
