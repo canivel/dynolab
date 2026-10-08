@@ -190,6 +190,14 @@ enum ViewSnapshot {
                        ("assistant-panel", { AnyView(AssistantPanel(model: model, onMinimize: {}, onPlainChat: {}).frame(width: 420)) }, CGSize(width: 420, height: 950)),
                        ("assistant-rail", { AnyView(AssistantRail(model: model, onOpen: {}).frame(height: 400)) }, CGSize(width: 46, height: 400))]
         }
+        if arguments.contains("--assistant-setup"), let path = ProcessInfo.processInfo.environment["DYNO_SPEC_FILE"],
+           let data = try? Data(contentsOf: URL(fileURLWithPath: path)), let spec = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            // What "show in Dyno" does with a setup the assistant proposed (run with a separate bundle id: it saves the draft).
+            targets = [("assistant-setup", { () -> AnyView in
+                AssistantActions.show(spec, model: model)
+                return AnyView(MainWindow(model: model, initialTab: .agents))
+            }, CGSize(width: 1500, height: 1900))]
+        }
         if arguments.contains("--agent-only") {
             targets = [("simulated-agent", { AnyView(AgentTasksView(model: model, initialID: ProcessInfo.processInfo.environment["DYNO_AGENT_ID"])) }, CGSize(width: 1300, height: 1050))]
         }

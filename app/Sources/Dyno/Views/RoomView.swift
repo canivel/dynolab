@@ -789,7 +789,10 @@ struct TestSetupView: View {
             }
             if let n = draft.teamSize, n > 1, !teamInstruction.isEmpty {
                 Text("Opens with the team instruction (team of \(n)):").font(.caption2.weight(.semibold)).foregroundStyle(DynoBrand.accent)
-                Text(teamInstruction.split(separator: "\n").prefix(3).joined(separator: "\n")).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(3)
+                Text(teamInstruction.replacingOccurrences(of: "{{team_size}}", with: "\(n)")
+                        .replacingOccurrences(of: "{{team_members}}", with: "\(n - 1) agent\(n == 2 ? "" : "s")")
+                        .split(separator: "\n").prefix(3).joined(separator: "\n"))
+                    .font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(3)
             }
             if let lead = chosenVersion?["lead"] as? String {
                 Text(lead.split(separator: "\n").prefix(4).joined(separator: "\n")).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(4)

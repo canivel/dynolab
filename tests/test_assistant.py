@@ -12,7 +12,7 @@ from dyno.lab.assistant import Assistant
 class ScriptedModel:
     """An OpenAI-compatible local server that streams scripted replies, one per request, and keeps every request."""
     def __init__(self, replies):
-        self.replies, self.requests = list(replies), []
+        self.replies, self.requests, self.summaries = list(replies), [], 0
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -20,7 +20,11 @@ class ScriptedModel:
             def do_POST(self):
                 req = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 outer.requests.append(req)
-                reply = outer.replies.pop(0) if outer.replies else dict(content='(no more replies)')
+                if 'running summary' in req['messages'][0]['content']:  # the assistant folding older turns
+                    outer.summaries += 1
+                    reply = dict(content=f'Summary {outer.summaries}: the person wants to compare two models on a staging-only rule; one test started.')
+                else:
+                    reply = outer.replies.pop(0) if outer.replies else dict(content='(no more replies)')
                 if not req.get('stream'):
                     body = json.dumps(dict(choices=[dict(message=dict(role='assistant', content=reply.get('content', '')), finish_reason='stop')])).encode()
                     self.send_response(200); self.send_header('Content-Length', str(len(body))); self.end_headers(); self.wfile.write(body); return
@@ -45,8 +49,17 @@ class ScriptedModel:
     def close(self): self.server.shutdown(); self.server.server_close()
 
 
+class FakeInspect:
+    def __init__(self): self.runs = []
+    def get_def(self, i):
+        defs = dict(plain=dict(id='plain', kind='dataset', scorer=dict(kind='includes')), judged=dict(id='judged', kind='dataset', scorer=dict(kind='model_graded_qa')))
+        if i not in defs: raise ValueError('Unknown eval')
+        return defs[i]
+    def start_run(self, body): self.runs.append(body); return dict(id='i' * 32, status='running')
+
+
 class FakeEvals:
-    def __init__(self): self.batches = []
+    def __init__(self): self.batches, self.inspect = [], FakeInspect()
     def overview(self): return dict(scenarios=[], configs=[], cells=[], inspect=[], unfinished=0)
     def start_batch(self, body): self.batches.append(body); return dict(id='b' * 32, total=body['repeats'] * len(body['models']), status='running')
 
@@ -160,6 +173,20 @@ class AssistantTests(unittest.TestCase):
         self.assertTrue(all(r.startswith('error: ') for r in results), results)
         self.assertIn('teammate', results[2]); self.assertIn('task files', results[4])
 
+    def test_inspect_runs_need_a_known_eval_and_a_judge_only_when_scored_by_one(self):
+        model = dict(port=8972, model='m')
+        m = self.model([dict(calls=[('run_inspect_eval', dict(def_id='nope', models=[model])),
+                                    ('run_inspect_eval', dict(def_id='judged', models=[model])),
+                                    ('run_inspect_eval', dict(def_id='plain', models=[model], grader={}))]),
+                        dict(content='Approved run.'), ])
+        cid = self.a.create()['id']
+        self.send(cid, m, 'Run it'); c = self.wait(cid)
+        results = [e['content'] for e in c['events'] if e['kind'] == 'tool_result']
+        self.assertIn('no saved eval nope', results[0]); self.assertIn('judge model', results[1])
+        self.assertEqual(c['pending']['args']['def_id'], 'plain')  # an empty grader is no grader
+        self.a.decide(cid, dict(proposal=c['pending']['id'], approve=True)); self.wait(cid)
+        self.assertEqual(self.runs.evals.inspect.runs, [{'def': 'plain', 'models': [model]}])
+
     def test_an_unknown_environment_is_sent_back_with_the_real_ones(self):
         m = self.model([dict(calls=[('show_test_setup', dict(spec=dict(SPEC, environment='segmented_office')))]), dict(content='Fixed.')])
         cid = self.a.create()['id']
@@ -180,28 +207,29 @@ class AssistantTests(unittest.TestCase):
         self.assertIn('[doing] Pick an environment', m.requests[-1]['messages'][0]['content'])
 
     def test_a_long_conversation_stays_within_the_budget(self):
-        big = 'x' * 12000  # each look returns a large result
+        big = 'x' * 30000  # each look returns a large result
         replies = []
         for i in range(8):
-            replies += [dict(calls=[('app_state', {})]), dict(content=f'Answer {i}. ' + 'detail ' * 300)]
-        replies.append(dict(content='The person wants to compare two models on a staging-only rule; one test started.'))  # the summary
-        replies += [dict(content='Answer 8.')] * 3
+            replies += [dict(calls=[('app_state', {})]), dict(content=f'Answer {i}. ' + 'detail ' * 900)]
+        replies += [dict(content='Answer 8.')]
         m = self.model(replies)
         cid = self.a.create()['id']
-        self.a.settings(cid, dict(budget=8192))
+        self.a.settings(cid, dict(budget=16384))
         for i in range(8):
-            self.send(cid, m, f'Question {i}: ' + 'words ' * 200, dict(screen='Evals', blob=big[:3000]))
+            self.send(cid, m, f'Question {i}: ' + 'words ' * 700, dict(screen='Evals', blob=big[:3000]))
             self.wait(cid)
         self.send(cid, m, 'And now?'); c = self.wait(cid)
         events = self.a._events(cid)
         summary = [e for e in events if e['kind'] == 'summary']
-        self.assertEqual(len(summary), 1)
-        self.assertIn('compare two models', summary[0]['text'])
+        self.assertGreaterEqual(len(summary), 1)
+        self.assertEqual(len(summary), m.summaries)  # each fold is saved; the newest one is used
+        self.assertIn('compare two models', summary[-1]['text'])
+        self.assertIn(summary[-1]['text'], m.requests[-1]['messages'][0]['content'])
         last = m.requests[-1]['messages']
         self.assertIn('Earlier in this conversation', last[0]['content'])
         self.assertNotIn('Question 0:', json.dumps(last))  # folded into the summary
         use = self.a._meta(cid)['context_use']
-        self.assertLessEqual(use['estimated_tokens'], 8192 - 4096)
+        self.assertLessEqual(use['estimated_tokens'], 16384 - 4096)  # instructions, tools and messages, leaving room to answer
         self.assertEqual(len([e for e in events if e['kind'] == 'user']), 9)  # the log on disk keeps everything
         # Reopening reads a page, not the whole history.
         page = self.a.get(cid, limit=10)

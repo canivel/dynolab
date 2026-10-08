@@ -88,7 +88,7 @@ struct AssistantPanel: View {
                 contextMeter
                 Menu {
                     Picker("Context budget", selection: Binding(get: { session.budget }, set: { b in Task { await session.setSettings(budget: b) } })) {
-                        ForEach([8192, 16384, 32768, 65536, 131072], id: \.self) { Text("\($0 / 1024)K tokens").tag($0) }
+                        ForEach([16384, 32768, 65536, 131072], id: \.self) { Text("\($0 / 1024)K tokens").tag($0) }
                     }
                     Toggle("Think before answering (slower)", isOn: Binding(get: { session.thinking }, set: { t in Task { await session.setSettings(thinking: t) } }))
                 } label: { Image(systemName: "slider.horizontal.3") }

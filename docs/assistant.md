@@ -28,7 +28,7 @@ A model can only read so much at once. A long conversation is kept small for the
 - **On disk:** each conversation is an append-only log, never shortened.
 - **Sent to the model on each turn:** the instructions, the task list and your current screen, always. Then the recent turns.
 - **Left out:** the model's own thinking is never sent back. Tool results older than the last two messages become a one-line note, and the model can look again if it needs to.
-- **Summarized:** when a conversation nears its budget (32K tokens by default, adjustable from 8K to 128K in the panel's settings), the model writes a running summary of the older turns. The summary is saved in the log, and the last four turns always stay in full. A grey line in the chat marks where turns were summarized; click it to read the summary.
+- **Summarized:** when a conversation nears its budget (32K tokens by default, adjustable from 16K to 128K in the panel's settings), the model writes a running summary of the older turns. The summary is saved in the log, and the last four turns always stay in full. A grey line in the chat marks where turns were summarized; click it to read the summary.
 - **Measured:** token counts are estimated from characters and corrected with the counts the model server reports. The meter at the top shows how much of the budget the conversation uses.
 - **Reopening:** a long conversation loads its last 60 messages, with **Load earlier messages** for the rest. Reopening costs the summary plus the recent turns, not the whole history.
 

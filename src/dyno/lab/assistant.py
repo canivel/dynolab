@@ -36,7 +36,7 @@ REPLY_TOKENS = 4096      # room left for the model's answer
 TOOL_STUB_AFTER = 2      # tool results older than this many user turns are sent as stubs
 RECENT_TURNS = 4         # the last turns are never summarized
 DEFAULT_BUDGET = 32768
-BUDGETS = (8192, 16384, 32768, 65536, 131072)
+BUDGETS = (16384, 32768, 65536, 131072)  # each request already costs ~3K tokens of instructions and tools, plus the reply
 
 SYSTEM = """You are Dyno, the assistant inside Dyno Lab, a Mac app for AI safety and alignment research. You run on a local model on this Mac; nothing leaves it.
 
@@ -52,6 +52,8 @@ SYSTEM = """You are Dyno, the assistant inside Dyno Lab, a Mac app for AI safety
 4. Build the setup. Show a proposed agent test in Dyno with show_test_setup, and run check_test on it, so the person can see and change it there.
 5. Anything that runs or saves something is an act tool: Dyno asks the person to approve it. Say what it will do and roughly how long. Never say it ran until the result comes back.
 6. After results, explain them plainly: numbers, how many runs, the range, and the limits. Then suggest the next step.
+
+If a tool returns an error, fix the call and try again in the same turn; tell the person only if you can't. Don't name tools to the person: say what you did ("I checked the setup").
 
 Describe only what a tool result shows; if you didn't set something up, don't claim it. If no environment fits, say so and suggest building one in Agents → Setup → New environment.
 
@@ -491,7 +493,14 @@ class Assistant:
             if name == 'run_inspect_eval':
                 if not str(args.get('def_id') or '').strip(): return 'def_id is the id of a saved eval (see inspect_catalog)'
                 if not models_ok(args.get('models')): return 'models must be a list of running models: [{"port", "model"}]'
-                if args.get('grader') is not None and not models_ok([args['grader']]): return 'grader must be a running model {"port", "model"}'
+                if args.get('grader') and not models_ok([args['grader']]): return 'grader must be a running model {"port", "model"}, or left out when the scorer needs no judge'
+                from .inspect_runs import LIBRARY
+                try: d = self.runs.evals.inspect.get_def(str(args['def_id']))
+                except (ValueError, OSError): return f"there is no saved eval {args['def_id']}; see the saved evals in inspect_catalog"
+                judged = str((d.get('scorer') or {}).get('kind') or '').startswith('model_graded') or (
+                    d.get('kind') == 'library' and any(x['id'] == (d.get('library') or {}).get('id') and x.get('judge') for x in LIBRARY))
+                if judged and not args.get('grader'):
+                    return 'this eval is scored by a judge model: add grader {"port", "model"} (a model other than the one tested is fairer)'
             if name == 'save_prompt':
                 missing = [k for k in ('name', 'lead', 'teammate') if not str(args.get(k) or '').strip()]
                 if missing: return f"write {', '.join(missing)}: a prompt needs a name, the lead's prompt and the prompt for agents it creates"
@@ -526,7 +535,7 @@ class Assistant:
             d = runs.evals.inspect.save_def(a.get('definition'))
             return dict(def_id=d.get('id'), title=d.get('title'))
         if name == 'run_inspect_eval':
-            body = {'def': a.get('def_id'), 'models': a.get('models'), **{k: a[k] for k in ('grader', 'epochs', 'limit') if a.get(k) is not None}}
+            body = {'def': a.get('def_id'), 'models': a.get('models'), **{k: a[k] for k in ('grader', 'epochs', 'limit') if a.get(k)}}
             r = runs.evals.inspect.start_run(body)
             return dict(run_id=r.get('id'), status=r.get('status'))
         if name == 'save_prompt':
@@ -583,7 +592,8 @@ class Assistant:
         """The messages for the next model call, within the conversation's token budget."""
         meta = self._meta(cid)
         events = self._events(cid)
-        budget = int(meta.get('budget') or DEFAULT_BUDGET) - REPLY_TOKENS - self._tokens(meta, _dump([t['spec'] for t in TOOLS.values()]))
+        tool_tokens = self._tokens(meta, _dump([t['spec'] for t in TOOLS.values()]))
+        budget = int(meta.get('budget') or DEFAULT_BUDGET) - REPLY_TOKENS - tool_tokens
         summary_event = next((e for e in reversed(events) if e['kind'] == 'summary'), None)
         upto = summary_event['upto'] if summary_event else 0
         users = [e['seq'] for e in events if e['kind'] == 'user']
@@ -612,7 +622,8 @@ class Assistant:
             used = self._tokens(meta, _dump(messages))
         with self.lock:
             meta = self._meta(cid)
-            meta['context_use'] = dict(estimated_tokens=used, budget=int(meta.get('budget') or DEFAULT_BUDGET), summarized_upto=upto,
+            # What the request costs in all, tool definitions included, so the meter matches what the server counts.
+            meta['context_use'] = dict(estimated_tokens=used + tool_tokens, budget=int(meta.get('budget') or DEFAULT_BUDGET), summarized_upto=upto,
                                        left_out=dropped, events=len(events))
             self._save_meta(cid, meta)
         return messages
