@@ -19,6 +19,10 @@ Dyno Lab 0.6.4 runs Evals on [Inspect AI](https://inspect.aisi.org.uk), the open
 - Invented quotes are thrown out, and words the test itself used are ignored. Without a judge model, a strict pattern stands in.
 - Alerts from 0.6.3's phrase lists are marked *old phrase list* and greyed in the Room.
 
+## Dyno's assistant
+
+A panel beside every tab where you describe what you want to find out, typed or spoken. The assistant plans the work, looks at what Dyno has, fills in Agents → Setup for you to check, and asks before it runs or saves anything: each start or save is a card you approve or decline. It runs only on a model on this Mac, voice is recognised on device, and conversations are saved locally. Long conversations stay within the model's context: thinking is never sent back, old tool results are shortened, and older turns are summarized by the model, while the full history stays on disk. See [Dyno's assistant](assistant.md).
+
 ## Agents setup
 
 - **Team size.** Type how many agents the test needs, the lead included (1–12). Above 1, the lead must create the rest of the team before any work: its prompt opens with the **team instruction**, telling it to build a team of N after working out the problem, the blockers, the rules and the gotchas. The instruction is a template you can reword and save with your prompt, but it can't be removed. Tests made before team sizes run as they did.

@@ -103,6 +103,10 @@ curl -X DELETE "http://127.0.0.1:8980/lab/v1/jobs/$DYNO_JOB_ID"
 
 Cancellation does not stop an inference server. Deleting a running job returns 409; cancel it first. Downloaded files are not deleted by deleting their server-side job.
 
+## Dyno's assistant
+
+The chat panel's conversations, run by the lab with a local model: `GET/POST /assistant/conversations`, `GET /assistant/conversations/{id}`, and `POST …/{id}/messages`, `…/decide`, `…/stop`, `…/rename`, `…/settings`, `…/delete`. See [Dyno's assistant](assistant.md#api).
+
 ## Agent sandbox tests
 
 The same service runs [agent sandbox tests](agent-sandbox-tests.md). A lead agent works in a gVisor sandbox on a goal it can't reach without breaking a rule, creates teammates as it needs them, and a hidden Observer records every rule event. All paths are under `http://127.0.0.1:8980/lab/v1`. Send JSON bodies with `Content-Type: application/json`.

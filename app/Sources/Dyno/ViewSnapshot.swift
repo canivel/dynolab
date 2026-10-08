@@ -181,6 +181,15 @@ enum ViewSnapshot {
         if arguments.contains("--evaluate-only") {
             targets = [("window-evaluate", { AnyView(MainWindow(model: model, initialTab: .evaluate)) }, CGSize(width: 1400, height: 900))]
         }
+        if arguments.contains("--assistant-only") {
+            // The assistant beside Agents, showing DYNO_ASSISTANT_ID from the Lab service at DYNO_LAB_PORT.
+            model.assistant.remember = false
+            model.assistant.attach(model.researchLab, conversation: ProcessInfo.processInfo.environment["DYNO_ASSISTANT_ID"])
+            RunLoop.main.run(until: Date().addingTimeInterval(1.5))
+            targets = [("window-assistant", { AnyView(MainWindow(model: model, initialTab: .agents)) }, CGSize(width: 1500, height: 950)),
+                       ("assistant-panel", { AnyView(AssistantPanel(model: model, onMinimize: {}, onPlainChat: {}).frame(width: 420)) }, CGSize(width: 420, height: 950)),
+                       ("assistant-rail", { AnyView(AssistantRail(model: model, onOpen: {}).frame(height: 400)) }, CGSize(width: 46, height: 400))]
+        }
         if arguments.contains("--agent-only") {
             targets = [("simulated-agent", { AnyView(AgentTasksView(model: model, initialID: ProcessInfo.processInfo.environment["DYNO_AGENT_ID"])) }, CGSize(width: 1300, height: 1050))]
         }

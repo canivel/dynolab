@@ -71,6 +71,12 @@ final class MonitorModel {
     // -- chat -----------------------------------------------------------------
     let researchLab = ResearchLab()
     let conversations = ConversationStore()
+    /// Dyno's assistant: the side panel that sets up tests and evals with the local model.
+    let assistant = AssistantSession()
+    /// The tab on screen, so the assistant knows what the person is looking at.
+    var currentTab: MainWindow.Tab = .agents
+    /// A test the assistant proposed, to load into Agents → Setup (the view takes it and clears it).
+    var incomingDraft: RoomDraft?
     var generationOptions = GenerationOptions.default {
         didSet { persistGenerationOptions() }
     }

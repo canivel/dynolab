@@ -165,11 +165,14 @@ struct PromptEditorView: View {
 /// bold, italics and code. Placeholders show as they are.
 struct MarkdownPreview: View {
     var text: String
+    /// Off in lists that keep growing (the assistant's chat): selection there loops layout. Right-click copies instead.
+    var selectable = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let stack = VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in block }
-        }.textSelection(.enabled)
+        }
+        if selectable { stack.textSelection(.enabled) } else { stack }
     }
 
     private var blocks: [AnyView] {

@@ -121,8 +121,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundleVersion</key>           <string>$VERSION</string>
     <key>LSMinimumSystemVersion</key>    <string>14.0</string>
-    <key>NSMicrophoneUsageDescription</key><string>Record voice notes for your local research notebook.</string>
-    <key>NSSpeechRecognitionUsageDescription</key><string>Transcribe research voice notes using on-device speech recognition. Dyno does not use a cloud fallback.</string>
+    <key>NSMicrophoneUsageDescription</key><string>Talk to Dyno's assistant and record voice notes for your local research notebook.</string>
+    <key>NSSpeechRecognitionUsageDescription</key><string>Turn what you say to the assistant, and your voice notes, into text with on-device speech recognition. Dyno does not use a cloud fallback.</string>
     <key>NSHighResolutionCapable</key>   <true/>
     <!-- Menu bar plus an on-demand window: no permanent Dock icon. -->
     <key>LSUIElement</key>               <true/>

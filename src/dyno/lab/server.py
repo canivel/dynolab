@@ -192,6 +192,14 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
         path = self.path.split('?', 1)[0]
         if path == '/lab/v1/health':
             self._execution_send({'status': 'ok', 'api_version': 1, 'worker_revision': 2, 'controlled_studies': 1, 'monitor_evaluations': 1, 'sandbox_episodes': 1, 'operations': OPERATIONS})
+        elif path.startswith('/lab/v1/assistant/'):
+            try:
+                parts, q = path.removeprefix('/lab/v1/assistant/').split('/'), self._query()
+                if parts == ['conversations']: self._execution_send(self.server.assistant.list())
+                elif len(parts) == 2 and parts[0] == 'conversations':
+                    self._execution_send(self.server.assistant.get(parts[1], q.get('after', 0), q.get('before'), q.get('limit', 60)))
+                else: self._execution_send({'error': 'not found'}, 404)
+            except (ValueError, OSError) as error: self._execution_send({'error': str(error)}, 400)
         elif path.startswith('/lab/v1/sandbox/'):
             try: self._execution_send(self._sandbox_get(path.removeprefix('/lab/v1/sandbox/').split('/'), self._query()))
             except (ValueError, OSError, subprocess.SubprocessError) as error: self._execution_send({'error': str(error)}, 400)
@@ -336,7 +344,17 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
                 raise ValueError(f'Request must be 1–{maximum} bytes')
             body = json.loads(self.rfile.read(length))
             if not isinstance(body, dict): raise ValueError('Request must be an object')
-            if self.path == '/lab/v1/sandbox/runs':
+            if self.path.startswith('/lab/v1/assistant/'):
+                parts, a = self.path.split('?', 1)[0].removeprefix('/lab/v1/assistant/').split('/'), self.server.assistant
+                if parts == ['conversations']: self._execution_send(a.create(body), 201)
+                elif len(parts) == 3 and parts[0] == 'conversations' and parts[2] in ('messages', 'decide', 'stop', 'rename', 'settings', 'delete'):
+                    cid, action = parts[1], parts[2]
+                    result = (a.message(cid, body) if action == 'messages' else a.decide(cid, body) if action == 'decide'
+                              else a.stop(cid) if action == 'stop' else a.rename(cid, body) if action == 'rename'
+                              else a.settings(cid, body) if action == 'settings' else a.delete(cid))
+                    self._execution_send(result, 202 if action in ('messages', 'decide') else 200)
+                else: self._execution_send({'error': 'not found'}, 404)
+            elif self.path == '/lab/v1/sandbox/runs':
                 self._execution_send(self.server.sandbox.create(body), 201)
             elif self.path == '/lab/v1/sandbox/rooms/plan':
                 self._execution_send(self.server.sandbox.room_plan(body))
@@ -500,6 +518,8 @@ def main(argv=None):
     server.studies = Studies(Path(args.data_dir).expanduser() / 'controlled-studies')
     server.agent_tasks = AgentTasks(Path(args.data_dir).expanduser() / 'agent-tasks')
     server.sandbox = SandboxRuns(Path(args.data_dir).expanduser() / 'sandbox-runs')
+    from .assistant import Assistant
+    server.assistant = Assistant(server.sandbox)
     server.reports = ResearchReports(Path(args.data_dir).expanduser() / 'research-reports', server.studies)
     server.monitors = Monitors(Path(args.data_dir).expanduser() / 'monitor-evaluations', server.studies)
     print(f'Dyno Research Lab: http://127.0.0.1:{args.port}/lab/v1', flush=True)

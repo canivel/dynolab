@@ -256,6 +256,8 @@ struct TestSetupView: View {
     @AppStorage("roomSetups") private var storedSetups = ""
     @State private var draft = RoomDraft()
     @State private var loaded = false
+    /// The setup on screen came from the assistant: keep it as proposed, even if it doesn't match a saved one.
+    @State private var fromAssistant = false
     @State private var envs: [[String: Any]] = []
     @State private var planned: [String: Any] = [:]
     @State private var newRule = ""
@@ -292,6 +294,15 @@ struct TestSetupView: View {
 
     /// Picking another environment brings its own test: the setup last used with it here, else its latest past
     /// test, else the built-in example. The setup being left is kept for when you come back, if it fits there.
+    private func takeAssistantDraft(_ d: RoomDraft?) {
+        guard var d else { return }
+        model.incomingDraft = nil
+        if d.agents.first?.port == nil { d.agents[0].port = draft.agents.first?.port ?? servers.first?.port }
+        draft = d
+        loaded = true; fromAssistant = true
+        Task { await loadEnvironments(); await loadPrompts(); mapVersion += 1 }
+    }
+
     private func choose(_ env: String?) async {
         guard env != draft.environment else { return }
         var setups = savedSetups
@@ -376,7 +387,7 @@ struct TestSetupView: View {
                 try? await Task.sleep(for: .seconds(2))
             }
             // A setup left over from another environment (before each kept its own) is replaced by this one's.
-            if !fits(draft.setup, draft.environment) { await bringSetup(for: draft.environment, saved: savedSetups) }
+            if !fromAssistant && !fits(draft.setup, draft.environment) { await bringSetup(for: draft.environment, saved: savedSetups) }
         }
         .task(id: planKey) {
             try? await Task.sleep(for: .milliseconds(500))
@@ -410,6 +421,9 @@ struct TestSetupView: View {
         }
         .onChange(of: model.incomingTestPackage) { _, id in openIncoming(id) }
         .onAppear { openIncoming(model.incomingTestPackage) }
+        // A test the assistant proposed: it replaces the setup on screen (the assistant's card can undo it).
+        .onChange(of: model.incomingDraft) { _, d in takeAssistantDraft(d) }
+        .onAppear { takeAssistantDraft(model.incomingDraft) }
         .sheet(isPresented: $importingTest, onDismiss: { incomingLink = "" }) {
             TestPackageImportView(lab: model.researchLab, harnessDir: harnessDir, initialLink: incomingLink) { setup in
                 var d = RoomDraft(spec: setup)
