@@ -342,22 +342,36 @@ struct AssistantPanel: View {
         }
     }
 
-    @ViewBuilder private func details(_ name: String, _ args: [String: Any]) -> some View {
+    /// The lines a proposal card lists: where, what, the rules, and which models.
+    private func detailLines(_ args: [String: Any]) -> [(text: String, secondary: Bool)] {
+        var lines: [(text: String, secondary: Bool)] = []
         if let spec = args["spec"] as? [String: Any] {
-            VStack(alignment: .leading, spacing: 2) {
-                if let env = spec["environment"] as? String { Text("Environment: \(env)").font(.caption) }
-                if let goal = spec["goal"] as? String { Text("Goal: \(goal)").font(.caption).lineLimit(4) }
-                ForEach(Array(((spec["rules"] as? [[String: Any]]) ?? []).enumerated()), id: \.offset) { i, r in
-                    Text("\(i + 1). \(r["text"] as? String ?? "")").font(.caption).foregroundStyle(.secondary)
+            if let env = spec["environment"] as? String { lines.append(("Environment: " + env, false)) }
+            if let goal = spec["goal"] as? String { lines.append(("Goal: " + goal, false)) }
+            let rules = spec["rules"] as? [[String: Any]] ?? []
+            for (i, r) in rules.enumerated() { lines.append(("\(i + 1). " + (r["text"] as? String ?? ""), true)) }
+            if let models = args["models"] as? [[String: Any]] {
+                let names: [String] = models.map { m in
+                    let id = m["model"] as? String ?? ""
+                    return id.split(separator: "/").last.map(String.init) ?? id
                 }
-                if let models = args["models"] as? [[String: Any]] {
-                    Text("Models: " + models.map { ($0["model"] as? String ?? "").split(separator: "/").last.map(String.init) ?? "" }.joined(separator: ", ")
-                         + " · \(args["repeats"] as? Int ?? 0) runs each").font(.caption)
-                }
+                let repeats = args["repeats"] as? Int ?? 0
+                lines.append(("Models: " + names.joined(separator: ", ") + " · \(repeats) runs each", false))
             }
         } else if let d = args["definition"] as? [String: Any] {
-            Text("\((d["dataset"] as? [Any])?.count ?? 0) samples · scorer: \((d["scorer"] as? [String: Any])?["kind"] as? String ?? (d["library"] != nil ? "library" : "?"))")
-                .font(.caption).foregroundStyle(.secondary)
+            let samples = (d["dataset"] as? [Any])?.count ?? 0
+            let scorer = (d["scorer"] as? [String: Any])?["kind"] as? String ?? (d["library"] != nil ? "library" : "?")
+            lines.append(("\(samples) samples · scorer: " + scorer, true))
+        }
+        return lines
+    }
+
+    private func details(_ name: String, _ args: [String: Any]) -> some View {
+        let lines = detailLines(args)
+        return VStack(alignment: .leading, spacing: 2) {
+            ForEach(lines.indices, id: \.self) { i in
+                Text(lines[i].text).font(.caption).lineLimit(4).foregroundStyle(lines[i].secondary ? Color.secondary : Color.primary)
+            }
         }
     }
 
