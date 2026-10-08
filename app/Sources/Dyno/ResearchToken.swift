@@ -71,3 +71,23 @@ enum ResearchUpload {
         }
     }
 }
+
+
+/// A Hugging Face access token, for gated datasets in the benchmark library (Evals). Kept in the Keychain; sent
+/// only with a run, to the worker that downloads the dataset, and never saved with the run.
+enum HuggingFaceToken {
+    private static let service = "dev.dynolab.huggingface-token"
+    static func load() -> String? {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                                    kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess, let data = item as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+    @discardableResult static func save(_ token: String) -> Bool {
+        delete()
+        return SecItemAdd([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "huggingface.co",
+                           kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly, kSecValueData as String: Data(token.utf8)] as CFDictionary, nil) == errSecSuccess
+    }
+    static func delete() { SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service] as CFDictionary) }
+}

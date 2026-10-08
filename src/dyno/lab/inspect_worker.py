@@ -14,7 +14,7 @@ def _progress(path, **event):
     with open(path, 'a') as f: f.write(json.dumps(event) + '\n')
 
 
-def _task(d, workdir):
+def _task(d, workdir, library=None, judge=None):
     from inspect_ai import Task
     from inspect_ai.dataset import MemoryDataset, Sample
     from inspect_ai import scorer as sc
@@ -25,7 +25,16 @@ def _task(d, workdir):
         path.write_text(tf['code'])
         return f"{path}@{tf['task']}"
     if d['kind'] == 'library':
-        return d['library']['id']
+        # inspect_evals registers its tasks by plain name (xstest, not inspect_evals/xstest): look the function up and
+        # hand the judge to whatever parameter this benchmark uses for it.
+        from inspect_ai._util.entrypoints import ensure_entry_points
+        from inspect_ai._util.registry import registry_find
+        ensure_entry_points()
+        name = (library or {}).get('task') or d['library']['id'].split('/')[-1]
+        found = registry_find(lambda i: i.type == 'task' and i.name == name)
+        if not found: raise RuntimeError(f'{name} is not in the installed benchmark library')
+        args = {a: judge for a in (library or {}).get('judge_args') or []} if judge is not None else {}
+        return found[0](**args)
     samples = [Sample(input=s['input'], target=s.get('target') or '', id=s.get('id') or i, choices=s.get('choices'),
                       metadata=s.get('metadata')) for i, s in enumerate(d['dataset'], 1)]
     solver_cfg, scorer_cfg = d.get('solver') or {}, d.get('scorer') or {}
@@ -71,7 +80,8 @@ def main(job_path):
         if job.get('grader'):
             g = job['grader']
             roles['grader'] = get_model(f"openai-api/dyno/{g['model']}", base_url=f"http://127.0.0.1:{g['port']}/v1", api_key='local')
-        logs = inspect_eval(_task(job['definition'], job['workdir']), model=model, model_roles=roles or None,
+        task = _task(job['definition'], job['workdir'], job.get('library'), roles.get('grader'))
+        logs = inspect_eval(task, model=model, model_roles=roles or None,
                             epochs=job.get('epochs') or 1, limit=job.get('limit'), log_dir=job['log_dir'],
                             display='none', fail_on_error=0.5, max_connections=1)
         log = logs[0]

@@ -469,6 +469,7 @@ struct EvalsView: View {
         let models = servers.filter { chosenPorts.contains($0.port) }.map { ["port": $0.port, "model": $0.model, "label": $0.label] as [String: Any] }
         var body: [String: Any] = ["def": id, "models": models, "epochs": inspectEpochs]
         if needsJudge, let j = servers.first(where: { $0.port == judgePort }) { body["grader"] = ["port": j.port, "model": j.model] }
+        if draft.kind == "library", let hf = HuggingFaceToken.load() { body["hf_token"] = hf }  // gated datasets
         starting = true
         Task { @MainActor in
             defer { starting = false }

@@ -36,27 +36,34 @@ MAX_SAMPLES = 2000
 # answers (Dyno passes the judge you pick as Inspect's "grader" role); `download` means the first run fetches
 # the dataset from Hugging Face.
 LIBRARY = [
-    dict(id='inspect_evals/xstest', title='XSTest', area='Over-refusal',
-         what='250 safe prompts that look unsafe, and 200 unsafe ones: does the model refuse the right ones?',
-         samples=450, judge=True, download=True),
-    dict(id='inspect_evals/strong_reject', title='StrongREJECT', area='Harmful compliance',
-         what='313 forbidden requests; a judge rates how useful the answer would be to someone misusing it.',
-         samples=313, judge=True, download=True),
-    dict(id='inspect_evals/agentharm', title='AgentHarm', area='Agent misuse',
-         what='Harmful multi-step tasks with simulated tools: does the agent carry them out or refuse?',
-         samples=176, judge=True, download=True),
-    dict(id='inspect_evals/agentharm_benign', title='AgentHarm (benign)', area='Agent capability',
-         what='The same tools and tasks without the harm: the baseline for AgentHarm.',
-         samples=176, judge=True, download=True),
-    dict(id='inspect_evals/mask', title='MASK', area='Honesty',
-         what='Does the model state what it believes when pressured to say otherwise?',
-         samples=1000, judge=True, download=True),
-    dict(id='inspect_evals/agentic_misalignment', title='Agentic Misalignment', area='Misalignment',
-         what='Scenarios where an agent can blackmail or leak to keep its goal; a classifier marks harmful actions.',
-         samples=None, judge=True, download=False),
-    dict(id='inspect_evals/sad_stages_oversight', title='SAD: stages (oversight)', area='Evaluation awareness',
+    dict(id='inspect_evals/sad_stages_oversight', task='sad_stages_oversight', title='SAD: stages (oversight)', area='Evaluation awareness',
          what='Can the model tell evaluation prompts from real deployment? From the Situational Awareness Dataset.',
-         samples=400, judge=False, download=True),
+         samples=400, judge=False, judge_args=[], gated=False),
+    dict(id='inspect_evals/strong_reject', task='strong_reject', title='StrongREJECT', area='Harmful compliance',
+         what='313 forbidden requests; a judge rates how useful the answer would be to someone misusing it.',
+         samples=313, judge=True, judge_args=['judge_llm'], gated=False),
+    dict(id='inspect_evals/agentic_misalignment', task='agentic_misalignment', title='Agentic Misalignment', area='Misalignment',
+         what='An agent can blackmail or leak to keep its goal; a judge marks harmful actions. Includes an eval-awareness variant.',
+         samples=1, judge=True, judge_args=['grader_model'], gated=False),
+    dict(id='inspect_evals/mask', task='mask', title='MASK', area='Honesty',
+         what='Does the model state what it believes when pressured to say otherwise? A judge compares its belief and its statement.',
+         samples=1000, judge=True, judge_args=['binary_judge_model', 'numeric_judge_model'], gated=False),
+    dict(id='inspect_evals/truthfulqa', task='truthfulqa', title='TruthfulQA', area='Honesty',
+         what='817 questions where a popular misconception is the tempting answer (multiple choice).',
+         samples=817, judge=False, judge_args=[], gated=False),
+    dict(id='inspect_evals/simpleqa', task='simpleqa', title='SimpleQA', area='Factuality',
+         what='Short fact questions; a judge marks each answer correct, incorrect or not attempted.',
+         samples=4326, judge=True, judge_args=[], gated=False),
+    dict(id='inspect_evals/wmdp_bio', task='wmdp_bio', title='WMDP (biology)', area='Hazardous knowledge',
+         what='Multiple-choice questions that proxy dangerous biosecurity knowledge.',
+         samples=1273, judge=False, judge_args=[], gated=False),
+    dict(id='inspect_evals/bbq', task='bbq', title='BBQ', area='Bias',
+         what='Questions that test whether social stereotypes change the answer (multiple choice).',
+         samples=58492, judge=False, judge_args=[], gated=False),
+    dict(id='inspect_evals/xstest', task='xstest', title='XSTest', area='Over-refusal',
+         what='250 safe prompts that look unsafe, and 200 unsafe ones: does the model refuse the right ones?',
+         samples=450, judge=True, judge_args=['scorer_model'], gated=True,
+         hf='https://huggingface.co/datasets/walledai/XSTest'),
 ]
 
 
@@ -161,6 +168,7 @@ class InspectEvals:
         self.lock = threading.RLock()
         self.thread = None
         self.procs = {}
+        self.tokens = {}  # run id → Hugging Face token, in memory only
         self.viewer = None
         self.install = dict(running=False, error=None)
         for path in (self.folder / 'runs').glob('*/run.json'):
@@ -245,7 +253,10 @@ class InspectEvals:
         def work():
             try:
                 self.extras.mkdir(parents=True, exist_ok=True)
-                cmd = [sys.executable, '-m', 'pip', 'install', '--quiet', '--disable-pip-version-check', '--target', str(self.extras), 'inspect-evals']
+                from importlib.metadata import version
+                # Pinned to the bundled Inspect AI and openai, so pip resolves a consistent set around the same versions.
+                cmd = [sys.executable, '-m', 'pip', 'install', '--quiet', '--disable-pip-version-check', '--upgrade', '--target', str(self.extras),
+                       'inspect-evals', f"inspect-ai=={version('inspect-ai')}", f"openai=={version('openai')}"]
                 p = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
                 err = None if p.returncode == 0 else (p.stderr or p.stdout)[-800:]
             except Exception as e: err = str(e)[-800:]
@@ -300,6 +311,7 @@ class InspectEvals:
                      epochs=epochs, limit=body.get('limit') if isinstance(body.get('limit'), int) and body['limit'] > 0 else None,
                      grader=grader, models=clean, definition=d)
             _save(self._run_path(r['id']), r)
+            if isinstance(body.get('hf_token'), str) and body['hf_token'].strip(): self.tokens[r['id']] = body['hf_token'].strip()[:200]
             self.thread = threading.Thread(target=self._loop, args=(r['id'],), daemon=True)
             self.thread.start()
         return self._summary(r)
@@ -322,13 +334,18 @@ class InspectEvals:
         r = self.run(i)
         for n, m in enumerate(r['models']):
             if self.run(i).get('status') == 'cancelled': break
-            job = dict(definition=r['definition'], model=m, grader=r.get('grader'), epochs=r['epochs'], limit=r.get('limit'),
+            lib = next((x for x in LIBRARY if x['id'] == (r['definition'].get('library') or {}).get('id')), None)
+            job = dict(definition=r['definition'], model=m, grader=r.get('grader'), epochs=r['epochs'], limit=r.get('limit') or (r['definition'].get('library') or {}).get('limit'),
+                       library=lib,
                        log_dir=str(folder / 'logs'), progress=str(folder / f'progress-{n}.jsonl'), result=str(folder / f'result-{n}.json'),
                        workdir=str(folder), extras=str(self.extras))
             (folder / f'job-{n}.json').write_text(json.dumps(job))
             self._update(i, n, status='running', started=time.time())
             env = dict(os.environ, DYNO_API_KEY='local', INSPECT_LOG_DIR=str(folder / 'logs'), PYTHONDONTWRITEBYTECODE='1',
-                       PYTHONPATH=os.pathsep.join([str(self.extras), *sys.path]), INSPECT_DISPLAY='none', NO_COLOR='1')
+                       PYTHONPATH=os.pathsep.join([str(self.extras), *sys.path]), INSPECT_DISPLAY='none', NO_COLOR='1',
+                       HF_HUB_DISABLE_TELEMETRY='1')  # the library's consistent set first; same Inspect and openai versions
+            token = self.tokens.get(i)
+            if token: env['HF_TOKEN'] = token  # for gated datasets; never written to disk
             with open(folder / f'worker-{n}.log', 'w') as log:
                 p = subprocess.Popen([sys.executable, '-m', 'dyno.lab.inspect_worker', str(folder / f'job-{n}.json')], env=env,
                                      stdout=log, stderr=subprocess.STDOUT, cwd=str(folder))
@@ -344,6 +361,7 @@ class InspectEvals:
             else:
                 tail = (folder / f'worker-{n}.log').read_text(errors='replace')[-1500:] if (folder / f'worker-{n}.log').exists() else ''
                 self._update(i, n, status='error', error=res.get('error') or tail or f'worker exited with {p.returncode}', log=res.get('log'))
+        self.tokens.pop(i, None)
         r = self.run(i)
         if r.get('status') == 'running':
             r['status'] = 'done' if all(m['status'] == 'done' for m in r['models']) else 'error' if all(m['status'] == 'error' for m in r['models']) else 'partial'

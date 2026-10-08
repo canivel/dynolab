@@ -371,7 +371,7 @@ struct LibraryCatalog: View {
             HStack(spacing: 6) {
                 if let n = it["samples"] as? Int { badge("\(n) samples", .secondary) }
                 if it["judge"] as? Bool == true { badge("judge model", .orange) }
-                if it["download"] as? Bool == true { badge("downloads data", .blue) }
+                if it["gated"] as? Bool == true { badge("gated · Hugging Face login", .purple) }
             }
             Spacer(minLength: 0)
             Button("Use this benchmark →") { onPick(it) }.disabled(!installed)
@@ -431,7 +431,8 @@ struct InspectSetupView: View {
             Text(it["what"] as? String ?? "").font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Text(draft.library).font(.caption.monospaced()).foregroundStyle(.secondary)
             if it["judge"] as? Bool == true { Label("A judge model marks the answers: you choose it on the next step.", systemImage: "scale.3d").font(.caption) }
-            if it["download"] as? Bool == true { Label("The first run downloads its dataset from Hugging Face.", systemImage: "arrow.down.circle").font(.caption) }
+            Label("The first run downloads its dataset (from Hugging Face or the benchmark's source).", systemImage: "arrow.down.circle").font(.caption)
+            if it["gated"] as? Bool == true { GatedDatasetNotice(page: it["hf"] as? String) }
             Stepper(draft.limit == 0 ? "All samples" : "First \(draft.limit) samples", value: $draft.limit, in: 0...5000, step: 10).frame(maxWidth: 320)
             Text("Try a small limit first: a full benchmark on a local model can take hours.").font(.caption).foregroundStyle(.secondary)
         }
@@ -812,5 +813,36 @@ struct SampleResultRow: View {
         .contentShape(Rectangle())
         .onTapGesture { expanded.toggle() }
         .copyable("\(sample["input"] as? String ?? "")\n\nExpected: \(sample["target"] as? String ?? "")\n\nAnswer: \(sample["output"] as? String ?? "")")
+    }
+}
+
+
+/// A gated Hugging Face dataset: accept its terms there, then give Dyno a token (kept in the Keychain).
+struct GatedDatasetNotice: View {
+    var page: String?
+    @State private var token = ""
+    @State private var saved = HuggingFaceToken.load() != nil
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Its dataset is gated on Hugging Face. Accept the terms on its page while logged in, then add an access token.", systemImage: "lock")
+                .font(.caption).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 12) {
+                if let page, let url = URL(string: page) { Link("Accept the terms ↗", destination: url).font(.caption) }
+                Link("Create a read token ↗", destination: URL(string: "https://huggingface.co/settings/tokens")!).font(.caption)
+            }
+            if saved {
+                HStack {
+                    Label("Hugging Face token saved in the Keychain", systemImage: "key.fill").font(.caption).foregroundStyle(DynoBrand.accent)
+                    Button("Forget") { HuggingFaceToken.delete(); saved = false }.buttonStyle(.link).font(.caption)
+                }
+            } else {
+                HStack {
+                    SecureField("hf_…", text: $token).textFieldStyle(.roundedBorder).frame(maxWidth: 320)
+                    Button("Save") { if HuggingFaceToken.save(token.trimmingCharacters(in: .whitespacesAndNewlines)) { saved = true; token = "" } }
+                        .disabled(token.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            Text("It is sent only with a run, to the process that downloads the dataset, and never saved with the run.").font(.caption2).foregroundStyle(.secondary)
+        }.padding(10).background(RoundedRectangle(cornerRadius: 8).fill(Color.purple.opacity(0.08)))
     }
 }
