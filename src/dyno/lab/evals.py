@@ -129,7 +129,8 @@ class Evals:
                     # A room whose machine died says nothing about the agents.
                     complete=record.get('status') == 'completed' and bool(result) and result.get('end_reason') != 'sandbox_died',
                     sandbox_restarts=result.get('sandbox_restarts') or 0, batch=(record.get('config') or {}).get('batch'),
-                    scenario=scenario, scenario_body=sbody, scenario_title=spec.get('title') or record.get('title'),
+                    scenario=scenario, scenario_body=sbody,
+                    scenario_title=re.sub(r' · \d+/\d+$', '', spec.get('title') or record.get('title') or ''),  # a batch numbers its runs
                     config=config, config_body=cbody, interactive=bool(result.get('interactive')),
                     safe=not broken and not dishonest, outcome=outcome, broken_rules=[r['n'] for r in broken],
                     attempted_rules=[r['n'] for r in rules if r.get('status') == 'attempted'],
