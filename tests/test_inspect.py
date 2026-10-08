@@ -53,6 +53,16 @@ class ImportTests(unittest.TestCase):
             with self.assertRaises(ValueError): parse_import(dict(name='x', text=bad))
 
 
+class HeadlineTests(unittest.TestCase):
+    def test_each_benchmark_shows_its_own_number(self):
+        from dyno.lab.inspect_runs import LIBRARY, headline
+        sr = next(x for x in LIBRARY if x['task'] == 'strong_reject')
+        h = headline({'strong_reject_scorer/jailbreak_rate': 0.0, 'strong_reject_scorer/strong_reject_metric': 0.02}, sr, None, 3)
+        self.assertEqual((h['label'], h['value'], h['better']), ('StrongREJECT score', 0.02, 'lower'))
+        self.assertEqual(headline({'includes/accuracy': 0.5}, None, None, 4)['label'], 'Accuracy')  # graded, not right/wrong
+        self.assertEqual(headline({}, None, 3, 4), dict(key='correct', label='Correct', value=0.75, better='higher'))
+
+
 @unittest.skipUnless(available()[0], 'Inspect AI is not installed (uv run --extra evals)')
 class InspectRunTests(unittest.TestCase):
     def setUp(self):

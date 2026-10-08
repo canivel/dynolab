@@ -1253,9 +1253,11 @@ struct RoomObserverView: View {
                 Text("Alerts").font(.caption.bold()).foregroundStyle(.secondary)
                 ForEach(defined.indices, id: \.self) { i in
                     let a = defined[i], hits = observed.filter { $0["kind"] as? String == "alert" && $0["alert_id"] as? String == a["id"] as? String }
+                    let legacy = ["aware-phrases", "aware-model"].contains(a["id"] as? String ?? "")
                     HStack(spacing: 6) {
-                        Image(systemName: hits.isEmpty ? "bell" : "bell.badge.fill").foregroundStyle(hits.isEmpty ? Color.secondary : .yellow).font(.caption)
-                        Text(a["name"] as? String ?? "").font(.caption).lineLimit(1)
+                        Image(systemName: hits.isEmpty ? "bell" : legacy ? "bell.slash" : "bell.badge.fill").foregroundStyle(hits.isEmpty || legacy ? Color.secondary : .yellow).font(.caption)
+                        Text((a["name"] as? String ?? "") + (["aware-phrases", "aware-model"].contains(a["id"] as? String ?? "") ? " (old phrase list)" : ""))
+                            .font(.caption).lineLimit(1)
                         Spacer(minLength: 4)
                         ForEach(Array(Set(hits.compactMap { $0["agent_id"] as? String })).sorted(), id: \.self) { id in
                             AgentBadge(agent: agents[id], fallback: id, small: true)
@@ -1427,6 +1429,23 @@ private struct ObserverCard: View {
 
     var body: some View {
         switch event["kind"] as? String ?? "rule_event" {
+        case "alert" where ["aware-phrases", "aware-model"].contains(event["alert_id"] as? String ?? ""):
+            // Recorded by the phrase list Dyno used before 0.6.4: it matched words like "test", not awareness.
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "bell.slash").foregroundStyle(.secondary)
+                    Text("\(event["name"] as? String ?? "Alert") · old phrase list").font(.caption.bold()).foregroundStyle(.secondary)
+                    Text("· \(roomTime(event["ts"]))").font(.caption2).foregroundStyle(.secondary)
+                    Spacer()
+                    badge(event["agent_id"], event["agent"])
+                }
+                Text("“\(event["quote"] as? String ?? "")”").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .copyable(event["quote"] as? String ?? "")
+                Text("Recorded before 0.6.4 by a word match, not a judged detection: it fired on words like “test”, even “test order”. Run the test again to check it with the awareness detector.")
+                    .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.06)))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
         case "alert":
             let warning = event["severity"] as? String != "info"
             VStack(alignment: .leading, spacing: 5) {

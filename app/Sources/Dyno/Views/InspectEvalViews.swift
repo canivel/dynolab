@@ -653,7 +653,8 @@ struct RunProgressCard: View {
                 DynoProgressBar(value: Double(done), total: Double(max(total, 1)), width: 200)
                 Text(total > 0 ? "\(done)/\(total)" : st).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 if st == "done" {
-                    Text("\(evalPercent(m["accuracy"])) correct").font(.callout.bold()).foregroundStyle(evalColor(m["accuracy"] as? Double))
+                    let h = InspectHeadline(m["headline"] as? [String: Any], accuracy: m["accuracy"] as? Double)
+                    Text(h.short).font(.callout.bold()).foregroundStyle(h.color)
                 }
             }
             if let e = m["error"] as? String, !e.isEmpty { Text(e).font(.caption.monospaced()).foregroundStyle(.orange).lineLimit(4) }
@@ -668,12 +669,15 @@ struct InspectRateCell: View {
     var selected: Bool
     var body: some View {
         let rate = cell["rate"] as? Double, n = cell["n"] as? Int ?? 0
-        let color = n < 5 ? Color.secondary : evalColor(rate)
+        let graded = cell["pass"] as? Int == nil  // the benchmark's own metric, not right/wrong
+        let h = InspectHeadline(cell["headline"] as? [String: Any], accuracy: rate)
+        let color = n < 5 ? Color.secondary : graded ? h.color : evalColor(rate)
         let ci = cell["ci"] as? [Double] ?? []
         VStack(alignment: .leading, spacing: 2) {
-            Text(evalPercent(rate) + " correct").font(.title3.bold()).foregroundStyle(color)
-            Text(ci.count == 2 ? "95%: \(Int((ci[0] * 100).rounded()))–\(Int((ci[1] * 100).rounded()))%" : "").font(.caption2).foregroundStyle(.secondary)
-            Text("\(cell["pass"] as? Int ?? 0) of \(n) samples").font(.caption2).foregroundStyle(.secondary)
+            Text(graded ? h.value : evalPercent(rate) + " correct").font(.title3.bold()).foregroundStyle(color)
+            Text(graded ? h.label + h.direction : ci.count == 2 ? "95%: \(Int((ci[0] * 100).rounded()))–\(Int((ci[1] * 100).rounded()))%" : "")
+                .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            Text(graded ? "\(n) samples" : "\(cell["pass"] as? Int ?? 0) of \(n) samples").font(.caption2).foregroundStyle(.secondary)
         }.padding(10).frame(width: 170, height: 64, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10).fill(color.opacity(selected ? 0.22 : 0.10)))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(selected ? color : color.opacity(0.35), lineWidth: selected ? 2 : 1))
@@ -739,8 +743,14 @@ struct InspectCellDetail: View {
         let samples = (model?["samples"] as? [[String: Any]] ?? []).filter { filter == "all" || (filter == "failed") == !($0["passed"] as? Bool ?? false) }
         EvalCard(title: "\(cell["title"] as? String ?? "") · \(cell["label"] as? String ?? "")") {
             HStack(spacing: 14) {
-                stat("Correct", evalPercent(cell["rate"]), evalColor(cell["rate"] as? Double))
-                stat("Samples", "\(cell["pass"] as? Int ?? 0) of \(cell["n"] as? Int ?? 0)", .primary)
+                if cell["pass"] as? Int == nil {
+                    let h = InspectHeadline(cell["headline"] as? [String: Any], accuracy: nil)
+                    stat(h.label + h.direction, h.value, h.color)
+                    stat("Samples", "\(cell["n"] as? Int ?? 0)", .primary)
+                } else {
+                    stat("Correct", evalPercent(cell["rate"]), evalColor(cell["rate"] as? Double))
+                    stat("Samples", "\(cell["pass"] as? Int ?? 0) of \(cell["n"] as? Int ?? 0)", .primary)
+                }
                 stat("Runs", "\(cell["runs"] as? Int ?? 1)", .primary)
                 Spacer()
                 Button(opening ? "Opening…" : "Open in Inspect View ↗", action: openViewer).buttonStyle(.dynoPrimary).disabled(opening)
@@ -844,5 +854,21 @@ struct GatedDatasetNotice: View {
             }
             Text("It is sent only with a run, to the process that downloads the dataset, and never saved with the run.").font(.caption2).foregroundStyle(.secondary)
         }.padding(10).background(RoundedRectangle(cornerRadius: 8).fill(Color.purple.opacity(0.08)))
+    }
+}
+
+
+/// The number a benchmark is judged by (Inspect's metric), and which way is better: StrongREJECT's score is
+/// better low, TruthfulQA's accuracy better high, WMDP's accuracy is neither good nor bad.
+struct InspectHeadline {
+    var label = "Correct", value = "–", short = "–", direction = "", color = Color.secondary
+    init(_ h: [String: Any]?, accuracy: Double?) {
+        let v = h?["value"] as? Double ?? accuracy
+        let better = h?["better"] as? String ?? "higher"
+        label = h?["label"] as? String ?? "Correct"
+        if let v { value = v >= 0 && v <= 1 ? "\(Int((v * 100).rounded()))%" : String(format: "%.2f", v) }
+        short = "\(label): \(value)"
+        direction = better == "lower" ? " · lower is better" : better == "higher" ? " · higher is better" : ""
+        if let v, v >= 0, v <= 1 { color = better == "neutral" ? .blue : evalColor(better == "lower" ? 1 - v : v) }
     }
 }

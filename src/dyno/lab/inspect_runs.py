@@ -36,31 +36,31 @@ MAX_SAMPLES = 2000
 # answers (Dyno passes the judge you pick as Inspect's "grader" role); `download` means the first run fetches
 # the dataset from Hugging Face.
 LIBRARY = [
-    dict(id='inspect_evals/sad_stages_oversight', task='sad_stages_oversight', title='SAD: stages (oversight)', area='Evaluation awareness',
+    dict(id='inspect_evals/sad_stages_oversight', task='sad_stages_oversight', headline=dict(metric='accuracy', label='Told eval from deployment', better='higher'), title='SAD: stages (oversight)', area='Evaluation awareness',
          what='Can the model tell evaluation prompts from real deployment? From the Situational Awareness Dataset.',
          samples=400, judge=False, judge_args=[], gated=False),
-    dict(id='inspect_evals/strong_reject', task='strong_reject', title='StrongREJECT', area='Harmful compliance',
+    dict(id='inspect_evals/strong_reject', task='strong_reject', headline=dict(metric='strong_reject_metric', label='StrongREJECT score', better='lower'), title='StrongREJECT', area='Harmful compliance',
          what='313 forbidden requests; a judge rates how useful the answer would be to someone misusing it.',
          samples=313, judge=True, judge_args=['judge_llm'], gated=False),
-    dict(id='inspect_evals/agentic_misalignment', task='agentic_misalignment', title='Agentic Misalignment', area='Misalignment',
+    dict(id='inspect_evals/agentic_misalignment', task='agentic_misalignment', headline=dict(metric='harmful', label='Harmful actions', better='lower'), title='Agentic Misalignment', area='Misalignment',
          what='An agent can blackmail or leak to keep its goal; a judge marks harmful actions. Includes an eval-awareness variant.',
          samples=1, judge=True, judge_args=['grader_model'], gated=False),
-    dict(id='inspect_evals/mask', task='mask', title='MASK', area='Honesty',
+    dict(id='inspect_evals/mask', task='mask', headline=dict(metric='honesty', label='Honesty', better='higher'), title='MASK', area='Honesty',
          what='Does the model state what it believes when pressured to say otherwise? A judge compares its belief and its statement.',
          samples=1000, judge=True, judge_args=['binary_judge_model', 'numeric_judge_model'], gated=False),
-    dict(id='inspect_evals/truthfulqa', task='truthfulqa', title='TruthfulQA', area='Honesty',
+    dict(id='inspect_evals/truthfulqa', task='truthfulqa', headline=dict(metric='accuracy', label='Truthful answers', better='higher'), title='TruthfulQA', area='Honesty',
          what='817 questions where a popular misconception is the tempting answer (multiple choice).',
          samples=817, judge=False, judge_args=[], gated=False),
-    dict(id='inspect_evals/simpleqa', task='simpleqa', title='SimpleQA', area='Factuality',
+    dict(id='inspect_evals/simpleqa', task='simpleqa', headline=dict(metric='correct', label='Correct', better='higher'), title='SimpleQA', area='Factuality',
          what='Short fact questions; a judge marks each answer correct, incorrect or not attempted.',
          samples=4326, judge=True, judge_args=[], gated=False),
-    dict(id='inspect_evals/wmdp_bio', task='wmdp_bio', title='WMDP (biology)', area='Hazardous knowledge',
+    dict(id='inspect_evals/wmdp_bio', task='wmdp_bio', headline=dict(metric='accuracy', label='Hazardous-knowledge accuracy', better='neutral'), title='WMDP (biology)', area='Hazardous knowledge',
          what='Multiple-choice questions that proxy dangerous biosecurity knowledge.',
          samples=1273, judge=False, judge_args=[], gated=False),
-    dict(id='inspect_evals/bbq', task='bbq', title='BBQ', area='Bias',
+    dict(id='inspect_evals/bbq', task='bbq', headline=dict(metric='accuracy', label='Unbiased answers', better='higher'), title='BBQ', area='Bias',
          what='Questions that test whether social stereotypes change the answer (multiple choice).',
          samples=58492, judge=False, judge_args=[], gated=False),
-    dict(id='inspect_evals/xstest', task='xstest', title='XSTest', area='Over-refusal',
+    dict(id='inspect_evals/xstest', task='xstest', headline=dict(metric='refusal_rate', label='Refusal rate', better='neutral'), title='XSTest', area='Over-refusal',
          what='250 safe prompts that look unsafe, and 200 unsafe ones: does the model refuse the right ones?',
          samples=450, judge=True, judge_args=['scorer_model'], gated=True,
          hf='https://huggingface.co/datasets/walledai/XSTest'),
@@ -155,6 +155,21 @@ def parse_import(body):
     solver = 'multiple_choice' if scorer == 'choice' else 'generate'
     return dict(draft=dict(kind='dataset', title=stem, description='', dataset=samples, solver=dict(kind=solver, system_prompt=''),
                            scorer=dict(kind=scorer, ignore_case=True), epochs=1), warnings=warnings)
+
+
+def headline(metrics, lib, passed, total):
+    """The number to show for a run: the benchmark's own headline metric and which way is better, else the share
+    of samples marked correct."""
+    want = ((lib or {}).get('headline') or {})
+    key = next((k for k in metrics if want.get('metric') and k.split('/')[-1] == want['metric']), None)
+    if key is None and passed is None:
+        key = next((k for k in metrics if k.endswith('/accuracy')), None) or next((k for k in metrics if not k.endswith('/stderr')), None)
+    if key is not None and isinstance(metrics.get(key), (int, float)):
+        return dict(key=key, label=want.get('label') or key.split('/')[-1].replace('_', ' ').capitalize(), value=metrics[key],
+                    better=want.get('better') or 'higher')
+    if passed is not None and total:
+        return dict(key='correct', label='Correct', value=passed / total, better='higher')
+    return None
 
 
 # --- the store, runs and the viewer ---------------------------------------------------------
@@ -355,9 +370,10 @@ class InspectEvals:
                     time.sleep(1)
             res = _load(folder / f'result-{n}.json')
             if res.get('status') == 'success':
-                passed, total = res.get('pass', 0), res.get('n', 0)
+                passed, total = res.get('pass'), res.get('n', 0)  # pass is None when scores aren't right/wrong
                 self._update(i, n, status='done', done=total, total=total, accuracy=res.get('accuracy'), metrics=res.get('metrics'),
-                             **{'pass': passed}, n=total, ci=wilson(passed, total), samples=res.get('samples'), log=res.get('log'))
+                             **{'pass': passed}, n=total, ci=wilson(passed, total) if passed is not None else None,
+                             headline=headline(res.get('metrics') or {}, lib, passed, total), samples=res.get('samples'), log=res.get('log'))
             else:
                 tail = (folder / f'worker-{n}.log').read_text(errors='replace')[-1500:] if (folder / f'worker-{n}.log').exists() else ''
                 self._update(i, n, status='error', error=res.get('error') or tail or f'worker exited with {p.returncode}', log=res.get('log'))
@@ -390,11 +406,14 @@ class InspectEvals:
                 if m.get('status') != 'done' or not m.get('n'): continue
                 c = cells.setdefault((r['def_id'], m['label']), dict(def_id=r['def_id'], title=r.get('title'), kind=r.get('kind'),
                                                                      label=m['label'], model=m.get('model'), pass_=0, n=0, runs=0, last=0))
+                if m.get('pass') is None: c['graded'] = False
                 c['pass_'] += m.get('pass') or 0; c['n'] += m['n']; c['runs'] += 1
-                if (r.get('created') or 0) > c['last']: c.update(last=r.get('created') or 0, run=r['id'], accuracy=m.get('accuracy'))
+                if (r.get('created') or 0) > c['last']: c.update(last=r.get('created') or 0, run=r['id'], accuracy=m.get('accuracy'), headline=m.get('headline'))
         out = []
         for c in cells.values():
-            passed = c.pop('pass_')
+            passed, graded = c.pop('pass_'), c.pop('graded', True)
+            if not graded:  # scores aren't right/wrong: show the benchmark's headline metric instead
+                out.append(dict(c, **{'pass': None}, rate=None, ci=None)); continue
             out.append(dict(c, **{'pass': passed}, rate=round(passed / c['n'], 4) if c['n'] else None, ci=wilson(passed, c['n'])))
         return sorted(out, key=lambda c: (c['title'] or '', c['label']))
 

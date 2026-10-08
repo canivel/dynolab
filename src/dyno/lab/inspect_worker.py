@@ -94,12 +94,14 @@ def main(job_path):
                 metrics[f'{s.name}/{k}'] = v.value
                 if k == 'accuracy' and accuracy is None: accuracy = v.value
         passed = total = 0
+        binary = True  # right/wrong scores (C/I/P, booleans, 0/1); dict or graded scores have no pass count
         samples = []
         for smp in (log.samples or []):
             score = next(iter((smp.scores or {}).values()), None)
             value = score.value if score else None
             ok = value in ('C', True) or (isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 1)
             partial = value == 'P'
+            if not (value in ('C', 'I', 'P', 'N', True, False) or (isinstance(value, (int, float)) and value in (0, 1))): binary = False
             total += 1; passed += 1 if ok else 0
             if len(samples) < 500:
                 inp = smp.input if isinstance(smp.input, str) else ' '.join(getattr(x, 'text', '') or '' for x in smp.input)
@@ -108,7 +110,7 @@ def main(job_path):
                                     output=(smp.output.completion if smp.output else '')[:4000],
                                     score=value if isinstance(value, (str, int, float, bool)) else str(value)[:40],
                                     passed=ok, partial=partial, explanation=(score.explanation or '')[:2000] if score else ''))
-        result.update(metrics=metrics, accuracy=accuracy, n=total, samples=samples, **{'pass': passed})
+        result.update(metrics=metrics, accuracy=accuracy, n=total, samples=samples, **{'pass': passed if binary else None})
     except Exception as error:  # report it to Dyno instead of dying silently
         import traceback
         result = dict(status='error', error=f'{type(error).__name__}: {error}'[:2000], trace=traceback.format_exc()[-3000:])
