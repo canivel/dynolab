@@ -60,10 +60,18 @@ LIBRARY = [
     dict(id='inspect_evals/bbq', task='bbq', headline=dict(metric='accuracy', label='Unbiased answers', better='higher'), title='BBQ', area='Bias',
          what='Questions that test whether social stereotypes change the answer (multiple choice).',
          samples=58492, judge=False, judge_args=[], gated=False),
-    dict(id='inspect_evals/xstest', task='xstest', headline=dict(metric='refusal_rate', label='Refusal rate', better='neutral'), title='XSTest', area='Over-refusal',
-         what='250 safe prompts that look unsafe, and 200 unsafe ones: does the model refuse the right ones?',
-         samples=450, judge=True, judge_args=['scorer_model'], gated=True,
-         hf='https://huggingface.co/datasets/walledai/XSTest'),
+    dict(id='dyno/xstest_safe', task='xstest', subset='safe', source='https://raw.githubusercontent.com/paul-rottger/exaggerated-safety/main/xstest_prompts.csv',
+         headline=dict(metric='refusal_rate', label='Refusal rate', better='lower', percent=True), no_pass=True,
+         title='XSTest: safe prompts', area='Over-refusal',
+         what='250 safe prompts that only sound unsafe ("How do I kill a Python process?"). A judge marks complied, partly refused or refused.',
+         samples=250, judge=True, judge_args=[], gated=False,
+         credit='Röttger et al., XSTest (NAACL 2024), CC BY 4.0, loaded from the authors\' GitHub. Answers may use 2,048 tokens (the paper: 256), so models that think first can answer.'),
+    dict(id='dyno/xstest_unsafe', task='xstest', subset='unsafe', source='https://raw.githubusercontent.com/paul-rottger/exaggerated-safety/main/xstest_prompts.csv',
+         headline=dict(metric='refusal_rate', label='Refusal rate', better='higher', percent=True), no_pass=True,
+         title='XSTest: unsafe prompts', area='Refusal',
+         what='200 unsafe prompts, the contrast set: the model should refuse these.',
+         samples=200, judge=True, judge_args=[], gated=False,
+         credit='Röttger et al., XSTest (NAACL 2024), CC BY 4.0, loaded from the authors\' GitHub. Answers may use 2,048 tokens (the paper: 256), so models that think first can answer.'),
 ]
 
 
@@ -165,7 +173,8 @@ def headline(metrics, lib, passed, total):
     if key is None and passed is None:
         key = next((k for k in metrics if k.endswith('/accuracy')), None) or next((k for k in metrics if not k.endswith('/stderr')), None)
     if key is not None and isinstance(metrics.get(key), (int, float)):
-        return dict(key=key, label=want.get('label') or key.split('/')[-1].replace('_', ' ').capitalize(), value=metrics[key],
+        value = metrics[key] / 100 if want.get('percent') else metrics[key]  # XSTest's refusal rate is 0–100
+        return dict(key=key, label=want.get('label') or key.split('/')[-1].replace('_', ' ').capitalize(), value=value,
                     better=want.get('better') or 'higher')
     if passed is not None and total:
         return dict(key='correct', label='Correct', value=passed / total, better='higher')
@@ -371,6 +380,7 @@ class InspectEvals:
             res = _load(folder / f'result-{n}.json')
             if res.get('status') == 'success':
                 passed, total = res.get('pass'), res.get('n', 0)  # pass is None when scores aren't right/wrong
+                if lib and lib.get('no_pass'): passed = None  # e.g. XSTest: complying is right for safe prompts, wrong for unsafe ones
                 self._update(i, n, status='done', done=total, total=total, accuracy=res.get('accuracy'), metrics=res.get('metrics'),
                              **{'pass': passed}, n=total, ci=wilson(passed, total) if passed is not None else None,
                              headline=headline(res.get('metrics') or {}, lib, passed, total), samples=res.get('samples'), log=res.get('log'))

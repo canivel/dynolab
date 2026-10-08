@@ -432,6 +432,7 @@ struct InspectSetupView: View {
             Text(draft.library).font(.caption.monospaced()).foregroundStyle(.secondary)
             if it["judge"] as? Bool == true { Label("A judge model marks the answers: you choose it on the next step.", systemImage: "scale.3d").font(.caption) }
             Label("The first run downloads its dataset (from Hugging Face or the benchmark's source).", systemImage: "arrow.down.circle").font(.caption)
+            if let credit = it["credit"] as? String { Label(credit, systemImage: "text.quote").font(.caption).foregroundStyle(.secondary) }
             if it["gated"] as? Bool == true { GatedDatasetNotice(page: it["hf"] as? String) }
             Stepper(draft.limit == 0 ? "All samples" : "First \(draft.limit) samples", value: $draft.limit, in: 0...5000, step: 10).frame(maxWidth: 320)
             Text("Try a small limit first: a full benchmark on a local model can take hours.").font(.caption).foregroundStyle(.secondary)

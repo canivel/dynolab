@@ -24,6 +24,8 @@ def _task(d, workdir, library=None, judge=None):
         path = Path(workdir) / tf['name']
         path.write_text(tf['code'])
         return f"{path}@{tf['task']}"
+    if d['kind'] == 'library' and (library or {}).get('source'):
+        return _from_source(library, judge, workdir)
     if d['kind'] == 'library':
         # inspect_evals registers its tasks by plain name (xstest, not inspect_evals/xstest): look the function up and
         # hand the judge to whatever parameter this benchmark uses for it.
@@ -53,13 +55,38 @@ def _task(d, workdir, library=None, judge=None):
     return Task(dataset=MemoryDataset(samples, name=d['title']), solver=steps, scorer=scorer, name=d['title'][:60])
 
 
+def _from_source(library, judge, workdir):
+    """A benchmark built from its authors' openly licensed data (XSTest: CC BY 4.0 on GitHub), scored exactly as
+    inspect_evals scores it, so no gated Hugging Face mirror or token is needed."""
+    import csv
+    import io
+    import urllib.request
+    from inspect_ai import Task
+    from inspect_ai.dataset import MemoryDataset, Sample
+    from inspect_ai.model import GenerateConfig
+    from inspect_ai.scorer import model_graded_qa
+    from inspect_ai.solver import generate, system_message
+    from inspect_evals.xstest.xstest import refusal_rate, scorer_instructions, scorer_template
+    cache = Path(workdir).parent.parent / 'datasets' / 'xstest_prompts.csv'
+    if not cache.exists():
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(library['source'], timeout=60) as r: cache.write_bytes(r.read())
+    rows = [r for r in csv.DictReader(io.StringIO(cache.read_text())) if r.get('label') == library['subset']]
+    samples = [Sample(input=r['prompt'], id=f"xstest-{r['id']}", metadata={k: r.get(k) for k in ('type', 'note', 'label', 'focus')}) for r in rows]
+    return Task(dataset=MemoryDataset(samples, name=f"xstest_{library['subset']}"),
+                solver=[system_message('You are a helpful assistant.'), generate()],
+                scorer=model_graded_qa(model=judge, template=scorer_template, instructions=scorer_instructions),
+                # 2,048 tokens, not the original 256: models that think first spend 256 on thinking and answer nothing.
+                metrics=[refusal_rate()], config=GenerateConfig(temperature=0, max_tokens=2048), name=f"xstest_{library['subset']}")
+
+
 def main(job_path):
     job = json.loads(Path(job_path).read_text())
     out = Path(job['result'])
     try:
         from inspect_ai import eval as inspect_eval
         from inspect_ai.hooks import Hooks, SampleEnd, TaskStart, hooks
-        from inspect_ai.model import get_model
+        from inspect_ai.model import GenerateConfig, get_model
 
         progress = job['progress']
 
@@ -79,7 +106,9 @@ def main(job_path):
         roles = {}
         if job.get('grader'):
             g = job['grader']
-            roles['grader'] = get_model(f"openai-api/dyno/{g['model']}", base_url=f"http://127.0.0.1:{g['port']}/v1", api_key='local')
+            # The judge reasons before its verdict: give it room, or "GRADE: X" is cut off.
+            roles['grader'] = get_model(f"openai-api/dyno/{g['model']}", base_url=f"http://127.0.0.1:{g['port']}/v1", api_key='local',
+                                        config=GenerateConfig(temperature=0, max_tokens=4096))
         task = _task(job['definition'], job['workdir'], job.get('library'), roles.get('grader'))
         logs = inspect_eval(task, model=model, model_roles=roles or None,
                             epochs=job.get('epochs') or 1, limit=job.get('limit'), log_dir=job['log_dir'],

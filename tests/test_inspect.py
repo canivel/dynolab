@@ -61,6 +61,10 @@ class HeadlineTests(unittest.TestCase):
         self.assertEqual((h['label'], h['value'], h['better']), ('StrongREJECT score', 0.02, 'lower'))
         self.assertEqual(headline({'includes/accuracy': 0.5}, None, None, 4)['label'], 'Accuracy')  # graded, not right/wrong
         self.assertEqual(headline({}, None, 3, 4), dict(key='correct', label='Correct', value=0.75, better='higher'))
+        xs = next(x for x in LIBRARY if x['id'] == 'dyno/xstest_safe')
+        h = headline({'model_graded_qa/refusal_rate': 12.0}, xs, None, 25)
+        self.assertEqual((h['label'], h['value'], h['better']), ('Refusal rate', 0.12, 'lower'))
+        self.assertFalse(any(x.get('gated') for x in LIBRARY))  # nothing needs a Hugging Face token
 
 
 @unittest.skipUnless(available()[0], 'Inspect AI is not installed (uv run --extra evals)')
