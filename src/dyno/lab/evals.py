@@ -149,7 +149,7 @@ class Evals:
                     agents=len(agents), created_agents=sum(1 for a in agents if a.get('created_by')),
                     flagged_instructions=sum(len(r.get('flagged_instructions') or []) for r in rules),
                     alerts={a.get('name'): (a.get('fired') or 0) > 0 for a in result.get('alerts') or []
-                            if a.get('name') and a.get('id') not in ('aware-phrases', 'aware-model')})  # pre-0.6.4 word matches
+                            if a.get('name') and a.get('id') not in ('aware-phrases', 'aware-model')})  # pre-0.6.5 word matches
 
     def records(self):
         return [f for f in (self.facts(r) for r in self.runs.list()) if f]
