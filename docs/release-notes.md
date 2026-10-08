@@ -1,6 +1,10 @@
-# Dyno Lab 0.6.4
+# Dyno Lab 0.6.5
 
-Dyno Lab 0.6.4 runs Evals on [Inspect AI](https://inspect.aisi.org.uk), the open-source evaluation framework from the UK AI Security Institute, and replaces the "knows it's being tested" phrase list with a detector that has to quote the agent. A real experiment on two local models shaped it and is written up as a tutorial and a study: [Tutorial: agent tests and evals](agents-and-evals-tutorial.md) and [Does a rule said once survive?](tutorial/rule-said-once.md).
+Dyno Lab 0.6.5 adds Dyno's assistant, a chat beside every tab that sets up tests and evals with a model on your Mac, and runs Evals on [Inspect AI](https://inspect.aisi.org.uk), the open-source evaluation framework from the UK AI Security Institute, and replaces the "knows it's being tested" phrase list with a detector that has to quote the agent. A real experiment on two local models shaped it and is written up as a tutorial and a study: [Tutorial: agent tests and evals](agents-and-evals-tutorial.md) and [Does a rule said once survive?](tutorial/rule-said-once.md).
+
+## Dyno's assistant
+
+A panel beside every tab where you describe what you want to find out, typed or spoken. The assistant plans the work, looks at what Dyno has, fills in Agents → Setup for you to check, and asks before it runs or saves anything: each start or save is a card you approve or decline. It runs only on a model on this Mac, voice is recognised on device, and conversations are saved locally. Long conversations stay within the model's context: thinking is never sent back, old tool results are shortened, and older turns are summarized by the model, while the full history stays on disk. See [Dyno's assistant](assistant.md).
 
 ## Evals on Inspect AI
 
@@ -19,10 +23,6 @@ Dyno Lab 0.6.4 runs Evals on [Inspect AI](https://inspect.aisi.org.uk), the open
 - Invented quotes are thrown out, and words the test itself used are ignored. Without a judge model, a strict pattern stands in.
 - Alerts from 0.6.3's phrase lists are marked *old phrase list* and greyed in the Room.
 
-## Dyno's assistant
-
-A panel beside every tab where you describe what you want to find out, typed or spoken. The assistant plans the work, looks at what Dyno has, fills in Agents → Setup for you to check, and asks before it runs or saves anything: each start or save is a card you approve or decline. It runs only on a model on this Mac, voice is recognised on device, and conversations are saved locally. Long conversations stay within the model's context: thinking is never sent back, old tool results are shortened, and older turns are summarized by the model, while the full history stays on disk. See [Dyno's assistant](assistant.md).
-
 ## Agents setup
 
 - **Team size.** Type how many agents the test needs, the lead included (1–12). Above 1, the lead must create the rest of the team before any work: its prompt opens with the **team instruction**, telling it to build a team of N after working out the problem, the blockers, the rules and the gotchas. The instruction is a template you can reword and save with your prompt, but it can't be removed. Tests made before team sizes run as they did.
@@ -33,12 +33,16 @@ A panel beside every tab where you describe what you want to find out, typed or 
 - **Models start with the settings Dyno shows.** Dyno passed only the settings that differed from its own defaults, so mlx_lm.server used its own: 512 tokens per reply and up to 32 requests at once. Thinking models returned empty answers, and long agent tests could run the server out of Metal resources.
 - **Evals leaves out runs that didn't really finish:** rooms that stopped on a harness or model-server error, and scripted tests whose script wasn't fully delivered (a model that never files a report never gets the scripted requests).
 - An Inspect cell shows its eval's latest run instead of pooling runs made with different settings.
+- **Long thinking no longer turns black.** Execution, the Room and the plain Chat showed a long answer or thinking as one block of text; past a few thousand tokens it was taller than macOS can draw and rendered black. Long text is now drawn in pieces.
+- **Evals → Choose tells same-named scenarios apart:** a list, newest first, with each scenario's environment, rules, runs and last run date, and a badge saying how two with the same name differ.
 - The Room's live lists no longer freeze the app (0.6.3's fix missed a case).
 - An imported 0.6.3 test's alert shows once.
 
 ## Known issue
 
 - The report check can mark *report honestly* broken when a true claim about one action ("test order sent to staging, not production") sits next to a different rule event, such as an earlier read-only probe. Read the flagged claim before counting it.
+
+0.6.4 was built but never published; its changes ship in 0.6.5.
 
 ---
 

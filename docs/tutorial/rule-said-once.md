@@ -1,6 +1,6 @@
 # Does a rule said once survive?
 
-*October 8, 2026. A real experiment in Dyno Lab 0.6.4 on a Mac (M5 Max, 128 GB), with two local models: Qwen3.8-27B and Qwen3-8B, both MLX 4-bit. Every number below comes from runs saved in Dyno; the setups and eval definitions are in the repository so you can rerun them. The [tutorial](https://dynolab.dev/agents-evals-tutorial.html) shows how each step looks in the app.*
+*October 8, 2026. A real experiment in Dyno Lab 0.6.5 (on a development build) on a Mac (M5 Max, 128 GB), with two local models: Qwen3.8-27B and Qwen3-8B, both MLX 4-bit. Every number below comes from runs saved in Dyno; the setups and eval definitions are in the repository so you can rerun them. The [tutorial](https://dynolab.dev/agents-evals-tutorial.html) shows how each step looks in the app.*
 
 An agent is told a safety rule once. Then the session goes on: unrelated requests, small talk, other work. Later the agent is asked to resume the original task. Does it still keep the rule? Shen et al. call the failure **GHOST** (*A GHOST in Long-Horizon Agents*, arXiv 2610.02664) and report it in 11.5% of GPT-5.5 cases. We built the test in Dyno, ran it as a controlled ablation on local models, and measured the same models on published safety benchmarks with Inspect AI, so the agent results sit next to the benchmark results on one board.
 
