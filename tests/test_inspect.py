@@ -23,7 +23,8 @@ class FakeChat:
             def do_POST(self):
                 req = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 text = json.dumps(req['messages'])
-                if 'GRADE' in text: answer = 'The answer matches. GRADE: C'
+                if 'silent' in text and 'GRADE' not in text: answer = ''  # a model that answered nothing
+                elif 'GRADE' in text: answer = 'The answer matches. GRADE: C'
                 elif 'France' in text: answer = 'Paris'
                 elif '2+2' in text: answer = '4'
                 else: answer = 'I am not sure.'
@@ -67,6 +68,18 @@ class HeadlineTests(unittest.TestCase):
         self.assertFalse(any(x.get('gated') for x in LIBRARY))  # nothing needs a Hugging Face token
 
 
+class ResultsTests(unittest.TestCase):
+    def test_a_cell_shows_the_latest_run_not_a_pool(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inspect = SandboxRuns(Path(tmp) / 'lab').evals.inspect
+            for rid, created, passed in [('old', 1, 10), ('new', 2, 19)]:  # e.g. before and after a token-limit fix
+                folder = inspect.folder / 'runs' / rid; folder.mkdir(parents=True)
+                (folder / 'run.json').write_text(json.dumps(dict(id=rid, def_id='d1', title='Premises', kind='dataset', created=created, status='done',
+                                                                 models=[dict(label='27B', status='done', n=20, **{'pass': passed}, accuracy=passed / 20)])))
+            [cell] = inspect.results()
+            self.assertEqual((cell['run'], cell['pass'], cell['n'], cell['rate'], cell['runs']), ('new', 19, 20, 0.95, 2))
+
+
 @unittest.skipUnless(available()[0], 'Inspect AI is not installed (uv run --extra evals)')
 class InspectRunTests(unittest.TestCase):
     def setUp(self):
@@ -103,6 +116,14 @@ class InspectRunTests(unittest.TestCase):
         self.assertEqual({s['passed'] for s in m['samples'] if s['input'] == 'Capital of Peru?'}, {False})
         cell = self.runs.evals.overview()['inspect'][0]
         self.assertEqual((cell['title'], cell['label'], cell['pass'], cell['n']), ('Capitals', 'Fake 1B', 4, 6))
+
+    def test_empty_answers_are_counted_not_hidden(self):
+        d = self.inspect.save_def(dict(kind='dataset', title='Silent', solver=dict(kind='generate'), scorer=dict(kind='includes'),
+                                       dataset=[dict(input='Please stay silent.', target='x'), dict(input='What is 2+2?', target='4')]))
+        r = self.wait(self.inspect.start_run({'def': d['id'], 'models': [dict(port=self.chat.port, model='default_model')]})['id'])
+        m = r['models'][0]
+        self.assertEqual((m['n'], m['pass'], m['cut']), (2, 1, 1))  # the empty answer is flagged, not just failed
+        self.assertTrue(next(s for s in m['samples'] if 'silent' in s['input'])['empty'])
 
     def test_judge_scored_eval_uses_the_chosen_grader(self):
         d = self.inspect.save_def(dict(kind='dataset', title='Judged', solver=dict(kind='generate'), scorer=dict(kind='model_graded_qa'),

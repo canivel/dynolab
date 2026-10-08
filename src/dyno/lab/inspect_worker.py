@@ -94,7 +94,9 @@ def main(job_path):
         class DynoProgress(Hooks):
             async def on_task_start(self, data: TaskStart) -> None:
                 spec = data.spec
-                n = (spec.dataset.samples or 0) * (spec.config.epochs or 1) if spec.dataset else 0
+                n = (spec.dataset.samples or 0) if spec.dataset else 0
+                if job.get('limit'): n = min(n, job['limit'])  # a run limited to N samples shows N, not the dataset's size
+                n *= spec.config.epochs or 1
                 _progress(progress, event='start', total=n)
 
             async def on_sample_end(self, data: SampleEnd) -> None:
@@ -106,11 +108,15 @@ def main(job_path):
         roles = {}
         if job.get('grader'):
             g = job['grader']
-            # The judge reasons before its verdict: give it room, or "GRADE: X" is cut off.
+            # The judge grades without its own thinking phase (local reasoning models otherwise spend minutes, and
+            # thousands of tokens, before every verdict), with room for the short reasoning the rubric asks for.
             roles['grader'] = get_model(f"openai-api/dyno/{g['model']}", base_url=f"http://127.0.0.1:{g['port']}/v1", api_key='local',
-                                        config=GenerateConfig(temperature=0, max_tokens=4096))
+                                        config=GenerateConfig(temperature=0, max_tokens=2048,
+                                                              extra_body={'chat_template_kwargs': {'enable_thinking': False}}))
         task = _task(job['definition'], job['workdir'], job.get('library'), roles.get('grader'))
-        logs = inspect_eval(task, model=model, model_roles=roles or None,
+        # Local servers default to short replies (mlx: 512 tokens). A model that thinks first spends them all on
+        # thinking and answers nothing, so the eval would measure the token limit. Ask for room to answer.
+        logs = inspect_eval(task, model=model, model_roles=roles or None, max_tokens=job.get('max_tokens') or 8192,
                             epochs=job.get('epochs') or 1, limit=job.get('limit'), log_dir=job['log_dir'],
                             display='none', fail_on_error=0.5, max_connections=1)
         log = logs[0]
@@ -122,7 +128,7 @@ def main(job_path):
             for k, v in s.metrics.items():
                 metrics[f'{s.name}/{k}'] = v.value
                 if k == 'accuracy' and accuracy is None: accuracy = v.value
-        passed = total = 0
+        passed = total = cut = 0  # cut: answers that hit the token limit or came back empty
         binary = True  # right/wrong scores (C/I/P, booleans, 0/1); dict or graded scores have no pass count
         samples = []
         for smp in (log.samples or []):
@@ -132,14 +138,18 @@ def main(job_path):
             partial = value == 'P'
             if not (value in ('C', 'I', 'P', 'N', True, False) or (isinstance(value, (int, float)) and value in (0, 1))): binary = False
             total += 1; passed += 1 if ok else 0
+            stop = getattr(smp.output, 'stop_reason', None) if smp.output else None
+            empty = not (smp.output.completion if smp.output else '').strip()
+            if stop == 'max_tokens' or empty: cut += 1
             if len(samples) < 500:
                 inp = smp.input if isinstance(smp.input, str) else ' '.join(getattr(x, 'text', '') or '' for x in smp.input)
                 samples.append(dict(id=str(smp.id), epoch=smp.epoch, input=inp[:2000],
                                     target=smp.target if isinstance(smp.target, str) else ' | '.join(smp.target)[:1000],
                                     output=(smp.output.completion if smp.output else '')[:4000],
                                     score=value if isinstance(value, (str, int, float, bool)) else str(value)[:40],
-                                    passed=ok, partial=partial, explanation=(score.explanation or '')[:2000] if score else ''))
-        result.update(metrics=metrics, accuracy=accuracy, n=total, samples=samples, **{'pass': passed if binary else None})
+                                    passed=ok, partial=partial, explanation=(score.explanation or '')[:2000] if score else '',
+                                    stop=str(stop) if stop else None, empty=empty))
+        result.update(metrics=metrics, accuracy=accuracy, n=total, samples=samples, cut=cut, **{'pass': passed if binary else None})
     except Exception as error:  # report it to Dyno instead of dying silently
         import traceback
         result = dict(status='error', error=f'{type(error).__name__}: {error}'[:2000], trace=traceback.format_exc()[-3000:])

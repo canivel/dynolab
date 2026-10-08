@@ -659,6 +659,7 @@ struct RunProgressCard: View {
                 }
             }
             if let e = m["error"] as? String, !e.isEmpty { Text(e).font(.caption.monospaced()).foregroundStyle(.orange).lineLimit(4) }
+            if let cut = m["cut"] as? Int, cut > 0 { CutOffWarning(cut: cut, of: m["n"] as? Int ?? total) }
         }
     }
 }
@@ -752,7 +753,8 @@ struct InspectCellDetail: View {
                     stat("Correct", evalPercent(cell["rate"]), evalColor(cell["rate"] as? Double))
                     stat("Samples", "\(cell["pass"] as? Int ?? 0) of \(cell["n"] as? Int ?? 0)", .primary)
                 }
-                stat("Runs", "\(cell["runs"] as? Int ?? 1)", .primary)
+                stat("Runs", "\(cell["runs"] as? Int ?? 1)", .primary).help("This cell shows the latest run. Earlier runs of the same eval are kept in Inspect View.")
+                if let cut = cell["cut"] as? Int, cut > 0 { stat("Cut off", "\(cut)", .orange) }
                 Spacer()
                 Button(opening ? "Opening…" : "Open in Inspect View ↗", action: openViewer).buttonStyle(.dynoPrimary).disabled(opening)
                     .help("Inspect's own log viewer: every message, score and judge explanation.")
@@ -871,5 +873,17 @@ struct InspectHeadline {
         short = "\(label): \(value)"
         direction = better == "lower" ? " · lower is better" : better == "higher" ? " · higher is better" : ""
         if let v, v >= 0, v <= 1 { color = better == "neutral" ? .blue : evalColor(better == "lower" ? 1 - v : v) }
+    }
+}
+
+
+/// Answers that hit the token limit or came back empty: the score may measure the limit, not the model.
+struct CutOffWarning: View {
+    var cut: Int
+    var of: Int
+    var body: some View {
+        Label("\(cut) of \(of) answers were cut off or empty: the model ran out of tokens (often while thinking). Read those samples before trusting this score.",
+              systemImage: "exclamationmark.triangle.fill")
+            .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
     }
 }
