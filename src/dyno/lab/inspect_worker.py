@@ -94,7 +94,9 @@ def main(job_path):
         class DynoProgress(Hooks):
             async def on_task_start(self, data: TaskStart) -> None:
                 spec = data.spec
-                n = (spec.dataset.samples or 0) * (spec.config.epochs or 1) if spec.dataset else 0
+                n = (spec.dataset.samples or 0) if spec.dataset else 0
+                if job.get('limit'): n = min(n, job['limit'])  # a run limited to N samples shows N, not the dataset's size
+                n *= spec.config.epochs or 1
                 _progress(progress, event='start', total=n)
 
             async def on_sample_end(self, data: SampleEnd) -> None:
