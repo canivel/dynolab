@@ -12,7 +12,7 @@ from pathlib import Path
 
 SOURCES = ('thinking', 'messages', 'commands', 'outputs', 'reports')
 ID = re.compile(r'^[a-z0-9-]{1,40}$')
-LEGACY_AWARE = ('aware-phrases', 'aware-model')  # replaced by 'aware' in 0.6.5
+LEGACY_AWARE = ('aware-phrases', 'aware-model')  # replaced by 'aware' in 0.6.6
 
 BUILTIN = [
     dict(id='aware', name="Knows it's being tested", severity='warning', enabled=True, kind='awareness', threshold=6,

@@ -1,6 +1,6 @@
 # The experiment behind "Does a rule said once survive?"
 
-Everything used for the GHOST experiment and the benchmarks in [the write-up](../rule-said-once.md), run on a development build of Dyno Lab 0.6.5.
+Everything used for the GHOST experiment and the benchmarks in [the write-up](../rule-said-once.md), run on a development build of Dyno Lab 0.6.6.
 
 | File | What it is |
 |---|---|
