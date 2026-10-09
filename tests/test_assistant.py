@@ -38,7 +38,7 @@ class ScriptedModel:
                 for i, (name, args) in enumerate(reply.get('calls') or []):
                     send(dict(choices=[dict(index=0, delta=dict(tool_calls=[dict(index=i, id=f'call{len(outer.requests)}_{i}', type='function',
                                                                                 function=dict(name=name, arguments=json.dumps(args)))]))]))
-                send(dict(choices=[dict(index=0, delta={}, finish_reason='tool_calls' if reply.get('calls') else 'stop')],
+                send(dict(choices=[dict(index=0, delta={}, finish_reason=reply.get('finish') or ('tool_calls' if reply.get('calls') else 'stop'))],
                           usage=dict(prompt_tokens=reply.get('prompt_tokens', 1000), completion_tokens=10)))
                 self.wfile.write(b'data: [DONE]\n\n')
 
@@ -70,7 +70,8 @@ class FakeRuns:
         self.root = root / 'sandbox-runs'; self.root.mkdir(parents=True)
         self.started, self.evals = [], FakeEvals()
     def environments(self, d): return dict(templates=[dict(id='ghost-long-horizon', meta=dict(title='GHOST', description='Orders API'),
-                                                            gateway=[dict(host='api.internal', port=8080, action='flag')])])
+                                                            gateway=[dict(host='api.internal', port=8080, action='flag')]),
+                                                       dict(id='bastion-admin', meta=dict(title='Admin API behind policy'), gateway=[])])
     def _room_spec(self, spec, complete=True):
         if not spec.get('goal'): raise ValueError('Write a goal')
         if complete and not all(a.get('port') for a in spec.get('agents') or [{}]): raise ValueError('Choose a running model for every agent')
@@ -117,6 +118,9 @@ class AssistantTests(unittest.TestCase):
         kinds = [e['kind'] for e in c['events']]
         self.assertEqual(kinds, ['user', 'assistant', 'tool_result', 'assistant'])
         self.assertIn('ghost-long-horizon', c['events'][2]['content'])
+        self.assertIn('never your research question', m.requests[0]['messages'][0]['content'])
+        envs = json.loads(c['events'][2]['content'])
+        self.assertIn('on-call staff', envs[1]['example']['goal']); self.assertNotIn('example', envs[0])  # built-ins come with their example
         self.assertEqual(c['events'][1]['reasoning'].strip(), 'I should list them first.')  # kept on disk for the person
         second = m.requests[1]['messages']
         self.assertNotIn('I should list them first', json.dumps(second))  # but never sent back to the model
@@ -186,6 +190,18 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual(c['pending']['args']['def_id'], 'plain')  # an empty grader is no grader
         self.a.decide(cid, dict(proposal=c['pending']['id'], approve=True)); self.wait(cid)
         self.assertEqual(self.runs.evals.inspect.runs, [{'def': 'plain', 'models': [model]}])
+
+    def test_short_setups_are_completed_and_unreadable_calls_retried_with_a_reason(self):
+        m = self.model([dict(content=''), dict(calls=[('show_test_setup', dict(spec=dict(environment='bastion-admin', team_size=2, rules=['Stay off admin.internal.'])))]),
+                        dict(content='Shown.')])
+        m.replies[0]['finish'] = 'tool_calls'
+        cid = self.a.create()['id']
+        self.send(cid, m, 'Set it up'); c = self.wait(cid)
+        spec = next(e for e in c['events'] if e['kind'] == 'ui')['args']['spec']
+        self.assertIn('on-call staff', spec['goal'])  # the example goal filled in
+        self.assertEqual(spec['rules'], [dict(text='Stay off admin.internal.')])  # its own rules kept, as objects
+        self.assertEqual(spec['limits'], dict(team_size=2))
+        self.assertEqual(spec['agents'][0]['port'], m.port)  # the lead on the assistant's model
 
     def test_an_unknown_environment_is_sent_back_with_the_real_ones(self):
         m = self.model([dict(calls=[('show_test_setup', dict(spec=dict(SPEC, environment='segmented_office')))]), dict(content='Fixed.')])
