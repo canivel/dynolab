@@ -58,9 +58,15 @@ enum ResearchUpload {
     static func explain(_ status: Int, _ said: String?) -> String {
         switch status {
         case 401: return "The research token is invalid, expired or revoked. Forget it and paste a new one."
-        case 403: return said?.contains("enabled") == true
-            ? "Your account isn't enabled for uploads from Dyno yet. Ask to join the beta, or save the file and upload it on the site."
-            : (said ?? "Dyno Research refused the upload.")
+        case 403:
+            if said?.contains("enabled") == true {
+                return "Your account isn't enabled for uploads from Dyno yet. Ask to join the beta, or save the file and upload it on the site."
+            }
+            if said?.lowercased().contains("scope") == true {
+                // A token made without "Allow private draft creation" can only read, and sharing creates a draft.
+                return "This token can only read, so it can't upload. On research.dynolab.dev → Settings → Agents, create a new token with “Allow private draft creation” ticked, then click Forget here and paste the new one."
+            }
+            return said ?? "Dyno Research refused the upload."
         case 413: return "The package is larger than Dyno Research accepts (1 MB). Leave out thinking, or save the file instead."
         case 429: return said?.contains("daily") == true
             ? "You've reached today's limit of 10 drafts. Try again tomorrow, or save the file."
