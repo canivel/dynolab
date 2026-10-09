@@ -190,6 +190,19 @@ enum ViewSnapshot {
                        ("assistant-panel", { AnyView(AssistantPanel(model: model, onMinimize: {}, onPlainChat: {}).frame(width: 420)) }, CGSize(width: 420, height: 950)),
                        ("assistant-rail", { AnyView(AssistantRail(model: model, onOpen: {}).frame(height: 400)) }, CGSize(width: 46, height: 400))]
         }
+        if arguments.contains("--window") {
+            // Any tab, as the settings of the snapshot's own bundle id leave it (sub-page, selected test), optionally
+            // with an assistant conversation beside it: DYNO_TAB (a tab name), DYNO_WIDTH, DYNO_HEIGHT, DYNO_ASSISTANT_ID.
+            let env = ProcessInfo.processInfo.environment
+            let tab = MainWindow.Tab.allCases.first { $0.rawValue.lowercased() == (env["DYNO_TAB"] ?? "agents").lowercased() } ?? .agents
+            if let id = env["DYNO_ASSISTANT_ID"] {
+                model.assistant.remember = false
+                model.assistant.attach(model.researchLab, conversation: id)
+                RunLoop.main.run(until: Date().addingTimeInterval(1.5))
+            }
+            let size = CGSize(width: Double(env["DYNO_WIDTH"] ?? "") ?? 1500, height: Double(env["DYNO_HEIGHT"] ?? "") ?? 950)
+            targets = [("window-\(tab.rawValue.lowercased())", { AnyView(MainWindow(model: model, initialTab: tab)) }, size)]
+        }
         if arguments.contains("--assistant-setup"), let path = ProcessInfo.processInfo.environment["DYNO_SPEC_FILE"],
            let data = try? Data(contentsOf: URL(fileURLWithPath: path)), let spec = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             // What "show in Dyno" does with a setup the assistant proposed (run with a separate bundle id: it saves the draft).
