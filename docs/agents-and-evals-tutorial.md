@@ -1,8 +1,8 @@
 # Tutorial: agent tests and evals in Dyno Lab
 
-This tutorial walks through Dyno Lab 0.6.5 end to end: build an agent test, watch it run, then measure it properly in Evals, next to published benchmarks run with Inspect AI. Every screenshot comes from a real experiment on a Mac with two local models, written up in [Does a rule said once survive?](https://dynolab.dev/rule-said-once.html).
+This tutorial walks through Dyno Lab 0.6.6 end to end: build an agent test, watch it run, then measure it properly in Evals, next to published benchmarks run with Inspect AI. Every screenshot comes from a real experiment on a Mac with two local models, written up in [Does a rule said once survive?](https://dynolab.dev/rule-said-once.html).
 
-You need Dyno Lab 0.6.5 and at least one model running in **Models** (any OpenAI-compatible local server works; this tutorial uses Qwen3.8-27B and Qwen3-8B in MLX 4-bit).
+You need Dyno Lab 0.6.6 or later and at least one model running in **Models** (any OpenAI-compatible local server works; this tutorial uses Qwen3.8-27B and Qwen3-8B in MLX 4-bit).
 
 ## How the pieces fit
 

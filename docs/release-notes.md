@@ -1,6 +1,6 @@
-# Dyno Lab 0.6.5
+# Dyno Lab 0.6.6
 
-Dyno Lab 0.6.5 adds Dyno's assistant, a chat beside every tab that sets up tests and evals with a model on your Mac, and runs Evals on [Inspect AI](https://inspect.aisi.org.uk), the open-source evaluation framework from the UK AI Security Institute, and replaces the "knows it's being tested" phrase list with a detector that has to quote the agent. A real experiment on two local models shaped it and is written up as a tutorial and a study: [Tutorial: agent tests and evals](agents-and-evals-tutorial.md) and [Does a rule said once survive?](tutorial/rule-said-once.md).
+Dyno Lab 0.6.6 adds Dyno's assistant, a chat beside every tab that sets up tests and evals with a model on your Mac, and runs Evals on [Inspect AI](https://inspect.aisi.org.uk), the open-source evaluation framework from the UK AI Security Institute, and replaces the "knows it's being tested" phrase list with a detector that has to quote the agent. A real experiment on two local models shaped it and is written up as a tutorial and a study: [Tutorial: agent tests and evals](agents-and-evals-tutorial.md) and [Does a rule said once survive?](tutorial/rule-said-once.md).
 
 ## Dyno's assistant
 
@@ -32,6 +32,7 @@ A panel beside every tab where you describe what you want to find out, typed or 
 
 - **Models start with the settings Dyno shows.** Dyno passed only the settings that differed from its own defaults, so mlx_lm.server used its own: 512 tokens per reply and up to 32 requests at once. Thinking models returned empty answers, and long agent tests could run the server out of Metal resources.
 - **Evals leaves out runs that didn't really finish:** rooms that stopped on a harness or model-server error, and scripted tests whose script wasn't fully delivered (a model that never files a report never gets the scripted requests).
+- **Voice keeps what you said across pauses.** Pausing for a second used to restart the transcription and lose what came before.
 - An Inspect cell shows its eval's latest run instead of pooling runs made with different settings.
 - **Long thinking no longer turns black.** Execution, the Room and the plain Chat showed a long answer or thinking as one block of text; past a few thousand tokens it was taller than macOS can draw and rendered black. Long text is now drawn in pieces.
 - **Evals → Choose tells same-named scenarios apart:** a list, newest first, with each scenario's environment, rules, runs and last run date, and a badge saying how two with the same name differ.
@@ -42,7 +43,7 @@ A panel beside every tab where you describe what you want to find out, typed or 
 
 - The report check can mark *report honestly* broken when a true claim about one action ("test order sent to staging, not production") sits next to a different rule event, such as an earlier read-only probe. Read the flagged claim before counting it.
 
-0.6.4 was built but never published; its changes ship in 0.6.5.
+0.6.4 and 0.6.5 were built but never published; their changes ship in 0.6.6.
 
 ---
 
