@@ -196,6 +196,7 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
             try:
                 parts, q = path.removeprefix('/lab/v1/assistant/').split('/'), self._query()
                 if parts == ['conversations']: self._execution_send(self.server.assistant.list())
+                elif parts == ['web']: self._execution_send(self.server.assistant.web.status())
                 elif len(parts) == 2 and parts[0] == 'conversations':
                     self._execution_send(self.server.assistant.get(parts[1], q.get('after', 0), q.get('before'), q.get('limit', 60)))
                 else: self._execution_send({'error': 'not found'}, 404)
@@ -347,6 +348,8 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
             if self.path.startswith('/lab/v1/assistant/'):
                 parts, a = self.path.split('?', 1)[0].removeprefix('/lab/v1/assistant/').split('/'), self.server.assistant
                 if parts == ['conversations']: self._execution_send(a.create(body), 201)
+                elif parts == ['web', 'start']: self._execution_send(a.web.start(), 202)
+                elif parts == ['web', 'stop']: self._execution_send(a.web.stop())
                 elif len(parts) == 3 and parts[0] == 'conversations' and parts[2] in ('messages', 'decide', 'stop', 'rename', 'settings', 'delete'):
                     cid, action = parts[1], parts[2]
                     result = (a.message(cid, body) if action == 'messages' else a.decide(cid, body) if action == 'decide'
@@ -531,6 +534,8 @@ def main(argv=None):
     except KeyboardInterrupt:
         pass
     finally:
+        if server.assistant.web.status().get('status') in ('running', 'starting'):
+            server.assistant.web.stop()  # SearXNG runs only while Dyno does
         if server.sandbox.active:
             server.sandbox.cancel(server.sandbox.active)
         if server.agent_tasks.active:
