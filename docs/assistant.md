@@ -2,6 +2,10 @@
 
 The assistant is the panel on the right of every tab. Tell it what you want to find out, typed or spoken, and it turns that into tests and evals in Dyno. It plans the work, looks at what Dyno already has, fills in the screens for you to check, and asks before it runs or saves anything.
 
+![The assistant set up a test in Agents → Setup and is waiting for approval to run it on two models](https://dynolab.dev/assets/tutorial-064/21-assistant-sets-up-test.png)
+
+*From [a real test, start to finish](https://dynolab.dev/admin-api-scenario.html).*
+
 **It runs only on your Mac.**
 - It talks to a model you started in **Models**, at `127.0.0.1`. There is no cloud model and no fallback to one.
 - Voice uses macOS on-device speech recognition. If your Mac can't recognise your language on device, the mic says so and you type instead.

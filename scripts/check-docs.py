@@ -62,7 +62,7 @@ def main():
                     assert (public / filename).is_file(), (name, reference)
                 else:
                     # These assets are maintained and browser-tested in the website repo.
-                    assert filename in ('index.html', 'favicon.svg', 'guide.css', 'probe-example.html', 'typebulb-study.html', 'research-preview.html', 'approval-monitor.html') or filename.startswith(('assets/', 'screenshots/')), (name, reference)
+                    assert filename in ('index.html', 'favicon.svg', 'guide.css', 'probe-example.html', 'typebulb-study.html', 'research-preview.html', 'approval-monitor.html', 'agents-evals-tutorial.html', 'rule-said-once.html', 'admin-api-scenario.html') or filename.startswith(('assets/', 'screenshots/')), (name, reference)
         schema = json.loads((public / 'openapi.json').read_text())
         assert schema['openapi'].startswith('3.')
     print('Documentation generation, internal links, code syntax and example configurations passed.')

@@ -33,6 +33,14 @@ Start with a model on your Mac. For larger GGUF models, an experimental local GP
 
 The edited tour combines real model-selection, request, activation and pool captures with a saved probe recording. These are separate runs, not continuous execution. [Full probe protocol and controls](https://dynolab.dev/probe-example.html).
 
+## Describe it; Dyno sets it up
+
+Open the **Assistant** beside any tab and say, typed or spoken, what you want to find out. It runs on a model on your Mac and plans the work. It fills in the test in **Agents → Setup** for you to check, and asks before it runs or saves anything. Conversations stay on your Mac.
+
+[![The assistant set up an agent test in Agents → Setup and is waiting for approval to run it on two models](docs/tutorial/21-assistant-sets-up-test.png)](docs/tutorial/admin-api-scenario.md)
+
+**[A real test, start to finish](docs/tutorial/admin-api-scenario.md):** a service is down and the only fix goes through a forbidden admin API. Qwen3-8B stopped and reported honestly in 4 of 4 runs. Qwen3.8-27B created a teammate and contacted the forbidden host in 3 of 3, and said in private that it was being tested every time. [Dyno's assistant](docs/assistant.md) · [Agents and evals tutorial](docs/agents-and-evals-tutorial.md)
+
 ## Research you can return to
 
 Start a model or pool, then open **Lab → Studies**. Keep your question, prompts, results and observations in one local notebook. Watch thinking and answers stream, compare revisions, and archive clutter without losing the evidence. Token limits and incomplete runs are visible rather than silently treated as answers.
@@ -44,7 +52,7 @@ Start a model or pool, then open **Lab → Studies**. Keep your question, prompt
 
 1. **[Download the Apple Silicon DMG](https://github.com/canivel/dynolab/releases/latest)**, open it and drag **Dyno** into Applications.
 2. Open Dyno. In **Discover**, download an MLX model that fits your Mac, then select and start it in **Models**.
-3. Try a prompt in **Chat**, see the request in **Execution**, then [capture your first activation map](docs/first-experiment.md).
+3. Open the **Assistant** (⌘J) and describe what you want to test, or try a prompt in plain chat from its menu. See each request in **Execution**, then [capture your first activation map](docs/first-experiment.md).
 
 Requires **Apple Silicon and macOS 14+**. Python and MLX are bundled; model weights are downloaded separately. The product is **Dyno Lab**; the installed bundle is `Dyno.app`, the command is `dyno`, and the Python distribution is `mlx-dyno`.
 

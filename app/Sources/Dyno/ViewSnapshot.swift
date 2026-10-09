@@ -209,7 +209,7 @@ enum ViewSnapshot {
             targets = [("assistant-setup", { () -> AnyView in
                 AssistantActions.show(spec, model: model)
                 return AnyView(MainWindow(model: model, initialTab: .agents))
-            }, CGSize(width: 1500, height: 1900))]
+            }, CGSize(width: Double(ProcessInfo.processInfo.environment["DYNO_WIDTH"] ?? "") ?? 1500, height: Double(ProcessInfo.processInfo.environment["DYNO_HEIGHT"] ?? "") ?? 950))]
         }
         if arguments.contains("--agent-only") {
             targets = [("simulated-agent", { AnyView(AgentTasksView(model: model, initialID: ProcessInfo.processInfo.environment["DYNO_AGENT_ID"])) }, CGSize(width: 1300, height: 1050))]
