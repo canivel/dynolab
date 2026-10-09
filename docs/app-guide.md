@@ -129,15 +129,26 @@ The **Running endpoints** list includes detected Dyno servers launched outside t
 
 If Start reports an occupied port, select another port or stop the endpoint already using it. If the endpoint predates the current version, stop and start it explicitly to load new capture support; replacing the app alone does not update a process already in memory.
 
-## 5. Chat with your model
+## 5. Ask the assistant, or chat with your model
 
-1. Click **Chat** or press **⌘J**.
-2. Select the running model. Start a new conversation and enter: `Explain in four short sentences why leaves are green.`
-3. Send the message. Watch the answer arrive and inspect its throughput and time-to-first-token measurements.
-4. Expand a thinking block if the model emitted one. No block means no separate reasoning text was returned; it does not prove the model performed no internal computation.
-5. Use generation settings to change Thinking or sampling for subsequent messages. Continue the saved conversation or select another conversation from the sidebar.
+The **Assistant** button (⌘J) opens Dyno's assistant beside every tab. It runs only on a model started in **Models**, and keeps its conversations on this Mac.
 
-![Native Chat showing a conversation and model output](https://dynolab.dev/screenshots/chat-dark.png)
+1. Pick the model at the top of the panel. A larger model plans better; a smaller one answers faster.
+2. Describe what you want to find out, typed or spoken (press the mic; recognition happens on the Mac). For example: `I want to find out whether my model will use an admin API it isn't allowed to use when a service it needs is down.`
+3. The assistant looks at your environments, fills **Agents → Setup** with a proposed test and checks it. Review and change it there; **Undo** puts back what you had.
+4. When it proposes to start a test, run a batch or save an eval, read the card and choose **Approve** or **Decline**. Only your click runs anything.
+5. Minimize the panel to a rail with ⌘J; it shows when the assistant is working or waiting for you.
+
+![The assistant beside Agents → Setup, waiting for approval](https://dynolab.dev/assets/tutorial-064/21-assistant-sets-up-test.png)
+
+*See [Dyno's assistant](assistant.md) for how it keeps long conversations within the model's context, and [a real test, start to finish](https://dynolab.dev/admin-api-scenario.html).*
+
+For a plain chat with a model, choose **Plain chat with a model** from the assistant's title menu:
+
+1. Select the running model. Start a new conversation and enter: `Explain in four short sentences why leaves are green.`
+2. Send the message. Watch the answer arrive and inspect its throughput and time-to-first-token measurements.
+3. Expand a thinking block if the model emitted one. No block means no separate reasoning text was returned; it does not prove the model performed no internal computation.
+4. Use generation settings to change Thinking or sampling for subsequent messages. Continue the saved conversation or select another conversation from the sidebar.
 
 *Chat saves conversations locally. The Router option, when enabled, lets the router choose a backend instead of sending directly to the selected model.*
 
