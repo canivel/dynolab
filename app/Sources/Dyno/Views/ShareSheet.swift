@@ -233,6 +233,8 @@ struct ResearchTokenRow: View {
                     if ResearchToken.save(token.trimmingCharacters(in: .whitespacesAndNewlines)) { hasToken = true; token = "" }
                 }.disabled(!token.hasPrefix("dyr_"))
                 Link("Create one ↗", destination: URL(string: "https://research.dynolab.dev/settings/agents")!).font(.callout)
+                    .help("When you create it, tick “Allow private draft creation”: sharing uploads a private draft.")
+                Text("Tick “Allow private draft creation”").font(.caption).foregroundStyle(.secondary)
                 Spacer()
             }
         }

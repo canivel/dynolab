@@ -1,5 +1,6 @@
 # Next release
 
+- **Sharing explains a read-only token.** A research token made without *Allow private draft creation* can't upload, and Dyno Research refused it with a bare scope error. The Share sheet now says what to do, and the token field reminds you to tick it.
 - **Web search for the assistant (optional).** Tick **Web search** in the assistant panel to let it search the web and read public pages, through SearXNG running in Docker on this Mac. It's off by default, for each conversation. The tooltip explains what leaves the Mac (your search queries) and the risks; local and private addresses can't be read. See [Dyno's assistant](assistant.md#web-search-optional).
 
 ---
