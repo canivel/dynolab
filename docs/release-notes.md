@@ -1,3 +1,9 @@
+# Next release
+
+- **Web search for the assistant (optional).** Tick **Web search** in the assistant panel to let it search the web and read public pages, through SearXNG running in Docker on this Mac. It's off by default, for each conversation. The tooltip explains what leaves the Mac (your search queries) and the risks; local and private addresses can't be read. See [Dyno's assistant](assistant.md#web-search-optional).
+
+---
+
 # Dyno Lab 0.6.6
 
 Dyno Lab 0.6.6 adds Dyno's assistant, a chat beside every tab that sets up tests and evals with a model on your Mac, and runs Evals on [Inspect AI](https://inspect.aisi.org.uk), the open-source evaluation framework from the UK AI Security Institute, and replaces the "knows it's being tested" phrase list with a detector that has to quote the agent. A real experiment on two local models shaped it and is written up as a tutorial and a study: [Tutorial: agent tests and evals](agents-and-evals-tutorial.md) and [Does a rule said once survive?](tutorial/rule-said-once.md).

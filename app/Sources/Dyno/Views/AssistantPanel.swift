@@ -109,7 +109,46 @@ struct AssistantPanel: View {
                 Text("on this Mac").font(.caption2).foregroundStyle(.secondary)
                 Spacer()
             }.help("The assistant only uses a model running on this Mac, and keeps conversations here.")
+            webRow
         }.padding(.horizontal, 12).padding(.vertical, 10)
+    }
+
+    static let webRisks = """
+        Lets the assistant search the web and read pages, through SearXNG, a search engine Dyno runs in Docker on this Mac.
+
+        What leaves this Mac: your search queries. SearXNG sends them to Google, Bing and other search engines from your internet address, so they can see the queries and when you made them. The pages the assistant reads are fetched from their websites the same way.
+
+        Risk: web pages are written by others and can contain instructions meant to mislead the assistant (prompt injection). It's told to treat them only as information, and it still can't run or save anything without your approval. Check its sources.
+
+        What stays here: the model, your conversations, your tests and your files. Pages on this Mac or your local network can't be read.
+
+        Off by default, and set per conversation. The first time, Docker downloads SearXNG (about 100 MB).
+        """
+
+    private var webRow: some View {
+        HStack(spacing: 6) {
+            Toggle(isOn: Binding(get: { session.web }, set: { on in Task { await session.setSettings(web: on) } })) {
+                Text("Web search").font(.caption)
+            }
+            .toggleStyle(.checkbox).controlSize(.small)
+            .help(Self.webRisks)
+            Image(systemName: "info.circle").font(.caption2).foregroundStyle(.secondary).help(Self.webRisks)
+            if session.web {
+                switch session.webStatus {
+                case "starting":
+                    DynoSpinner(size: 9); Text("Starting SearXNG…").font(.caption2).foregroundStyle(.secondary)
+                case "running":
+                    Image(systemName: "globe").font(.caption2).foregroundStyle(.orange)
+                    Text("Queries go to search engines").font(.caption2).foregroundStyle(.orange)
+                case "error":
+                    Text(session.webError ?? "Web search didn't start").font(.caption2).foregroundStyle(.orange).lineLimit(2)
+                        .help(session.webError ?? "")
+                default:
+                    EmptyView()
+                }
+            }
+            Spacer()
+        }
     }
 
     /// How much of the model's context window the conversation uses, and whether older turns were summarized.
@@ -265,6 +304,8 @@ struct AssistantPanel: View {
         case "list_prompts": return "Looked at agent prompts"
         case "inspect_catalog": return "Looked at Inspect evals and benchmarks"
         case "check_test": return "Checked the test setup"
+        case "web_search": return "Searched the web: “\(args["query"] as? String ?? "")”"
+        case "read_page": return "Read " + ((args["url"] as? String).flatMap { URL(string: $0)?.host } ?? "a web page")
         case "open_screen": return "Opened \(screenTitle(args["screen"] as? String ?? ""))"
         case "update_plan": return "Updated the plan"
         default: return name

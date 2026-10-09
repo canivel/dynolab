@@ -25,6 +25,28 @@ The assistant is the panel on the right of every tab. Tell it what you want to f
 - **What it asks first:** starting a test, running an Evals batch, saving or running an Inspect eval, and saving an agent prompt. Each shows a card with what will happen. **Approve** runs it, **Decline** doesn't, and you can add a note either way. Writing a message instead of choosing counts as not approving. Only your click runs anything.
 - **Conversations** are in the title menu: new, open, rename, delete. **Plain chat with a model** opens the old full-window chat.
 
+## Web search (optional)
+
+Tick **Web search** under the model menu to let the assistant search the web and read pages in that conversation. It's off by default, for each conversation.
+
+**How it works:**
+- Dyno runs [SearXNG](https://github.com/searxng/searxng), an open-source search engine, in Docker on your Mac. It listens only on `127.0.0.1`. The first time you tick the box, Docker downloads it (about 100 MB).
+- The assistant gets two more tools: one searches the web and returns titles, links and short excerpts; the other reads the text of a public page.
+- Each search and each page read shows in the chat, for example *Searched the web: …* and *Read arxiv.org*.
+
+**What leaves your Mac:**
+- **Your search queries.** SearXNG sends them to Google, Bing and other search engines from your internet address.
+- **Requests for the pages it reads,** sent to those websites the same way.
+
+The model, your conversations, tests and files stay on your Mac.
+
+**The risks, and what Dyno does about them:**
+- **Prompt injection.** Web pages are written by other people and can contain instructions meant to mislead the assistant. Its instructions say to treat pages only as information, and it still can't run or save anything without your **Approve**.
+- **Your own Mac and network.** Only public web addresses can be read; local and private addresses are refused, including after a redirect. So a page can't steer the assistant into Dyno's own services or your local network.
+- **Search engines see your queries.** If that matters for a conversation, leave the box unticked.
+
+SearXNG stops when Dyno quits.
+
 ## The context window
 
 A model can only read so much at once. A long conversation is kept small for the model without losing anything on disk:

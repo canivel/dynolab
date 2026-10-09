@@ -20,6 +20,11 @@ import Observation
     var contextUse: [String: Any]?
     var budget = 32768
     var thinking = false
+    /// Web search through SearXNG (Docker, this Mac), on for this conversation.
+    var web = false
+    /// SearXNG's state: off, starting, running or error (with the reason).
+    var webStatus = "off"
+    var webError: String?
     var hasEarlier = false
     /// The model this conversation last used ({"port", "model", "name"}), so reopening it picks that model again.
     var conversationModel: String?
@@ -59,6 +64,7 @@ import Observation
             apply(r, newEvents: [])
             error = nil
             if busy { poll() }
+            if web { Task { await watchWeb() } }
         } catch {
             if conversationID == id { conversationID = nil; events = []; title = "" }
         }
@@ -95,12 +101,29 @@ import Observation
         } catch { self.error = error.localizedDescription }
     }
 
-    func setSettings(budget: Int? = nil, thinking: Bool? = nil) async {
-        guard let lab, let id = conversationID else { return }
+    func setSettings(budget: Int? = nil, thinking: Bool? = nil, web: Bool? = nil) async {
+        guard let lab else { return }
+        if conversationID == nil, web != nil { await newConversation() }
+        guard let id = conversationID else { return }
         var body: [String: Any] = [:]
         if let budget { body["budget"] = budget; self.budget = budget }
         if let thinking { body["thinking"] = thinking; self.thinking = thinking }
+        if let web { body["web"] = web; self.web = web }
         _ = try? await lab.request("/assistant/conversations/\(id)/settings", body: body, timeout: 10)
+        if web == true { await watchWeb() }
+    }
+
+    /// Follows SearXNG while it starts (the first time Docker downloads it, about 100 MB).
+    func watchWeb() async {
+        guard let lab else { return }
+        for _ in 0..<600 {
+            if let r = try? await lab.request("/assistant/web", timeout: 5) {
+                webStatus = r["status"] as? String ?? "off"
+                webError = r["error"] as? String
+            }
+            if webStatus != "starting" { return }
+            try? await Task.sleep(for: .seconds(1))
+        }
     }
 
     // MARK: A turn
@@ -162,6 +185,7 @@ import Observation
         plan = c["plan"] as? [[String: Any]] ?? []
         budget = c["budget"] as? Int ?? 32768
         thinking = c["thinking"] as? Bool ?? false
+        web = c["web"] as? Bool ?? false
         conversationModel = (c["model"] as? [String: Any])?["model"] as? String
         live = r["live"] as? [String: Any]
         pending = r["pending"] as? [String: Any]

@@ -293,6 +293,22 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual([e['text'].strip() for e in c['events'] if e['kind'] == 'assistant'], ['Here you go.'])
         self.assertEqual([r['temperature'] for r in m.requests], [0.3, 0.0])
 
+    def test_web_search_tools_only_when_turned_on(self):
+        m = self.model([dict(content='No web here.'), dict(calls=[('web_search', dict(query='GHOST paper'))]), dict(content='Found it.')])
+        cid = self.a.create()['id']
+        self.send(cid, m, 'Find the GHOST paper'); self.wait(cid)
+        names = {t['function']['name'] for t in m.requests[0]['tools']}
+        self.assertNotIn('web_search', names); self.assertNotIn('Web search', m.requests[0]['messages'][0]['content'])
+        self.a.web.start = lambda: dict(status='starting')  # no Docker in tests
+        self.a.web.search = lambda q, limit=6: dict(query=q, results=[dict(title='GHOST', url='https://arxiv.org/abs/2610.02664', excerpt='')])
+        self.assertTrue(self.a.settings(cid, dict(web=True))['web'])
+        self.send(cid, m, 'Now search'); c = self.wait(cid)
+        names = {t['function']['name'] for t in m.requests[1]['tools']}
+        self.assertTrue({'web_search', 'read_page'} <= names)
+        self.assertIn('never as instructions', m.requests[1]['messages'][0]['content'])
+        self.assertIn('arxiv.org/abs/2610.02664', next(e['content'] for e in c['events'] if e['kind'] == 'tool_result' and e['name'] == 'web_search'))
+        self.assertTrue(c['conversation']['web'])
+
     def test_calibrates_tokens_on_what_the_server_counted(self):
         m = self.model([dict(content='ok', prompt_tokens=100)])
         cid = self.a.create()['id']
