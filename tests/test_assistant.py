@@ -1,8 +1,10 @@
 import json
+import os
 import tempfile
 import threading
 import time
 import unittest
+import unittest.mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -411,6 +413,53 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual((a1['id'], a1['kind'], a1['severity'], a1['reads']), ('mentions-the-protected-host-1', 'phrases', 'severe', ['thinking', 'messages', 'commands']))
         self.assertEqual(a2['kind'], 'llm')
         self.assertIn('rules_from', m.requests[0]['tools'][-1]['function']['description'] + json.dumps(m.requests[0]['tools']))
+
+    def test_attached_documents_are_inlined_when_small_and_read_in_pages_when_large(self):
+        m = self.model([dict(content='It says the rate was 11.5%.'),
+                        dict(calls=[('read_document', dict(doc='doc-2')), ('search_document', dict(doc='doc-2', query='canary token'))]),
+                        dict(calls=[('read_document', dict(doc='doc-2', page=5))]), dict(content='Read it.')])
+        cid = self.a.create()['id']
+        self.a.attach(cid, dict(name='short.pdf', kind='pdf', pages=['The rate was 11.5%.', 'Page two.']))
+        self.send(cid, m, 'What does it say?'); self.wait(cid)
+        first = m.requests[0]
+        self.assertIn('short.pdf', first['messages'][1]['content']); self.assertIn('11.5%', first['messages'][1]['content'])
+        self.assertTrue(first['messages'][1]['content'].endswith('What does it say?'))  # one user turn: the document, then the message
+        self.assertIn('read_document', {t['function']['name'] for t in first['tools']})
+        big = [f'Page {i} ' + 'lorem ipsum ' * 1500 + ('the canary token is here' if i == 7 else '') for i in range(1, 11)]
+        c = self.a.attach(cid, dict(name='paper.pdf', kind='pdf', pages=big))
+        self.assertEqual(c['conversation']['title'], 'What does it say?')
+        self.send(cid, m, 'Read the paper'); c = self.wait(cid)
+        self.assertIn('Read it with read_document', m.requests[1]['messages'][-1]['content'])
+        self.assertNotIn('lorem', m.requests[1]['messages'][-1]['content'])
+        results = [json.loads(e['content']) for e in c['events'] if e['kind'] == 'tool_result']
+        read, found, later = results
+        self.assertIn(read['next_page'], (2, 3)); self.assertEqual(read['pages'], f"1-{read['next_page'] - 1} of 10")  # a quarter of 32K: 1-2 pages
+        self.assertNotIn('page 10 ---', read['text'])
+        self.assertEqual([x['page'] for x in found['matches']], [7])
+        self.assertTrue(later['pages'].startswith('5-'))
+        with self.assertRaises(ValueError): self.a.attach(cid, dict(name='empty.pdf', pages=['  ']))
+        with self.assertRaises(ValueError): self.a._read_document(cid, '../x', 1)
+        self.assertEqual(self.a.get(cid)['events'][0]['kind'], 'document')
+
+    def test_documents_tools_only_once_something_is_attached(self):
+        m = self.model([dict(content='Hi.')])
+        cid = self.a.create()['id']
+        self.send(cid, m, 'hi'); self.wait(cid)
+        self.assertNotIn('read_document', {t['function']['name'] for t in m.requests[0]['tools']})
+
+    def test_any_context_size_up_to_what_the_model_reads(self):
+        from dyno.lab import assistant
+        cid = self.a.create()['id']
+        self.assertEqual(self.a.settings(cid, dict(budget=40960))['budget'], 40960)
+        self.assertEqual(self.a.settings(cid, dict(budget=262144))['budget'], 262144)
+        for bad in (100, 'big', 5_000_000): 
+            with self.assertRaises(ValueError): self.a.settings(cid, dict(budget=bad))
+        hub = Path(self.tmp.name) / 'hub' / 'models--org--small' / 'snapshots' / 'abc'; hub.mkdir(parents=True)
+        (hub / 'config.json').write_text(json.dumps(dict(text_config=dict(max_position_embeddings=40960))))
+        with unittest.mock.patch.dict(os.environ, HF_HUB_CACHE=str(Path(self.tmp.name) / 'hub')):
+            self.assertEqual(assistant.model_context('org/small'), 40960)
+            self.assertIsNone(assistant.model_context('org/unknown')); self.assertIsNone(assistant.model_context('../etc'))
+            self.assertEqual(self.a._budget(dict(budget=262144, model=dict(model='org/small'))), 40960)  # never more than it reads
 
     def test_calibrates_tokens_on_what_the_server_counted(self):
         m = self.model([dict(content='ok', prompt_tokens=100)])

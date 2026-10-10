@@ -27,6 +27,8 @@ The assistant is the panel on the right of every tab. Tell it what you want to f
   - Paste a Compose file or environment JSON into the chat and ask the assistant to save it. It reads the text from your message, the harness checks it, and errors come back to the assistant before you see anything. You approve one card, and the environment appears in **Agents → Setup** under **Yours**.
   - It can also import a whole test from a `.dynotest.json` package, from a file in your home folder or a research.dynolab.dev link, and fill **Setup** with it.
 - **Alerts and Speaks as.** A setup the assistant proposes can include the test's own Observer alerts and who speaks the rules said once and the script messages (*Speaks as*). Both appear in **Setup** and are used in the run.
+- **Documents.** Click the paperclip, or drop files on the panel, to give the assistant PDFs, Word, RTF, OpenDocument, HTML, Markdown, plain text or code files, or images. See [Documents](#documents).
+- **Selecting text.** Drag over any message, thinking or card text to select it; ⌘C copies and ⌘A selects a whole message.
 - **Conversations** are in the title menu: new, open, rename, delete. **Plain chat with a model** opens the old full-window chat.
 
 ## Web search (optional)
@@ -51,6 +53,16 @@ The model, your conversations, tests and files stay on your Mac.
 
 SearXNG stops when Dyno quits.
 
+## Documents
+
+Click the paperclip next to the mic, or drop files anywhere on the panel.
+
+- **Read on your Mac.** Dyno reads the text on your Mac: PDFs page by page, Word, RTF, OpenDocument and HTML files, and plain text such as Markdown, CSV, JSON or code. Scanned PDF pages and images are read with macOS's on-device text recognition (OCR), and the card says how many pages were read that way, since OCR can misread words. Nothing is uploaded.
+- **Kept with the conversation.** The text is saved in the conversation's folder. A card in the chat shows the name, pages and size.
+- **How the assistant reads it.** A short document (up to about 4,000 tokens) goes to the assistant whole, with your next message. A longer one is read when needed. The assistant gets three tools: list the documents, read from a page on, and search for a passage. A read takes as many pages as fit in about a quarter of the context size; search ranks passages by how many of the words they contain. The chat shows each step, for example *Read doc-1 from page 31*.
+- **Documents are information, not instructions.** The assistant is told that instructions written inside a document don't change what it does. It still can't run or save anything without your **Approve**.
+- **Limits.** Files up to 200 MB, up to 5,000 pages and 8 million characters of text. Password-protected PDFs can't be read.
+
 ## The context window
 
 A model can only read so much at once. A long conversation is kept small for the model without losing anything on disk:
@@ -58,7 +70,8 @@ A model can only read so much at once. A long conversation is kept small for the
 - **On disk:** each conversation is an append-only log, never shortened.
 - **Sent to the model on each turn:** the instructions, the task list and your current screen, always. Then the recent turns.
 - **Left out:** the model's own thinking is never sent back. Tool results older than the last two messages become a one-line note, and the model can look again if it needs to.
-- **Summarized:** when a conversation nears its budget (32K tokens by default, adjustable from 16K to 128K in the panel's settings), the model writes a running summary of the older turns. The summary is saved in the log, and the last four turns always stay in full. A grey line in the chat marks where turns were summarized; click it to read the summary.
+- **Size:** 32K tokens by default. Click the meter at the top of the panel (or open the settings menu next to it) to choose 16K, 32K, 64K, 128K or 256K, or **Full context** with the model's own maximum, for example 40K for Qwen3-8B. Sizes the chosen model can't read are greyed out. You can choose a size before the first message. Dyno reads each model's maximum from its downloaded config, and never sends a model more than that, even if the conversation's size is bigger. A bigger size keeps more of the conversation and documents word for word, but each answer starts more slowly and uses more memory.
+- **Summarized:** when a conversation nears its size, the model writes a running summary of the older turns. The summary is saved in the log, and the last four turns always stay in full. A grey line in the chat marks where turns were summarized; click it to read the summary.
 - **Measured:** token counts are estimated from characters and corrected with the counts the model server reports. The meter at the top shows how much of the budget the conversation uses.
 - **Reopening:** a long conversation loads its last 60 messages, with **Load earlier messages** for the rest. Reopening costs the summary plus the recent turns, not the whole history.
 
@@ -73,4 +86,6 @@ The lab service at `http://127.0.0.1:8980/lab/v1`:
 | GET | `/assistant/conversations/{id}?after=&before=&limit=` | Events, the reply being written (`live`), the task list, a waiting `pending` proposal and `context` use |
 | POST | `/assistant/conversations/{id}/messages` | Send `{"text", "context", "model": {"port", "model"}}` (202). `context` is what the person sees |
 | POST | `/assistant/conversations/{id}/decide` | Answer a proposal `{"proposal", "approve", "note"}` (202) |
-| POST | `/assistant/conversations/{id}/stop` · `/rename` · `/settings` · `/delete` | Stop a turn; `{"title"}`; `{"budget", "thinking"}`; delete |
+| POST | `/assistant/conversations/{id}/stop` · `/rename` · `/settings` · `/delete` | Stop a turn; `{"title"}`; `{"budget", "thinking", "web"}` (`budget`: 8,192 to 1,048,576 tokens); delete |
+| POST | `/assistant/conversations/{id}/documents` | Attach a document's text `{"name", "kind", "pages": ["page text", ...], "note"}` (201, up to 40 MB) |
+| GET | `/assistant/model-context?model=` | The most tokens a downloaded model reads (`context`), or `null` |

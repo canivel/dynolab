@@ -26,6 +26,9 @@ import Observation
     var webStatus = "off"
     var webError: String?
     var hasEarlier = false
+    /// Files being read for the assistant ("Reading paper.pdf…"), and how many tokens the chosen model can read.
+    var attaching: String?
+    var modelContext: [String: Int] = [:]
     /// The model this conversation last used ({"port", "model", "name"}), so reopening it picks that model again.
     var conversationModel: String?
     /// For "Undo" on a setup the assistant filled in: the setup that was on screen before, by action id.
@@ -103,7 +106,7 @@ import Observation
 
     func setSettings(budget: Int? = nil, thinking: Bool? = nil, web: Bool? = nil) async {
         guard let lab else { return }
-        if conversationID == nil, web != nil { await newConversation() }
+        if conversationID == nil { await newConversation() }  // settings chosen before the first message stay with it
         guard let id = conversationID else { return }
         var body: [String: Any] = [:]
         if let budget { body["budget"] = budget; self.budget = budget }
@@ -111,6 +114,37 @@ import Observation
         if let web { body["web"] = web; self.web = web }
         _ = try? await lab.request("/assistant/conversations/\(id)/settings", body: body, timeout: 10)
         if web == true { await watchWeb() }
+    }
+
+    /// The most tokens a model can read (from its config), cached by model id; nil if Dyno can't tell.
+    func loadModelContext(_ id: String) async {
+        guard let lab, modelContext[id] == nil,
+              let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let r = try? await lab.request("/assistant/model-context?model=\(encoded)", timeout: 10) else { return }
+        modelContext[id] = r["context"] as? Int ?? 0
+    }
+
+    /// Reads each file on this Mac (PDF, Word, text, images with OCR) and attaches its text to the conversation.
+    func attach(_ urls: [URL]) async {
+        guard let lab, !urls.isEmpty, !busy else { return }
+        if conversationID == nil { await newConversation() }
+        guard let id = conversationID else { return }
+        error = nil
+        for url in urls {
+            attaching = "Reading \(url.lastPathComponent)…"
+            let access = url.startAccessingSecurityScopedResource()
+            let result = await Task.detached(priority: .userInitiated) { Result { try DocumentReader.read(url) } }.value
+            if access { url.stopAccessingSecurityScopedResource() }
+            do {
+                let doc = try result.get()
+                attaching = "Attaching \(doc.name)…"
+                let r = try await lab.request("/assistant/conversations/\(id)/documents",
+                                              body: ["name": doc.name, "kind": doc.kind, "pages": doc.pages, "note": doc.note], timeout: 120)
+                merge(r)
+            } catch { self.error = error.localizedDescription }
+        }
+        attaching = nil
+        await refreshList()
     }
 
     /// Follows SearXNG while it starts (the first time Docker downloads it, about 100 MB).

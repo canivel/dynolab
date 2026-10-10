@@ -190,6 +190,12 @@ enum ViewSnapshot {
                        ("assistant-panel", { AnyView(AssistantPanel(model: model, onMinimize: {}, onPlainChat: {}).frame(width: 420)) }, CGSize(width: 420, height: 950)),
                        ("assistant-rail", { AnyView(AssistantRail(model: model, onOpen: {}).frame(height: 400)) }, CGSize(width: 46, height: 400))]
         }
+        if arguments.contains("--context-sizes") {
+            targets = [("context-sizes", { AnyView(VStack(spacing: 20) {
+                ContextSizes(session: model.assistant, modelName: "Qwen3-8B-4bit", modelMax: 40960, choices: [16384, 32768, 40960, 65536, 131072, 262144]) {}
+                ContextSizes(session: model.assistant, modelName: "Qwen3.8-27B-MLX-4bit", modelMax: 262144, choices: [16384, 32768, 65536, 131072, 262144]) {}
+            }.background(DynoBrand.background).dynoTheme()) }, CGSize(width: 290, height: 760))]
+        }
         if arguments.contains("--assistant-switch"), let full = ProcessInfo.processInfo.environment["DYNO_ASSISTANT_ID"],
            let empty = ProcessInfo.processInfo.environment["DYNO_ASSISTANT_EMPTY"] {
             // The crash in 0.6.6: draw a conversation with a plan and messages, then switch to an empty one and draw again.
