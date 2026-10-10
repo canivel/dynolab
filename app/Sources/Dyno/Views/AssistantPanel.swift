@@ -240,21 +240,24 @@ struct AssistantPanel: View {
         switch e["kind"] as? String ?? "" {
         case "user":
             HStack { Spacer(minLength: 40)
-                Text(e["text"] as? String ?? "").font(.callout).padding(10)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(DynoBrand.accent.opacity(0.16))).copyable(e["text"] as? String ?? "")
+                SelectableText(text: e["text"] as? String ?? "", size: SelectableText.size(.callout)).padding(10)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(DynoBrand.accent.opacity(0.16)))
             }
         case "assistant": assistantRow(e)
         case "ui": uiCard(e)
         case "proposal": proposalCard(e)
         case "summary":
             DisclosureGroup {
-                Text(e["text"] as? String ?? "").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                SelectableText(text: e["text"] as? String ?? "", size: SelectableText.size(.caption1), color: .secondaryLabelColor)
             } label: {
                 Label("Earlier turns summarized to save room. The full conversation is saved.", systemImage: "rectangle.compress.vertical")
                     .font(.caption2).foregroundStyle(.secondary)
             }
         case "error":
-            Label(e["text"] as? String ?? "", systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Image(systemName: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
+                SelectableText(text: e["text"] as? String ?? "", size: SelectableText.size(.caption1), color: .systemOrange)
+            }
         default: EmptyView()  // tool results, decisions and plan updates show inside the rows above
         }
     }
@@ -273,10 +276,10 @@ struct AssistantPanel: View {
         VStack(alignment: .leading, spacing: 6) {
             if !reasoning.isEmpty {
                 DisclosureGroup {
-                    LongText(text: reasoning).font(.caption.monospaced()).foregroundStyle(.secondary)
+                    selectablePieces(reasoning, size: SelectableText.size(.caption1), mono: true, color: .secondaryLabelColor)
                 } label: { Label("Thinking", systemImage: "brain").font(.caption2).foregroundStyle(.purple) }
             }
-            if !text.isEmpty { MarkdownPreview(text: text, selectable: false).font(.callout).copyable(text) }
+            if !text.isEmpty { selectablePieces(text, markdown: true, size: SelectableText.size(.callout)) }
             ForEach(calls.indices, id: \.self) { i in
                 let c = calls[i], name = c["name"] as? String ?? ""
                 if !["show_test_setup", "start_test", "start_eval_batch", "save_inspect_eval", "run_inspect_eval", "save_prompt", "save_environment", "import_test_package"].contains(name) {
@@ -289,6 +292,17 @@ struct AssistantPanel: View {
                     }.font(.caption2)
                     .help(failed ? (r?["content"] as? String ?? "") : "")
                 }
+            }
+        }
+    }
+
+    /// Selectable text; very long text in pieces, since one view taller than the largest texture macOS draws renders black.
+    @ViewBuilder private func selectablePieces(_ text: String, markdown: Bool = false, size: CGFloat, mono: Bool = false,
+                                               color: NSColor = .labelColor) -> some View {
+        let pieces = LongText.pieces(text, size: 20_000)
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(pieces.enumerated()), id: \.offset) { _, p in
+                SelectableText(text: p, markdown: markdown, size: size, mono: mono, color: color)
             }
         }
     }
@@ -367,7 +381,7 @@ struct AssistantPanel: View {
         let waiting = session.pending?["id"] as? String == id
         card(icon: "hand.raised", tint: waiting ? .orange : .secondary) {
             Text(waiting ? "Waiting for you" : "Proposal").font(.caption.weight(.semibold)).foregroundStyle(waiting ? .orange : .secondary)
-            Text(e["summary"] as? String ?? name).font(.callout.weight(.medium)).fixedSize(horizontal: false, vertical: true)
+            SelectableText(text: e["summary"] as? String ?? name, size: SelectableText.size(.callout))
             details(name, args)
             if waiting {
                 TextField("Optional: what to change", text: $note).textFieldStyle(.roundedBorder).font(.caption)
@@ -427,7 +441,7 @@ struct AssistantPanel: View {
         let lines = detailLines(name, args)
         return VStack(alignment: .leading, spacing: 2) {
             ForEach(lines.indices, id: \.self) { i in
-                Text(lines[i].text).font(.caption).lineLimit(4).foregroundStyle(lines[i].secondary ? Color.secondary : Color.primary)
+                SelectableText(text: lines[i].text, size: SelectableText.size(.caption1), color: lines[i].secondary ? .secondaryLabelColor : .labelColor)
             }
         }
     }

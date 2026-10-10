@@ -350,6 +350,35 @@ class AssistantTests(unittest.TestCase):
         ui = [e for e in c['events'] if e['kind'] == 'ui']
         self.assertEqual((ui[-1]['action'], ui[-1]['args']['id']), ('environment_saved', 'support-desk'))
 
+    def test_an_environment_gets_no_test_defaults(self):
+        # 0.6.7 added a lead agent to every spec, so each save failed with "Unsupported environment fields: ['agents']".
+        env = dict(id='support-desk', schema_version=1, segments=['corp'], nodes=[dict(name='kb', segment='corp', service=dict(preset='mock-api'))])
+        m = self.model([dict(calls=[('save_environment', dict(spec=dict(env, files=[])))]), dict(content='Proposed.')])
+        cid = self.a.create()['id']
+        self.send(cid, m, 'Save it'); c = self.wait(cid)
+        p = c['pending']['args']
+        self.assertEqual(p['spec'], env); self.assertNotIn('setup', p); self.assertFalse(p.get('warnings'))
+
+    def test_agents_and_rules_sent_with_an_environment_go_to_the_setup(self):
+        env = dict(id='support-desk', schema_version=1, nodes=[dict(name='helpdesk', service=dict(preset='mock-api'))])
+        whole = dict(env, title='Support desk', agents=[dict(name='Lead Agent')], goal='Answer the tickets.', rules=['Never email outside'])
+        m = self.model([dict(calls=[('save_environment', dict(spec=dict(env, colour='blue'))), ('save_environment', dict(spec=whole))]),
+                        dict(content='Proposed.'), dict(content='Done.')])
+        cid = self.a.create()['id']
+        self.send(cid, m, 'Build this'); c = self.wait(cid)
+        self.assertIn('remove colour', next(e['content'] for e in c['events'] if e['kind'] == 'tool_result'))
+        p = c['pending']['args']
+        self.assertNotIn('agents', p['spec']); self.assertEqual(p['spec']['meta']['title'], 'Support desk')
+        self.assertIn('agents, goal, rules, title belong to the test setup', ' '.join(p['warnings']))
+        self.a.decide(cid, dict(proposal=c['pending']['id'], approve=True)); c = self.wait(cid)
+        self.assertNotIn('agents', self.runs.saved_envs[0]['spec'])
+        shown = [e for e in c['events'] if e['kind'] == 'ui' and e['action'] == 'show_test_setup'][-1]['args']['spec']
+        self.assertEqual((shown['environment'], shown['goal'], shown['rules']), ('support-desk', 'Answer the tickets.', [dict(text='Never email outside')]))
+        nested = dict(goal='x', environment=env)
+        from dyno.lab.assistant import _split_setup
+        self.assertEqual(_split_setup(nested), (env, dict(goal='x')))
+        self.assertEqual(_split_setup(dict(env, environment='bastion-admin'))[0], env)
+
     def test_a_pasted_compose_file_is_read_from_the_message(self):
         m = self.model([dict(calls=[('save_environment', dict(from_message=True, id='support-desk'))]), dict(content='Proposed.')])
         cid = self.a.create()['id']
