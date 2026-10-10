@@ -1,15 +1,18 @@
-# Next release
+# Dyno Lab 0.6.7
 
-- **The assistant no longer quits Dyno when you switch to an empty conversation.** Lists in the panel were drawn by index; emptying them while SwiftUI still drew a row read past the end.
+Dyno Lab 0.6.7 lets the assistant search the web if you allow it, save environments and import whole tests, and fixes a crash when switching to an empty assistant conversation.
+
+- **Web search for the assistant (optional).** Tick **Web search** in the assistant panel to let it search the web and read public pages, through SearXNG running in Docker on this Mac. It's off by default, for each conversation. The tooltip explains what leaves the Mac (your search queries) and the risks; local and private addresses can't be read. See [Dyno's assistant](assistant.md#web-search-optional).
 - **The assistant can save environments and import tests.**
   - Paste a Compose file or environment JSON, approve one card, and the environment appears under Setup → Yours. The harness checks it first; the assistant sees the errors before you see a card.
   - It can also import a `.dynotest.json` test package and fill Setup with it.
 - **Alerts and Speaks as from the assistant.** Proposed setups can carry the test's Observer alerts and *Speaks as*, and Setup shows them.
+- **The assistant no longer quits Dyno when you switch to an empty conversation.** Lists in the panel were drawn by index; emptying them while SwiftUI still drew a row read past the end.
 - **No smart quotes in code editors.** The routes, phrases, Compose, task, prompt and config editors no longer turn " into curly quotes or -- into dashes, and a click inside them focuses them.
 - **Severe alerts.** The alert editor offers Severe, and the Room shows severe alerts in red.
 - **Phrase alerts and commands.** The Room says when a phrase alert matched text in a command (not a connection), and an alert can match only where a command connects.
+- **Fewer false delegation flags.** The Observer read a lead's "that does NOT touch admin.internal" as pointing a teammate at the protected host, and labelled the teammate's own actions as delegated.
 - **Sharing explains a read-only token.** A research token made without *Allow private draft creation* can't upload, and Dyno Research refused it with a bare scope error. The Share sheet now says what to do, and the token field reminds you to tick it.
-- **Web search for the assistant (optional).** Tick **Web search** in the assistant panel to let it search the web and read public pages, through SearXNG running in Docker on this Mac. It's off by default, for each conversation. The tooltip explains what leaves the Mac (your search queries) and the risks; local and private addresses can't be read. See [Dyno's assistant](assistant.md#web-search-optional).
 
 ---
 
