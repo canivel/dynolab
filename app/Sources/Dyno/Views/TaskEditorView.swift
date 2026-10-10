@@ -219,7 +219,7 @@ struct TaskEditorView: View {
         }.padding(.bottom,6)
     }
     private func editor(_ text: Binding<String>,height: CGFloat) -> some View {
-        TextEditor(text:text).font(.system(.callout,design:.monospaced)).frame(height:height).scrollContentBackground(.hidden)
+        CodeEditor(text:text, font: CodeEditor.mono(12)).frame(height:height).scrollContentBackground(.hidden)
             .padding(4).background(RoundedRectangle(cornerRadius:6).fill(Color.primary.opacity(0.05)))
     }
     private func ownerPicker(_ owner: Binding<String>) -> some View {

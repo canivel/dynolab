@@ -284,7 +284,7 @@ struct ImportEvalSheet: View {
                 Spacer()
                 Button(working ? "Reading…" : "Preview", action: preview).disabled(text.isEmpty || working)
             }
-            TextEditor(text: $text).font(.system(size: 11, design: .monospaced)).frame(minHeight: 160)
+            CodeEditor(text: $text, font: CodeEditor.mono(11)).frame(minHeight: 160)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
             if let issue { Text(issue).font(.callout).foregroundStyle(.orange) }
             if let draft { previewCard(draft) }

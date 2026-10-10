@@ -22,7 +22,11 @@ The assistant is the panel on the right of every tab. Tell it what you want to f
   - opens screens;
   - fills **Agents → Setup** with a proposed test (the card has **Show it** and **Undo**);
   - keeps a task list above the chat.
-- **What it asks first:** starting a test, running an Evals batch, saving or running an Inspect eval, and saving an agent prompt. Each shows a card with what will happen. **Approve** runs it, **Decline** doesn't, and you can add a note either way. Writing a message instead of choosing counts as not approving. Only your click runs anything.
+- **What it asks first:** starting a test, running an Evals batch, saving or running an Inspect eval, saving an agent prompt, saving an environment, and importing a test package. Each shows a card with what will happen. **Approve** runs it, **Decline** doesn't, and you can add a note either way. Writing a message instead of choosing counts as not approving. Only your click runs anything.
+- **Environments and whole tests.**
+  - Paste a Compose file or environment JSON into the chat and ask the assistant to save it. It reads the text from your message, the harness checks it, and errors come back to the assistant before you see anything. You approve one card, and the environment appears in **Agents → Setup** under **Yours**.
+  - It can also import a whole test from a `.dynotest.json` package, from a file in your home folder or a research.dynolab.dev link, and fill **Setup** with it.
+- **Alerts and Speaks as.** A setup the assistant proposes can include the test's own Observer alerts and who speaks the rules said once and the script messages (*Speaks as*). Both appear in **Setup** and are used in the run.
 - **Conversations** are in the title menu: new, open, rename, delete. **Plain chat with a model** opens the old full-window chat.
 
 ## Web search (optional)

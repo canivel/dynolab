@@ -190,6 +190,17 @@ enum ViewSnapshot {
                        ("assistant-panel", { AnyView(AssistantPanel(model: model, onMinimize: {}, onPlainChat: {}).frame(width: 420)) }, CGSize(width: 420, height: 950)),
                        ("assistant-rail", { AnyView(AssistantRail(model: model, onOpen: {}).frame(height: 400)) }, CGSize(width: 46, height: 400))]
         }
+        if arguments.contains("--assistant-switch"), let full = ProcessInfo.processInfo.environment["DYNO_ASSISTANT_ID"],
+           let empty = ProcessInfo.processInfo.environment["DYNO_ASSISTANT_EMPTY"] {
+            // The crash in 0.6.6: draw a conversation with a plan and messages, then switch to an empty one and draw again.
+            model.assistant.remember = false
+            model.assistant.attach(model.researchLab, conversation: full)
+            RunLoop.main.run(until: Date().addingTimeInterval(1.5))
+            // Switch while the panel is on screen, as the title menu does.
+            targets = [("assistant-switch", { AnyView(AssistantPanel(model: model, onMinimize: {}, onPlainChat: {}).frame(width: 420)
+                .task { try? await Task.sleep(for: .milliseconds(700)); await model.assistant.open(empty)
+                        try? await Task.sleep(for: .milliseconds(500)); await model.assistant.newConversation() }) }, CGSize(width: 420, height: 900))]
+        }
         if arguments.contains("--window") {
             // Any tab, as the settings of the snapshot's own bundle id leave it (sub-page, selected test), optionally
             // with an assistant conversation beside it: DYNO_TAB (a tab name), DYNO_WIDTH, DYNO_HEIGHT, DYNO_ASSISTANT_ID.

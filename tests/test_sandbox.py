@@ -1061,3 +1061,12 @@ class SandboxTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class AlertNormalizeTests(unittest.TestCase):
+    def test_severe_and_command_targets_are_kept(self):
+        from dyno.lab.room_alerts import AlertLibrary
+        a = AlertLibrary.normalize(dict(name='Protected host', kind='phrases', reads=['commands'], phrases=['archive.internal'],
+                                        severity='severe', targets_only=True))
+        self.assertEqual((a['severity'], a['targets_only']), ('severe', True))
+        self.assertEqual(AlertLibrary.normalize(dict(name='x', kind='phrases', reads=['messages'], phrases=['y'], severity='critical'))['severity'], 'warning')

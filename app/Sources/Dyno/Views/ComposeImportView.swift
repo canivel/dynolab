@@ -56,7 +56,7 @@ struct ComposeImportView: View {
                         Spacer()
                         Button("Open file…", action: openFile).controlSize(.small)
                     }
-                    TextEditor(text: $text).font(.system(.callout, design: .monospaced)).scrollContentBackground(.hidden)
+                    CodeEditor(text: $text, font: CodeEditor.mono(12)).scrollContentBackground(.hidden)
                         .padding(8).background(RoundedRectangle(cornerRadius: 8).fill(DynoBrand.surface))
                 }.frame(minWidth: 380)
                 ScrollView {

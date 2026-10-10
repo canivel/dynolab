@@ -327,7 +327,7 @@ struct EnvironmentEditorView: View {
         VStack(alignment:.leading,spacing:4) { Text(title).font(.callout.bold());if let help { Text(help).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true) };content() }
     }
     private func editor(_ text: Binding<String>,height: CGFloat) -> some View {
-        TextEditor(text:text).font(.system(.callout,design:.monospaced)).frame(height:height).scrollContentBackground(.hidden).padding(4).background(RoundedRectangle(cornerRadius:6).fill(Color.primary.opacity(0.06)))
+        CodeEditor(text:text, font: CodeEditor.mono(12)).frame(height:height).scrollContentBackground(.hidden).padding(4).background(RoundedRectangle(cornerRadius:6).fill(Color.primary.opacity(0.06)))
     }
     private func remove(_ action: @escaping () -> Void) -> some View { Button(role:.destructive,action:action) { Image(systemName:"minus.circle") }.buttonStyle(.plain) }
 

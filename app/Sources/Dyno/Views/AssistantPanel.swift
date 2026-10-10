@@ -67,8 +67,9 @@ struct AssistantPanel: View {
                     Button("New conversation") { Task { await session.newConversation() } }
                     if !session.conversations.isEmpty {
                         Divider()
-                        ForEach(session.conversations.prefix(20).indices, id: \.self) { i in
-                            let c = session.conversations[i]
+                        // Rows carry their values, never an index into a list that can change under them: switching to an
+                        // empty conversation empties these lists while SwiftUI may still draw a row with an old index.
+                        ForEach(Array(session.conversations.prefix(20).enumerated()), id: \.offset) { _, c in
                             Button((c["id"] as? String == session.conversationID ? "✓ " : "") + (c["title"] as? String ?? "Conversation")) {
                                 if let id = c["id"] as? String { Task { await session.open(id) } }
                             }
@@ -170,8 +171,8 @@ struct AssistantPanel: View {
         let done = session.plan.filter { $0["status"] as? String == "done" }.count
         return DisclosureGroup(isExpanded: $showPlan) {
             VStack(alignment: .leading, spacing: 4) {
-                ForEach(session.plan.indices, id: \.self) { i in
-                    let s = session.plan[i], status = s["status"] as? String ?? "todo"
+                ForEach(Array(session.plan.enumerated()), id: \.offset) { _, s in
+                    let status = s["status"] as? String ?? "todo"
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Image(systemName: status == "done" ? "checkmark.circle.fill" : status == "doing" ? "circle.dotted.circle" : "circle")
                             .foregroundStyle(status == "done" ? .green : status == "doing" ? DynoBrand.accent : .secondary).font(.caption)
@@ -207,7 +208,7 @@ struct AssistantPanel: View {
                         Button("Load earlier messages") { Task { await session.loadEarlier() } }.buttonStyle(.link).font(.caption)
                             .frame(maxWidth: .infinity)
                     }
-                    ForEach(session.events.indices, id: \.self) { i in row(session.events[i]) }
+                    ForEach(session.events.map { Row(event: $0) }) { row($0.event) }
                     if session.busy { liveRow }
                     if let e = session.error { Text(e).font(.caption).foregroundStyle(.orange) }
                     Color.clear.frame(height: 1).id("end")
@@ -278,7 +279,7 @@ struct AssistantPanel: View {
             if !text.isEmpty { MarkdownPreview(text: text, selectable: false).font(.callout).copyable(text) }
             ForEach(calls.indices, id: \.self) { i in
                 let c = calls[i], name = c["name"] as? String ?? ""
-                if !["show_test_setup", "start_test", "start_eval_batch", "save_inspect_eval", "run_inspect_eval", "save_prompt"].contains(name) {
+                if !["show_test_setup", "start_test", "start_eval_batch", "save_inspect_eval", "run_inspect_eval", "save_prompt", "save_environment", "import_test_package"].contains(name) {
                     let r = done[c["id"] as? String ?? ""]
                     let failed = (r?["content"] as? String ?? "").hasPrefix("error")
                     HStack(spacing: 5) {
@@ -352,6 +353,9 @@ struct AssistantPanel: View {
                     }
                 }
             }
+        } else if action == "environment_saved" {
+            Label("Saved the environment \(args["id"] as? String ?? ""): it's in Agents → Setup under Yours", systemImage: "checkmark.seal")
+                .font(.caption2).foregroundStyle(.secondary)
         } else if action == "open_screen" {
             Label("Opened \(Self.screenTitle(args["screen"] as? String ?? ""))", systemImage: "arrow.up.forward.app").font(.caption2).foregroundStyle(.secondary)
         }
@@ -370,7 +374,7 @@ struct AssistantPanel: View {
                 HStack {
                     Button("Approve") { let n = note; note = ""; Task { await session.decide(approve: true, note: n) } }.buttonStyle(.dynoPrimary)
                     Button("Decline") { let n = note; note = ""; Task { await session.decide(approve: false, note: n) } }
-                    if let spec = args["spec"] as? [String: Any] { Button("Show in Dyno") { show(spec) } }
+                    if ["start_test", "start_eval_batch"].contains(name), let spec = args["spec"] as? [String: Any] { Button("Show in Dyno") { show(spec) } }
                 }.controlSize(.small)
             } else if let d = decision {
                 let approved = d["approve"] as? Bool ?? false, ok = d["ok"] as? Bool ?? true
@@ -384,9 +388,9 @@ struct AssistantPanel: View {
     }
 
     /// The lines a proposal card lists: where, what, the rules, and which models.
-    private func detailLines(_ args: [String: Any]) -> [(text: String, secondary: Bool)] {
+    private func detailLines(_ name: String, _ args: [String: Any]) -> [(text: String, secondary: Bool)] {
         var lines: [(text: String, secondary: Bool)] = []
-        if let spec = args["spec"] as? [String: Any] {
+        if name != "save_environment", let spec = args["spec"] as? [String: Any] {
             if let env = spec["environment"] as? String { lines.append(("Environment: " + env, false)) }
             if let goal = spec["goal"] as? String { lines.append(("Goal: " + goal, false)) }
             let rules = spec["rules"] as? [[String: Any]] ?? []
@@ -399,6 +403,18 @@ struct AssistantPanel: View {
                 let repeats = args["repeats"] as? Int ?? 0
                 lines.append(("Models: " + names.joined(separator: ", ") + " · \(repeats) runs each", false))
             }
+        } else if name == "save_environment", let env = args["spec"] as? [String: Any] {
+            for n in env["nodes"] as? [[String: Any]] ?? [] {
+                lines.append(("Machine: \(n["name"] as? String ?? "") on \(n["segment"] as? String ?? "")", false))
+            }
+            for g in env["gateway"] as? [[String: Any]] ?? [] {
+                lines.append(("\(g["action"] as? String ?? "") \(g["host"] as? String ?? ""):\(g["port"] as? Int ?? 0)", true))
+            }
+            for w in args["warnings"] as? [String] ?? [] { lines.append(("Note: " + w, true)) }
+        } else if name == "import_test_package", let pv = args["preview"] as? [String: Any] {
+            if let goal = pv["goal"] as? String { lines.append(("Goal: " + goal, false)) }
+            lines.append(("\(pv["rules"] as? Int ?? 0) rules · \(pv["alerts"] as? Int ?? 0) alerts · \(pv["script"] as? Int ?? 0) script messages", true))
+            lines.append(("Environment: \(pv["environment"] as? String ?? "none") · prompt: \(pv["prompt"] as? String ?? "default")", true))
         } else if let d = args["definition"] as? [String: Any] {
             let samples = (d["dataset"] as? [Any])?.count ?? 0
             let scorer = (d["scorer"] as? [String: Any])?["kind"] as? String ?? (d["library"] != nil ? "library" : "?")
@@ -408,7 +424,7 @@ struct AssistantPanel: View {
     }
 
     private func details(_ name: String, _ args: [String: Any]) -> some View {
-        let lines = detailLines(args)
+        let lines = detailLines(name, args)
         return VStack(alignment: .leading, spacing: 2) {
             ForEach(lines.indices, id: \.self) { i in
                 Text(lines[i].text).font(.caption).lineLimit(4).foregroundStyle(lines[i].secondary ? Color.secondary : Color.primary)
@@ -517,6 +533,12 @@ struct AssistantPanel: View {
     private func open(_ screen: String, id: String?) { AssistantActions.open(screen, id: id, model: model) }
 }
 
+/// One event in the transcript, identified by its sequence number so SwiftUI keeps rows straight across updates.
+private struct Row: Identifiable {
+    let event: [String: Any]
+    var id: String { "\(event["seq"] as? Int ?? -1)-\(event["kind"] as? String ?? "")" }
+}
+
 /// The assistant minimized: a thin rail that stays on screen, with its state and anything waiting for you.
 struct AssistantRail: View {
     var model: MonitorModel
@@ -555,6 +577,10 @@ struct AssistantRail: View {
                 show(spec, model: model)
             }
         case "open_screen": open(args["screen"] as? String ?? "", id: args["id"] as? String, model: model)
+        case "environment_saved":
+            UserDefaults.standard.set("yours", forKey: "roomEnvFilter")
+            model.environmentsVersion += 1
+            open("agents_setup", id: nil, model: model)
         default: break
         }
     }

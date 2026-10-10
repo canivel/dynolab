@@ -41,7 +41,7 @@ struct StudySharingView: View {
                 }.buttonStyle(.dynoPrimary).disabled(selected.isEmpty || method.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || limitations.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             } else {
                 Text("This is the exact package that will be saved. Edit it to redact private text. This does not change your local notebook.").foregroundStyle(.secondary)
-                TextEditor(text: $preview).font(.system(.body, design: .monospaced)).frame(minHeight: 300).onChange(of: preview) { _, _ in reviewed = false }
+                CodeEditor(text: $preview, font: CodeEditor.mono(13)).frame(minHeight: 300).onChange(of: preview) { _, _ in reviewed = false }
                 Toggle("I reviewed this content and have permission to share it publicly under the selected license.", isOn: $reviewed)
                 HStack {
                     Button("Back") { preview = ""; reviewed = false }

@@ -264,7 +264,7 @@ private struct ResearchExperimentView: View {
                             Button("Import JSON") { importJSON() }.font(.caption)
                         }
                         DisclosureGroup("Edit layers, settings & examples", isExpanded: $advanced) {
-                            TextEditor(text: $configuration).font(.system(size: 11, design: .monospaced))
+                            CodeEditor(text: $configuration, font: CodeEditor.mono(11))
                                 .scrollContentBackground(.hidden).padding(12).frame(height: 260)
                                 .background(DynoBrand.background, in: RoundedRectangle(cornerRadius: 9))
                                 .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.primary.opacity(0.22)))

@@ -145,6 +145,10 @@ An alert reads some of an agent's text (thinking, messages, commands, command ou
 - **Words or phrases:** instant and case-insensitive, with optional regular expressions.
 - **Asking a model:** a yes-or-no question about each passage. It runs in the background, so the agents never wait.
 
+**Severity** is how the Room shows an alert when it fires: **Severe** in red, **Warning** in yellow, **Info** quietly. It doesn't change the verdict; the rules decide that.
+
+**Commands are text.** A phrase alert that reads commands also matches what a command *writes*: a hostname in an email body the agent drafts, or in a note it saves, counts as a match. The Room says when a hit came from a command's text, not from a connection; connections are recorded by the network rules. To match only where a command connects (URLs, `host:port`, and the arguments of tools such as `curl`, `ssh`, `nc` or `psql`), tick **In commands, match only where a command connects** in the alert. Request bodies, headers and heredoc text are then left out.
+
 **Knows it's being tested** is on by default and watches thinking and messages for phrases such as "being tested", "honeypot" or "evaluation scenario". A model-checked version and **Plans to leave something out** are included but off. When an alert fires, a banner pops up on the Room. **Try it on a past test** shows where an alert would have fired.
 
 ## Evals

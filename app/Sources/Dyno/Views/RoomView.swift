@@ -22,10 +22,14 @@ struct TestAlert: Codable, Equatable, Identifiable {
     var id: String; var name: String; var kind: String; var reads: [String]
     var description: String? = nil; var severity: String? = nil
     var phrases: [String]? = nil; var regex: Bool? = nil; var question: String? = nil
+    /// Phrase alerts on commands: match only where a command connects (URLs, hosts), not text it writes.
+    var targets_only: Bool? = nil
+    var threshold: Int? = nil
     var json: [String: Any] {
         var d: [String: Any] = ["id": id, "name": name, "kind": kind, "reads": reads]
         if let description { d["description"] = description }; if let severity { d["severity"] = severity }
         if let phrases { d["phrases"] = phrases }; if let regex { d["regex"] = regex }; if let question { d["question"] = question }
+        if let targets_only { d["targets_only"] = targets_only }; if let threshold { d["threshold"] = threshold }
         return d
     }
 }
@@ -423,6 +427,8 @@ struct TestSetupView: View {
         .onAppear { openIncoming(model.incomingTestPackage) }
         // A test the assistant proposed: it replaces the setup on screen (the assistant's card can undo it).
         .onChange(of: model.incomingDraft) { _, d in takeAssistantDraft(d) }
+        // An environment the assistant saved: list it, and show Yours, where it is.
+        .onChange(of: model.environmentsVersion) { _, _ in Task { await loadEnvironments(); envFilter = "yours"; envQuery = ""; mapVersion += 1 } }
         .onAppear { takeAssistantDraft(model.incomingDraft) }
         .sheet(isPresented: $importingTest, onDismiss: { incomingLink = "" }) {
             TestPackageImportView(lab: model.researchLab, harnessDir: harnessDir, initialLink: incomingLink) { setup in
@@ -828,7 +834,7 @@ struct TestSetupView: View {
                     Spacer()
                     Button { draft.testAlerts?.removeAll { $0.id == a.id }; if draft.testAlerts?.isEmpty == true { draft.testAlerts = nil } } label: { Image(systemName: "xmark") }
                         .buttonStyle(.borderless).foregroundStyle(.secondary).help("Remove this test's alert")
-                }.help("This test's own alert, from a shared test. It runs only in this test.")
+                }.help("This test's own alert, from the assistant or a shared test. It runs only in this test.")
             }
             let on = alertList.filter { $0["enabled"] as? Bool == true }
             if on.isEmpty { Text("None on.").font(.caption).foregroundStyle(.secondary) }
@@ -1566,22 +1572,31 @@ private struct ObserverCard: View {
             .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.06)))
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
         case "alert":
-            let warning = event["severity"] as? String != "info"
+            let severity = event["severity"] as? String ?? "warning"
+            let warning = severity != "info"
+            let tint: Color = severity == "severe" ? .red : .yellow
+            let how = event["how"] as? String
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 6) {
-                    Image(systemName: "bell.badge.fill").foregroundStyle(.yellow)
-                    Text(event["name"] as? String ?? "Alert").font(.caption.bold()).foregroundStyle(.yellow)
+                    Image(systemName: "bell.badge.fill").foregroundStyle(tint)
+                    Text(event["name"] as? String ?? "Alert").font(.caption.bold()).foregroundStyle(tint)
+                    if severity == "severe" { Text("severe").font(.caption2.bold()).foregroundStyle(.red) }
                     Text("· \(roomTime(event["ts"]))").font(.caption2).foregroundStyle(.secondary)
                     Spacer()
                     badge(event["agent_id"], event["agent"])
                 }
                 Text("“\(event["quote"] as? String ?? "")”").font(.callout).fixedSize(horizontal: false, vertical: true).copyable(event["quote"] as? String ?? "")
-                Text("in its \(source) · \({ (h: String?) in h == "model" ? "a model check" : h == "phrase" || h == nil ? "phrase match" : h! }(event["how"] as? String))"
+                Text("in its \(source) · \({ (h: String?) in h == "model" ? "a model check" : h == "phrase" || h == nil ? "phrase match" : h == "phrase · command target" ? "where a command connects" : h! }(how))"
                      + ((event["confidence"] as? Double).map { " · \(Int($0 * 100))% sure" } ?? ""))
                     .font(.caption2).foregroundStyle(.secondary)
+                // A phrase found in a command's text (a note or an email it wrote) is not a connection: say so.
+                if event["source"] as? String == "commands" && (how == "phrase" || how == nil) {
+                    Text("Matched text in the command, not a connection. Network rules record connections; turn on “match only where a command connects” in the alert to ignore text it writes.")
+                        .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
             }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color.yellow.opacity(warning ? 0.12 : 0.06)))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.yellow.opacity(0.6)))
+            .background(RoundedRectangle(cornerRadius: 10).fill(tint.opacity(warning ? 0.12 : 0.06)))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(tint.opacity(0.6)))
             .overlay(alignment: .leading) { agentStripe }
         case "agent_created":
             VStack(alignment: .leading, spacing: 3) {

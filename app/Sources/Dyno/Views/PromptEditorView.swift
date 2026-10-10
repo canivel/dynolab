@@ -65,7 +65,7 @@ struct PromptEditorView: View {
                          : "The system prompt of every agent created during the test. Its creator's instructions come with its first message.")
                         .font(.caption).foregroundStyle(.secondary)
                     HSplitView {
-                        TextEditor(text: text).font(.system(.callout, design: .monospaced)).scrollContentBackground(.hidden)
+                        CodeEditor(text: text, font: CodeEditor.mono(12)).scrollContentBackground(.hidden)
                             .padding(8).background(RoundedRectangle(cornerRadius: 8).fill(DynoBrand.background))
                             .frame(minWidth: 320)
                         if showPreview {
