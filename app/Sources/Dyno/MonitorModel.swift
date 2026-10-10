@@ -316,6 +316,36 @@ final class MonitorModel {
 
     // MARK: - Serving models
 
+    /// Folders Dyno scans for models: where it may delete them.
+    var modelRoots: [String] {
+        modelFolders + [FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".mlx-dyno/gguf").path] + ModelLibrary.defaultSearchPaths()
+    }
+
+    /// What deleting a model would move to the Trash and how much space it frees, or why it can't be deleted.
+    func removalPlan(path: String, name: String) -> (targets: [URL], bytes: Int64, problem: String?) {
+        do {
+            let targets = try ModelRemoval.targets(for: path, roots: modelRoots)
+            let serving = snapshot.models.first { served in
+                let id = served.identifier
+                return !id.isEmpty && (id == name || id == path || targets.contains { id.hasPrefix($0.path) || $0.path.hasPrefix(id + "/") || $0.path == id })
+            }
+            if let serving {
+                return (targets, 0, "\(serving.name) is running on port \(serving.port.map(String.init) ?? "?"). Stop it in Models first.")
+            }
+            return (targets, targets.reduce(0) { $0 + ModelRemoval.size(of: $1) }, nil)
+        } catch { return ([], 0, error.localizedDescription) }
+    }
+
+    /// Moves a downloaded model to the Trash and rescans. Returns an error message, or nil.
+    func deleteModel(path: String, name: String) -> String? {
+        let plan = removalPlan(path: path, name: name)
+        if let problem = plan.problem { return problem }
+        do { try ModelRemoval.trash(plan.targets) } catch { return "Couldn't move \(name) to the Trash: \(error.localizedDescription)" }
+        if selectedModel?.path == path { selectedModel = nil }
+        rescanModels()
+        return nil
+    }
+
     func rescanModels() {
         let folders = modelFolders
         Task.detached(priority: .utility) {

@@ -274,6 +274,7 @@ private struct RunningModelsBar: View {
 
 private struct ModelSidebar: View {
     var model: MonitorModel
+    @State private var deleting: ModelToDelete?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -318,6 +319,10 @@ private struct ModelSidebar: View {
                             )
                             .contentShape(Rectangle())
                             .onTapGesture { model.selectedModel = candidate }
+                            .contextMenu {
+                                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: candidate.path)]) }
+                                Button("Move to Trash…", role: .destructive) { deleting = ModelToDelete(path: candidate.path, name: candidate.name) }
+                            }
                         }
                     }
                     .padding(.horizontal, 8)
@@ -336,6 +341,7 @@ private struct ModelSidebar: View {
             .foregroundStyle(.secondary)
             .padding(14)
         }
+        .confirmsModelDeletion(model, item: $deleting)
     }
 
     private func chooseFolder() {

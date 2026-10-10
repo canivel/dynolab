@@ -72,7 +72,11 @@ For your first session, follow **Discover → Models → Chat → Lab**. Lab ope
 
 ## 3. Discover and download a model
 
-**Discover** has an **MLX / GGUF** format filter and **Search Hub / Downloaded** views. Search results identify locally downloaded models. Select **Downloaded** to filter your local library by name and format. **Use in Models** selects MLX weights in the serving controls; **Use in Pools** selects a GGUF and opens the pool configuration. Neither action starts inference. For GGUF search results, **Choose GGUF file** opens a quantization picker so you download the intended file rather than every variant in the repository. Split GGUF downloads remain unsupported in this preview UI.
+**Discover** has an **MLX / GGUF** format filter and **Search Hub / Downloaded** views. Search results identify locally downloaded models. Select **Downloaded** to filter your local library by name and format. **Use in Models** selects MLX weights in the serving controls; **Use in Pools** selects a GGUF and opens the pool configuration. Neither action starts inference.
+
+**Deleting a model.** The trash button on a row in **Downloaded** (also in **Downloaded GGUF models**, and **Move to Trash…** when you right-click a model in the Models sidebar) moves the model to the Trash after you confirm. The dialog shows the folder and how much space it frees. For a model in the Hugging Face cache, the whole cache entry goes, weights included, so the space really comes back; one GGUF file of several goes with only its own weights. A model that is running can't be deleted: stop it in Models first. Dyno only deletes inside the folders it scans for models. The space comes back when you empty the Trash; until then you can put the model back.
+
+For GGUF search results, **Choose GGUF file** opens a quantization picker so you download the intended file rather than every variant in the repository. Split GGUF downloads remain unsupported in this preview UI.
 
 Start with a small MLX model so you can complete the workflow quickly. The examples below use `mlx-community/Qwen1.5-0.5B-Chat-4bit`; it is a demonstration model, not a recommendation for safety-critical work.
 

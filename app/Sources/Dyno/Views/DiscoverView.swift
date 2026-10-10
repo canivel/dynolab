@@ -8,6 +8,7 @@ struct DiscoverView: View {
     @State var library = false
     @AppStorage("dismissedDownloadNotices") private var dismissedDownloadNotices = ""
     @State private var selectedRepository: String?
+    @State private var deleting: ModelToDelete?
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
@@ -161,25 +162,31 @@ struct DiscoverView: View {
             LazyVStack(alignment: .leading, spacing: 12) {
                 if model.catalogFormat == .mlx {
                     ForEach(model.localModels.filter { matches($0.name) }) { item in
-                        libraryRow(item.shortName, detail: "MLX · " + Format.bytes(item.sizeBytes), action: "Use in Models") { useMLX(item.name) }
+                        libraryRow(item.shortName, detail: "MLX · " + Format.bytes(item.sizeBytes), action: "Use in Models",
+                                   delete: { deleting = ModelToDelete(path: item.path, name: item.name) }) { useMLX(item.name) }
                     }
                 } else {
                     ForEach(model.ggufModels.filter { matches($0.name + " " + ($0.repository ?? "")) }) { item in
-                        libraryRow(item.name, detail: "GGUF · " + Format.bytes(item.size), action: "Use in Pools") { useGGUF(item.path) }
+                        libraryRow(item.name, detail: "GGUF · " + Format.bytes(item.size), action: "Use in Pools",
+                                   delete: { deleting = ModelToDelete(path: item.path, name: item.name) }) { useGGUF(item.path) }
                     }
                 }
                 Text("Only complete local models are listed. Selecting a model does not start it or replace a running endpoint.").font(.caption).foregroundStyle(.secondary)
                 if downloadedCount == 0 { Text("No downloaded \(model.catalogFormat.rawValue) models. Switch to Search Hub to download one.").foregroundStyle(.secondary) }
             }.padding(16)
         }
+        .confirmsModelDeletion(model, item: $deleting)
     }
-    private func libraryRow(_ name: String, detail: String, action: String, perform: @escaping () -> Void) -> some View {
+    private func libraryRow(_ name: String, detail: String, action: String, delete: @escaping () -> Void, perform: @escaping () -> Void) -> some View {
         HStack {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
             VStack(alignment: .leading, spacing: 4) { Text(name).font(.headline); Text(detail).font(.caption).foregroundStyle(.secondary) }
             Spacer()
             Button(action, action: perform).buttonStyle(.dynoPrimary)
-        }.padding(14).background(.quaternary.opacity(0.3)).clipShape(RoundedRectangle(cornerRadius: 10))
+            Button(action: delete) { Image(systemName: "trash") }.buttonStyle(.borderless).foregroundStyle(.secondary)
+                .help("Delete this model (moves it to the Trash)")
+        }.contextMenu { Button("Move to Trash…", role: .destructive, action: delete) }
+        .padding(14).background(.quaternary.opacity(0.3)).clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
 
