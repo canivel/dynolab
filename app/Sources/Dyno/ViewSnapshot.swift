@@ -102,6 +102,12 @@ enum ViewSnapshot {
              CGSize(width: 320, height: 240)),
         ]
 
+        if arguments.contains("--downloaded-mlx") {
+            model.catalogFormat = .mlx
+            model.rescanModels()
+            RunLoop.main.run(until: Date().addingTimeInterval(4))
+            targets = [("downloaded-mlx", { AnyView(DiscoverView(model: model, library: true).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1000, height: 560))]
+        }
         if arguments.contains("--discover-only") {
             model.catalogFormat = .gguf
             model.searchCatalog("Qwen3-0.6B")

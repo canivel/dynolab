@@ -10,6 +10,7 @@ struct GGUFModelsView: View {
     @State private var selected = ""
     @State private var loading = false
     @State private var error = ""
+    @State private var deleting: ModelToDelete?
 
     init(model: MonitorModel, repository: String = "Qwen/Qwen3-0.6B-GGUF", useInPool: @escaping (String) -> Void) {
         self.model = model; self.useInPool = useInPool
@@ -73,11 +74,14 @@ struct GGUFModelsView: View {
                         }
                         Spacer()
                         Button("Use in Pools") { useInPool(item.path) }
+                        Button { deleting = ModelToDelete(path: item.path, name: item.name) } label: { Image(systemName: "trash") }
+                            .buttonStyle(.borderless).foregroundStyle(.secondary).help("Delete this model (moves it to the Trash)")
                     }.padding(12).background(.quaternary.opacity(0.4)).clipShape(RoundedRectangle(cornerRadius: 8))
                 }
             }.padding(20)
         }
         .task { if files.isEmpty { fetch() } }
+        .confirmsModelDeletion(model, item: $deleting)
     }
     private func fetch() {
         guard !loading else { return }
