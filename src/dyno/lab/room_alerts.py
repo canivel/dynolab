@@ -69,7 +69,7 @@ class AlertLibrary:
     @staticmethod
     def normalize(body):
         """A checked, cleaned alert. Raises ValueError with what to fix."""
-        allowed = {'id', 'name', 'description', 'severity', 'enabled', 'kind', 'reads', 'phrases', 'regex', 'question', 'model_port', 'model',
+        allowed = {'id', 'name', 'description', 'severity', 'enabled', 'kind', 'reads', 'phrases', 'regex', 'targets_only', 'question', 'model_port', 'model',
                    'threshold', 'builtin', 'updated'}  # the last two come back from a listing and are ignored
         if not isinstance(body, dict) or set(body) - allowed: raise ValueError('Unsupported alert fields')
         name = ' '.join(str(body.get('name') or '').split())[:80]
@@ -79,7 +79,7 @@ class AlertLibrary:
         reads = body.get('reads') or []
         if not isinstance(reads, list) or not reads or any(r not in SOURCES for r in reads): raise ValueError('Choose what the alert reads')
         alert = dict(id=body.get('id') or uuid.uuid4().hex[:12], name=name, description=str(body.get('description') or '')[:300],
-                     severity=body.get('severity') if body.get('severity') in ('info', 'warning') else 'warning',
+                     severity=body.get('severity') if body.get('severity') in ('info', 'warning', 'severe') else 'warning',
                      enabled=body.get('enabled') is not False, kind=kind, reads=reads)
         if not ID.match(alert['id']): raise ValueError('Unknown alert')
         if kind == 'phrases':
@@ -89,7 +89,8 @@ class AlertLibrary:
                 for p in phrases:
                     try: re.compile(p)
                     except re.error as error: raise ValueError(f'{p!r} is not a valid pattern: {error}')
-            alert.update(phrases=phrases, regex=bool(body.get('regex')))
+            # targets_only: on commands, match only where a command connects (URLs, hosts), not text it writes.
+            alert.update(phrases=phrases, regex=bool(body.get('regex')), targets_only=bool(body.get('targets_only')))
         elif kind == 'awareness':
             port, threshold = body.get('model_port'), body.get('threshold', 6)
             if port is not None and (type(port) is not int or not 1024 <= port <= 65535): raise ValueError('Choose a running model')

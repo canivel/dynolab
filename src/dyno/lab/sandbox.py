@@ -842,6 +842,24 @@ class SandboxRuns:
         home = Path(h.paths().get('user_environments') or h.home / 'environments'); home.mkdir(parents=True, exist_ok=True)
         return home
 
+    def check_environment(self, body):
+        """What saving an environment would do, without saving: the harness's check, and whether the id is taken."""
+        if not isinstance(body, dict) or set(body) - {'harness_dir', 'spec', 'files'}: raise ValueError('Use spec and files')
+        h = self.harness(body.get('harness_dir'))
+        spec, files = body.get('spec'), body.get('files') or {}
+        if not isinstance(spec, dict) or not isinstance(files, dict): raise ValueError('spec and files must be objects')
+        env_id = spec.get('id', '')
+        if not self.ENV_ID.match(env_id): raise ValueError('Environment id: lowercase letters, digits and -, starting with a letter')
+        allowed = {'id', 'schema_version', 'meta', 'images', 'segments', 'nodes', 'gateway', 'agent'}
+        if set(spec) - allowed: raise ValueError(f'Unsupported environment fields: {sorted(set(spec) - allowed)}')
+        try: _, editable = self._template(h, env_id); exists = True
+        except ValueError: exists, editable = False, True
+        home = Path(h.paths().get('user_environments') or h.home / 'environments'); home.mkdir(parents=True, exist_ok=True)
+        import shutil
+        check_root, _, result = self._stage_environment(h, home, env_id, spec, files)
+        shutil.rmtree(check_root, ignore_errors=True)
+        return dict(result, exists=exists, builtin=exists and not editable)
+
     def _stage_environment(self, h, home, env_id, spec, files):
         """Write a template to a scratch folder and let the harness check it."""
         import shutil

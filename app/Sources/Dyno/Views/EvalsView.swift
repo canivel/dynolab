@@ -275,19 +275,19 @@ struct EvalsView: View {
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
                 GridRow {
                     Text("Scenario").font(.caption.bold()).foregroundStyle(.secondary).frame(width: 260, alignment: .leading)
-                    ForEach(configs.indices, id: \.self) { i in
-                        Text(configs[i]["label"] as? String ?? "").font(.caption.bold()).foregroundStyle(.secondary).frame(width: 170, alignment: .leading).lineLimit(2)
+                    ForEach(Array(configs.enumerated()), id: \.offset) { _, config in
+                        Text(config["label"] as? String ?? "").font(.caption.bold()).foregroundStyle(.secondary).frame(width: 170, alignment: .leading).lineLimit(2)
                     }
                 }
-                ForEach(scenarios.indices, id: \.self) { i in
-                    let s = scenarios[i], sk = s["key"] as? String ?? ""
+                ForEach(Array(scenarios.enumerated()), id: \.offset) { _, s in
+                    let sk = s["key"] as? String ?? ""
                     GridRow {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(s["title"] as? String ?? "").font(.callout.weight(.semibold)).lineLimit(2)
                             Text("\(s["environment"] as? String ?? "plain machine") · \((s["rules"] as? [Any])?.count ?? 0) rules").font(.caption).foregroundStyle(.secondary)
                         }.frame(width: 260, alignment: .leading)
-                        ForEach(configs.indices, id: \.self) { j in
-                            let ck = configs[j]["key"] as? String ?? ""
+                        ForEach(Array(configs.enumerated()), id: \.offset) { _, config in
+                            let ck = config["key"] as? String ?? ""
                             if let c = cells.first(where: { $0["scenario"] as? String == sk && $0["config"] as? String == ck }) {
                                 Button { select(sk, ck) } label: { RateCell(metrics: c, selected: selected?.scenario == sk && selected?.config == ck) }.buttonStyle(.plain)
                             } else {
@@ -362,8 +362,7 @@ struct EvalsView: View {
                 scenarioRow(key: "setup", title: "The test on the Setup screen now", hint: nil,
                             detail: "\(setupDraft.environment ?? "plain machine") · \(setupDraft.rules.count) rule\(setupDraft.rules.count == 1 ? "" : "s") · not run in Evals yet unless it matches one below",
                             goal: setupDraft.goal, aka: [])
-                ForEach(scenarios.indices, id: \.self) { i in
-                    let sc = scenarios[i]
+                ForEach(Array(scenarios.enumerated()), id: \.offset) { _, sc in
                     let rules = sc["rules"] as? [[String: Any]] ?? []
                     let runs = sc["runs"] as? Int ?? 0
                     let title = sc["title"] as? String ?? ""
@@ -449,8 +448,9 @@ struct EvalsView: View {
 
     private var batchList: some View {
         EvalCard(title: "Batches") {
-            ForEach(batches.prefix(12).indices, id: \.self) { i in
-                let b = batches[i], done = (b["rooms"] as? [Any])?.count ?? 0, total = b["total"] as? Int ?? 0
+            let shown = Array(batches.prefix(12))
+            ForEach(Array(shown.enumerated()), id: \.offset) { i, b in
+                let done = (b["rooms"] as? [Any])?.count ?? 0, total = b["total"] as? Int ?? 0
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(b["title"] as? String ?? "Batch").font(.callout.weight(.semibold)).lineLimit(1)
@@ -467,7 +467,7 @@ struct EvalsView: View {
                         Button("Cancel") { Task { _ = try? await lab.request("/sandbox/evals/batches/\(id)/cancel", body: [:], timeout: 60); await refresh() } }
                     }
                 }
-                if i < min(batches.count, 12) - 1 { Divider() }
+                if i < shown.count - 1 { Divider() }
             }
         }
     }

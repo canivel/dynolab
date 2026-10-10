@@ -77,6 +77,8 @@ final class MonitorModel {
     var currentTab: MainWindow.Tab = .agents
     /// A test the assistant proposed, to load into Agents → Setup (the view takes it and clears it).
     var incomingDraft: RoomDraft?
+    /// Bumped when the assistant saves an environment, so Agents → Setup lists it.
+    var environmentsVersion = 0
     var generationOptions = GenerationOptions.default {
         didSet { persistGenerationOptions() }
     }

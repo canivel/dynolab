@@ -37,7 +37,7 @@ struct PoolsView: View {
                     Text("GGUF is the model file format used by GPU pools. Your selection is saved automatically.").font(.caption).foregroundStyle(.secondary)
                     if !session.selectionNotice.isEmpty { Text(session.selectionNotice).font(.callout).foregroundStyle(Color.green) }
                     DisclosureGroup("Advanced settings") {
-                        TextEditor(text: $session.config).font(.system(.caption, design: .monospaced))
+                        CodeEditor(text: $session.config, font: CodeEditor.mono(10))
                             .frame(minHeight: 250).disabled(session.running || session.nearby.busy)
                         Button("Apply settings") { session.save() }.disabled(session.running)
                     }

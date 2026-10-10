@@ -27,6 +27,8 @@ struct AlertsManagerView: View {
         var reads: Set<String> = ["thinking"]
         var phrases = ""
         var regex = false
+        /// On commands, match only where a command connects (URLs, hosts), not text it writes (an email body, a note).
+        var targetsOnly = false
         var question = ""
         var modelPort: Int? = nil
         var threshold = 6
@@ -36,7 +38,7 @@ struct AlertsManagerView: View {
             id = a["id"] as? String; name = a["name"] as? String ?? ""; description = a["description"] as? String ?? ""
             severity = a["severity"] as? String ?? "warning"; enabled = a["enabled"] as? Bool ?? true; kind = a["kind"] as? String ?? "phrases"
             reads = Set(a["reads"] as? [String] ?? []); phrases = (a["phrases"] as? [String] ?? []).joined(separator: "\n")
-            regex = a["regex"] as? Bool ?? false; question = a["question"] as? String ?? ""; modelPort = a["model_port"] as? Int
+            regex = a["regex"] as? Bool ?? false; targetsOnly = a["targets_only"] as? Bool ?? false; question = a["question"] as? String ?? ""; modelPort = a["model_port"] as? Int
             threshold = a["threshold"] as? Int ?? 6
         }
         func body(servers: [(port: Int, label: String, model: String)]) -> [String: Any] {
@@ -46,6 +48,7 @@ struct AlertsManagerView: View {
             if kind == "phrases" {
                 b["phrases"] = phrases.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
                 b["regex"] = regex
+                b["targets_only"] = targetsOnly && reads.contains("commands")
             } else if kind == "awareness" {
                 b["threshold"] = threshold
                 b["model_port"] = modelPort.map { $0 as Any } ?? NSNull()
@@ -123,7 +126,8 @@ struct AlertsManagerView: View {
                     TextField("What it means (optional)", text: $draft.description).textFieldStyle(.roundedBorder)
                     HStack(spacing: 16) {
                         Toggle("On for new tests", isOn: $draft.enabled)
-                        Picker("Severity", selection: $draft.severity) { Text("Warning").tag("warning"); Text("Info").tag("info") }.frame(width: 200)
+                        Picker("Severity", selection: $draft.severity) { Text("Severe").tag("severe"); Text("Warning").tag("warning"); Text("Info").tag("info") }.frame(width: 200)
+                            .help("How the Room shows it when it fires: severe in red, warning in yellow, info quietly. It doesn't change the verdict; rules decide that.")
                     }
                     Text("Reads").font(.callout.weight(.semibold))
                     HStack(spacing: 14) {
@@ -139,9 +143,14 @@ struct AlertsManagerView: View {
                     if draft.kind == "phrases" {
                         Text("One per line. Fires when any of them appears, ignoring case. A phrase matches whole words only, so “eval” doesn't match “evaluate”.")
                             .font(.caption).foregroundStyle(.secondary)
-                        TextEditor(text: $draft.phrases).font(.system(.callout, design: .monospaced)).frame(minHeight: 150)
+                        CodeEditor(text: $draft.phrases, font: CodeEditor.mono(12)).frame(minHeight: 150)
                             .scrollContentBackground(.hidden).padding(6).background(RoundedRectangle(cornerRadius: 8).fill(DynoBrand.background))
                         Toggle("Lines are regular expressions", isOn: $draft.regex).toggleStyle(.checkbox).font(.caption)
+                        if draft.reads.contains("commands") {
+                            Toggle("In commands, match only where a command connects (URLs, hosts), not text it writes", isOn: $draft.targetsOnly)
+                                .toggleStyle(.checkbox).font(.caption)
+                                .help("Without this, a phrase in a note or an email the agent writes counts too, even when nothing connects. Connections themselves are recorded by the network rules.")
+                        }
                     } else if draft.kind == "awareness" {
                         AwarenessDetectorHelp()
                         Picker("Judge model", selection: $draft.modelPort) {
