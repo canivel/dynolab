@@ -197,6 +197,9 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
                 parts, q = path.removeprefix('/lab/v1/assistant/').split('/'), self._query()
                 if parts == ['conversations']: self._execution_send(self.server.assistant.list())
                 elif parts == ['web']: self._execution_send(self.server.assistant.web.status())
+                elif parts == ['model-context']:
+                    from .assistant import model_context
+                    self._execution_send(dict(model=q.get('model'), context=model_context(q.get('model'))))
                 elif len(parts) == 2 and parts[0] == 'conversations':
                     self._execution_send(self.server.assistant.get(parts[1], q.get('after', 0), q.get('before'), q.get('limit', 60)))
                 else: self._execution_send({'error': 'not found'}, 404)
@@ -340,7 +343,8 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get('Content-Length', '0'))
-            maximum = 4_000_000 if self.path == '/lab/v1/studies/import' else 500_000
+            maximum = (4_000_000 if self.path == '/lab/v1/studies/import'
+                       else 40_000_000 if self.path.startswith('/lab/v1/assistant/') and self.path.endswith('/documents') else 500_000)
             if not 0 < length <= maximum:
                 raise ValueError(f'Request must be 1–{maximum} bytes')
             body = json.loads(self.rfile.read(length))
@@ -350,12 +354,13 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
                 if parts == ['conversations']: self._execution_send(a.create(body), 201)
                 elif parts == ['web', 'start']: self._execution_send(a.web.start(), 202)
                 elif parts == ['web', 'stop']: self._execution_send(a.web.stop())
-                elif len(parts) == 3 and parts[0] == 'conversations' and parts[2] in ('messages', 'decide', 'stop', 'rename', 'settings', 'delete'):
+                elif len(parts) == 3 and parts[0] == 'conversations' and parts[2] in ('messages', 'decide', 'stop', 'rename', 'settings', 'delete', 'documents'):
                     cid, action = parts[1], parts[2]
                     result = (a.message(cid, body) if action == 'messages' else a.decide(cid, body) if action == 'decide'
                               else a.stop(cid) if action == 'stop' else a.rename(cid, body) if action == 'rename'
-                              else a.settings(cid, body) if action == 'settings' else a.delete(cid))
-                    self._execution_send(result, 202 if action in ('messages', 'decide') else 200)
+                              else a.settings(cid, body) if action == 'settings' else a.attach(cid, body) if action == 'documents'
+                              else a.delete(cid))
+                    self._execution_send(result, 202 if action in ('messages', 'decide') else 201 if action == 'documents' else 200)
                 else: self._execution_send({'error': 'not found'}, 404)
             elif self.path == '/lab/v1/sandbox/runs':
                 self._execution_send(self.server.sandbox.create(body), 201)

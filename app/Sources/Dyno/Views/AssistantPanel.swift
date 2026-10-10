@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Dyno's assistant, beside every tab. Describe what you want to find out, by text or voice; the assistant (a
@@ -17,6 +18,8 @@ struct AssistantPanel: View {
     @State private var renaming = false
     @State private var newTitle = ""
     @State private var note = ""
+    @State private var dropping = false
+    @State private var showSizes = false
     @FocusState private var focused: Bool
 
     private var session: AssistantSession { model.assistant }
@@ -44,6 +47,21 @@ struct AssistantPanel: View {
         }
         .background(DynoBrand.background)
         .onAppear { session.attach(model.researchLab) }
+        .task(id: chosen?.model) { if let m = chosen?.model { await session.loadModelContext(m) } }
+        .dropDestination(for: URL.self) { urls, _ in
+            let files = urls.filter(\.isFileURL)
+            guard chosen != nil, !files.isEmpty, !session.busy else { return false }
+            Task { await session.attach(files) }
+            return true
+        } isTargeted: { dropping = $0 }
+        .overlay {
+            if dropping {
+                RoundedRectangle(cornerRadius: 12).stroke(DynoBrand.accent, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                    .overlay(Label("Drop to give the assistant this document", systemImage: "doc.text").font(.callout.weight(.medium))
+                        .padding(10).background(RoundedRectangle(cornerRadius: 8).fill(DynoBrand.surface)))
+                    .padding(6).allowsHitTesting(false)
+            }
+        }
         .onChange(of: voice.transcript) { _, t in if voice.listening || !t.isEmpty { text = spoken + t } }
         // Reopening a conversation picks the model it used, if that model is running.
         .onChange(of: session.conversationModel) { _, m in if let m, servers.contains(where: { $0.model == m }) { modelID = m } }
@@ -86,14 +104,13 @@ struct AssistantPanel: View {
                     Text(session.title.isEmpty ? "Assistant" : session.title).font(.callout.weight(.semibold)).lineLimit(1)
                 }.menuStyle(.borderlessButton).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 4)
-                contextMeter
+                contextMenu
                 Menu {
-                    Picker("Context budget", selection: Binding(get: { session.budget }, set: { b in Task { await session.setSettings(budget: b) } })) {
-                        ForEach([16384, 32768, 65536, 131072], id: \.self) { Text("\($0 / 1024)K tokens").tag($0) }
-                    }
+                    contextSizes
+                    Divider()
                     Toggle("Think before answering (slower)", isOn: Binding(get: { session.thinking }, set: { t in Task { await session.setSettings(thinking: t) } }))
                 } label: { Image(systemName: "slider.horizontal.3") }
-                    .menuStyle(.borderlessButton).fixedSize().disabled(session.conversationID == nil)
+                    .menuStyle(.borderlessButton).fixedSize()
                     .help("How much of the model's context this conversation may use, and whether it thinks first")
                 Button(action: onMinimize) { Image(systemName: "sidebar.right") }.buttonStyle(.plain)
                     .help("Minimize the assistant (⌘J)")
@@ -152,17 +169,50 @@ struct AssistantPanel: View {
         }
     }
 
+    /// The most the chosen model can read, when Dyno can tell (from the model's config).
+    private var modelMax: Int? { chosen.flatMap { session.modelContext[$0.model] }.flatMap { $0 > 0 ? $0 : nil } }
+
+    /// Context sizes to choose from: the usual steps, and the model's whole context. Sizes it can't read are disabled.
+    @ViewBuilder private var contextSizes: some View {
+        let full = modelMax.flatMap { Self.steps.contains($0) ? nil : $0 }
+        Text(modelMax.map { "Context size · this model reads up to \(Self.k($0))" } ?? "Context size")
+        ForEach(sizeChoices, id: \.self) { size in
+            let label = (size == full ? "Full context · " : "") + "\(Self.k(size)) tokens" + (size == session.budget ? "  ✓" : "")
+            Button(label) { Task { await session.setSettings(budget: size) } }
+                .disabled(modelMax.map { size > $0 } ?? false)
+        }
+    }
+
+    static let steps = [16384, 32768, 65536, 131072, 262144]
+
+    static func k(_ tokens: Int) -> String { tokens % 1024 == 0 ? "\(tokens / 1024)K" : "\(tokens / 1000)K" }
+
+    /// The meter, which also opens the sizes: click it to give the conversation more room. (A popover, not a menu:
+    /// a menu's label drops the bar.)
+    private var contextMenu: some View {
+        Button { showSizes.toggle() } label: { contextMeter.contentShape(Rectangle()) }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showSizes, arrowEdge: .bottom) {
+                ContextSizes(session: session, modelName: chosen?.name, modelMax: modelMax, choices: sizeChoices) { showSizes = false }
+            }
+    }
+
+    private var sizeChoices: [Int] {
+        guard let m = modelMax, !Self.steps.contains(m) else { return Self.steps }
+        return (Self.steps + [m]).sorted()
+    }
+
     /// How much of the model's context window the conversation uses, and whether older turns were summarized.
     private var contextMeter: some View {
         let use = session.contextUse ?? [:]
         let used = use["estimated_tokens"] as? Int ?? 0
-        let budget = use["budget"] as? Int ?? session.budget
+        let budget = min(session.budget, modelMax ?? Int.max)  // the server never sends a model more than it reads
         let fraction = budget > 0 ? Double(used) / Double(budget) : 0
         let summarized = (use["summarized_upto"] as? Int ?? 0) > 0
         return HStack(spacing: 4) {
             ProgressView(value: min(1, fraction)).progressViewStyle(.linear).frame(width: 34).tint(fraction > 0.8 ? .orange : DynoBrand.accent)
             Text("\(used / 1000)k/\(budget / 1024)k").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-        }.help("About \(used.formatted()) of \(budget.formatted()) tokens of the model's context."
+        }.help("About \(used.formatted()) of \(budget.formatted()) tokens of the model's context. Click to change the size."
                + (summarized ? " Older turns were summarized by the model to make room; the full conversation is still saved." : "")
                + " Its thinking is never sent back, and older tool results are shortened.")
     }
@@ -244,6 +294,7 @@ struct AssistantPanel: View {
                     .background(RoundedRectangle(cornerRadius: 10).fill(DynoBrand.accent.opacity(0.16)))
             }
         case "assistant": assistantRow(e)
+        case "document": documentRow(e)
         case "ui": uiCard(e)
         case "proposal": proposalCard(e)
         case "summary":
@@ -259,6 +310,25 @@ struct AssistantPanel: View {
                 SelectableText(text: e["text"] as? String ?? "", size: SelectableText.size(.caption1), color: .systemOrange)
             }
         default: EmptyView()  // tool results, decisions and plan updates show inside the rows above
+        }
+    }
+
+    private func documentRow(_ e: [String: Any]) -> some View {
+        let pages = e["pages"] as? Int ?? 0, tokens = e["tokens"] as? Int ?? 0
+        let inline = e["inline"] as? Bool ?? false
+        return HStack { Spacer(minLength: 40)
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: (e["format"] as? String) == "pdf" ? "doc.richtext" : "doc.text").font(.title3).foregroundStyle(DynoBrand.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(e["name"] as? String ?? "").font(.callout.weight(.medium)).lineLimit(2)
+                    Text("\(pages) page\(pages == 1 ? "" : "s") · about \(tokens.formatted()) tokens · " + (inline ? "sent whole" : "read in parts"))
+                        .font(.caption2).foregroundStyle(.secondary)
+                    if let n = e["note"] as? String, !n.isEmpty { Text(n).font(.caption2).foregroundStyle(.orange) }
+                }
+            }
+            .padding(10).background(RoundedRectangle(cornerRadius: 10).fill(DynoBrand.accent.opacity(0.10)))
+            .help(inline ? "Small enough to go to the assistant whole, with your next message."
+                         : "The assistant reads it page by page, or searches it, as it needs. Ask about it in your next message.")
         }
     }
 
@@ -320,6 +390,11 @@ struct AssistantPanel: View {
         case "inspect_catalog": return "Looked at Inspect evals and benchmarks"
         case "check_test": return "Checked the test setup"
         case "web_search": return "Searched the web: “\(args["query"] as? String ?? "")”"
+        case "list_documents": return "Looked at your documents"
+        case "read_document":
+            let page = args["page"] as? Int ?? 1
+            return "Read \(args["doc"] as? String ?? "a document")" + (page > 1 ? " from page \(page)" : "")
+        case "search_document": return "Searched \(args["doc"] as? String ?? "a document") for “\(args["query"] as? String ?? "")”"
         case "read_page": return "Read " + ((args["url"] as? String).flatMap { URL(string: $0)?.host } ?? "a web page")
         case "open_screen": return "Opened \(screenTitle(args["screen"] as? String ?? ""))"
         case "update_plan": return "Updated the plan"
@@ -470,6 +545,9 @@ struct AssistantPanel: View {
     private var composer: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let e = voice.error { Text(e).font(.caption2).foregroundStyle(.orange) }
+            if let a = session.attaching {
+                HStack(spacing: 6) { DynoSpinner(size: 9); Text(a).font(.caption2).foregroundStyle(.secondary) }
+            }
             if session.pending != nil {
                 Text("A proposal is waiting. Writing instead counts as not approving it.").font(.caption2).foregroundStyle(.secondary)
             }
@@ -488,6 +566,11 @@ struct AssistantPanel: View {
                 }
                 .padding(4).background(RoundedRectangle(cornerRadius: 10).fill(DynoBrand.surface))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(focused ? DynoBrand.accent.opacity(0.6) : Color.clear))
+                Button(action: pickDocuments) {
+                    Image(systemName: "paperclip").font(.system(size: 15)).foregroundStyle(.secondary).frame(width: 30, height: 30)
+                        .background(Circle().fill(DynoBrand.surface))
+                }.buttonStyle(.plain).disabled(session.busy || session.attaching != nil)
+                .help("Give the assistant a document: PDF, Word, RTF, HTML, text, or an image (read with OCR). Read on this Mac; you can also drop files here.")
                 Button {
                     if !voice.listening { spoken = text.isEmpty || text.hasSuffix(" ") ? text : text + " " }
                     voice.toggle()
@@ -508,6 +591,17 @@ struct AssistantPanel: View {
                 }
             }
         }.padding(10)
+    }
+
+    private func pickDocuments() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = DocumentReader.types
+        panel.message = "Choose documents for the assistant to read. Their text stays on this Mac."
+        guard panel.runModal() == .OK else { return }
+        let urls = panel.urls
+        Task { await session.attach(urls) }
     }
 
     private func send() {
@@ -545,6 +639,37 @@ struct AssistantPanel: View {
     private func show(_ spec: [String: Any]) { AssistantActions.show(spec, model: model) }
     private func restore(_ id: String) { AssistantActions.restore(id, model: model) }
     private func open(_ screen: String, id: String?) { AssistantActions.open(screen, id: id, model: model) }
+}
+
+/// The context sizes a conversation can use, with the model's own limit. Opened from the context meter.
+struct ContextSizes: View {
+    var session: AssistantSession
+    var modelName: String?
+    var modelMax: Int?
+    var choices: [Int]
+    var onPick: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Context size").font(.headline)
+            Text(modelMax.map { "\(modelName ?? "This model") reads up to \(AssistantPanel.k($0)) tokens." } ?? "How much of the model's context this conversation may use.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.bottom, 6)
+            ForEach(choices, id: \.self) { size in
+                let fits = modelMax.map { size <= $0 } ?? true
+                Button { Task { await session.setSettings(budget: size) }; onPick() } label: {
+                    HStack {
+                        Image(systemName: size == session.budget ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(size == session.budget ? DynoBrand.accent : .secondary)
+                        Text((size == modelMax && !AssistantPanel.steps.contains(size) ? "Full context · " : "") + "\(AssistantPanel.k(size)) tokens")
+                        Spacer()
+                        if !fits { Text("more than it reads").font(.caption2).foregroundStyle(.secondary) }
+                    }.contentShape(Rectangle()).padding(.vertical, 3)
+                }.buttonStyle(.plain).disabled(!fits).opacity(fits ? 1 : 0.45)
+            }
+            Text("Bigger keeps more of the conversation and documents word for word, but each answer starts slower and uses more memory.")
+                .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+        }.padding(14).frame(width: 290)
+    }
 }
 
 /// One event in the transcript, identified by its sequence number so SwiftUI keeps rows straight across updates.
