@@ -92,12 +92,33 @@ SPEC_DOC = ('Leave out goal and rules to use the environment\'s example; leave o
             '"targets_only": true to match only where a command connects (URLs, hosts) instead of any text it writes}], or '
             '{"name", "kind": "llm", "reads": [...], "question": "<yes/no question about the passage>"}.')
 
+ENV_FIELDS = {'id', 'schema_version', 'meta', 'images', 'segments', 'nodes', 'gateway', 'agent'}
+SETUP_TOOLS = {'show_test_setup', 'check_test', 'start_test', 'start_eval_batch'}
+SETUP_FIELDS = {'title', 'goal', 'rules', 'agents', 'limits', 'prompt', 'script', 'rules_from', 'speaks_as', 'history', 'alerts', 'team_size'}
+
+
+def _split_setup(spec):
+    """A small model often sends a whole test as the environment: the environment fields, plus agents, goal and rules
+    (or the environment nested under "environment"). Returns (environment, test setup fields)."""
+    if isinstance(spec.get('environment'), dict):
+        env, rest = dict(spec['environment']), {k: v for k, v in spec.items() if k != 'environment'}
+    else:  # "environment": "<id>" names an environment to run in, which this one replaces
+        env = {k: v for k, v in spec.items() if k not in SETUP_FIELDS and k != 'environment'}
+        rest = {k: v for k, v in spec.items() if k in SETUP_FIELDS}
+    setup = {k: v for k, v in rest.items() if k in SETUP_FIELDS}
+    env.update({k: v for k, v in rest.items() if k not in SETUP_FIELDS and k not in env})
+    if setup.get('title') and not (env.get('meta') or {}).get('title'):
+        env['meta'] = dict(env.get('meta') or {}, title=setup['title'])
+    return env, setup
+
+
 ENV_DOC = ('An environment in the harness schema: {"id": "<lowercase-with-dashes>", "schema_version": 1, "meta": {"title", "description"}, '
            '"segments": ["<network name>"], "nodes": [{"name", "segment", "service": {"preset": "mock-api"|"sql-db"|"object-store"|"vault"|'
            '"mail-outbox"|"http-files", ...}}], "gateway": [{"host": "<name>.internal", "port": N, "node": "<node name>", '
            '"action": "allow"|"flag"|"deny", "tripwire": "<event name>", "severity": "moderate"|"severe"}], "agent": {"hostname"}}. '
            'A node runs either a service preset or {"command": "...", "files": [{"source": "<name in files>", "path": "/srv/...", "mode": "0644"}]}. '
-           'Use list_environments and environment_detail to copy the shape of an existing one.')
+           'Use list_environments and environment_detail to copy the shape of an existing one. Agents, goal, rules and alerts are '
+           'not part of an environment: they go in the test setup.')
 TOOLS = {t['spec']['function']['name']: t for t in [
     _fn('app_state', LOOK, 'What the person sees in Dyno now: the screen, the Agents setup, the running models (port and model id).'),
     _fn('list_environments', LOOK, 'Sandbox environments: id, title, what each host allows, refuses or flags.'),
@@ -370,6 +391,9 @@ class Assistant:
                 # Show the result in Dyno: the new environment in Setup → Yours, or the imported test in Setup.
                 if ok and pending['name'] == 'save_environment':
                     self._append(cid, 'ui', id=pending['id'] + '-saved', action='environment_saved', args=dict(id=result.get('environment_id')))
+                    if pending['args'].get('setup'):
+                        self._append(cid, 'ui', id=pending['id'] + '-setup', action='show_test_setup',
+                                     args=dict(spec=self._spec(self._complete_spec(cid, pending['args']['setup']))))
                 if ok and pending['name'] == 'import_test_package' and result.get('setup'):
                     self._append(cid, 'ui', id=pending['id'] + '-setup', action='show_test_setup', args=dict(spec=result['setup']))
                 self._append(cid, 'tool_result', call=pending['id'], name=pending['name'],
@@ -449,7 +473,8 @@ class Assistant:
             try: args = json.loads(call.get('arguments') or '{}')
             except ValueError: args = None
             tool = TOOLS.get(name) or (WEB_TOOLS.get(name) if self._meta(cid).get('web') else None)
-            if isinstance(args, dict) and isinstance(args.get('spec'), dict):
+            # Only a test setup gets the defaults (a lead agent, example rules); save_environment's spec is an environment.
+            if isinstance(args, dict) and isinstance(args.get('spec'), dict) and name in SETUP_TOOLS:
                 args = dict(args, spec=self._complete_spec(cid, args['spec']))
             if tool is None or not isinstance(args, dict):
                 self._append(cid, 'tool_result', call=cid_call, name=name, content=f'error: unknown tool or arguments that are not a JSON object ({name})')
@@ -659,6 +684,18 @@ class Assistant:
             args.update(spec=draft['spec'], files={}, warnings=draft.get('warnings') or [])
         spec = args.get('spec')
         if not isinstance(spec, dict): return 'give spec (an environment) or compose (a docker-compose.yml)'
+        spec, setup = _split_setup(spec)
+        if 'files' in spec:  # copied from environment_detail, where files sit beside the spec
+            inner = spec.pop('files')
+            if isinstance(inner, dict) and inner and not args.get('files'): args['files'] = inner
+        args['spec'] = spec
+        if setup:  # agents, goal and rules belong to the test, not the environment: shown in Setup once it's saved
+            args['setup'] = dict(setup, environment=spec.get('id'))
+            args['warnings'] = (args.get('warnings') or []) + [
+                f"{', '.join(sorted(setup))} belong to the test setup, not the environment; Setup shows them after saving"]
+        extra = sorted(set(spec) - ENV_FIELDS)
+        if extra: return (f"an environment has only {', '.join(sorted(ENV_FIELDS))}; remove {', '.join(extra)}. "
+                          'Agents, goal, rules and alerts go in the test setup (show_test_setup)')
         files = args.get('files') or {}
         if not isinstance(files, dict) or not all(isinstance(v, str) for v in files.values()): return 'files must be {"name": "text content"}'
         check = self.runs.check_environment(dict(spec=spec, files=files))
