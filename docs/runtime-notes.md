@@ -25,6 +25,22 @@ timing hooks inside the token stream and two endpoints.
 Hooking the token stream rather than the HTTP layer means streaming and
 non-streaming requests are measured identically.
 
+### Tool calling for any model
+
+Some models ship a chat template that knows only system, user and assistant turns; abliterated and merged models
+often do. Through such a template the tool list never reaches the model, tool results are dropped, and the model's
+tool call comes back as plain text, so the assistant or an agent stops after its first step. When `dyno serve` loads
+a model whose template doesn't handle tools, it fixes that:
+
+1. It uses the template of another downloaded model of the same family (the same `model_type`, the same
+   architecture preferred), when every special token that template uses is in this model's vocabulary.
+2. Otherwise it uses a built-in format that works through any template. The tools are described in the system
+   message, earlier calls and their results are written into the turns as text, and `<tool_call>` blocks in the reply
+   are returned as tool calls (JSON, or the `<function=…>` form Qwen models use).
+
+A model whose own template handles tools is left alone. `/stats` reports which applies under `model.tool_calls`:
+`own`, `borrowed:<model>`, `built-in`, or `none` when the model has no chat template at all.
+
 ## The metrics
 
 | Metric | Meaning |

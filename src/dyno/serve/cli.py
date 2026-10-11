@@ -8,10 +8,12 @@ additions are the timing hooks and two new endpoints.
 
 from __future__ import annotations
 
+import logging
 import sys
 import time
 from typing import Any
 
+from . import tool_calls
 from .instrument import InstrumentedAPIHandler, InstrumentedResponseGenerator, registry
 
 from .. import __version__
@@ -82,6 +84,12 @@ def _patch(server_module: Any) -> None:
         registry.note_model_loaded(
             name=str(model_path), load_seconds=elapsed if elapsed > 0.05 else None
         )
+        # A chat template that can't do tools would leave every agent stuck after its first step.
+        try:
+            folder = tool_calls.resolve_model_dir(str(self._model_map.get(model_path, model_path)))
+            registry.tool_calls = tool_calls.ensure_tool_calling(result[1], folder)
+        except Exception as error:  # noqa: BLE001 - never stop a model from serving over this
+            logging.warning("Could not check tool calling: %s", error)
         return result
 
     provider.load = load
