@@ -37,6 +37,7 @@ class ScriptedModel:
                     if piece: send(dict(choices=[dict(index=0, delta=dict(reasoning=piece + ' '))]))
                 for piece in (reply.get('content') or '').split(' '):
                     if piece: send(dict(choices=[dict(index=0, delta=dict(content=piece + ' '))]))
+                if reply.get('cut'): return  # the server broke off mid-answer: no finish, no [DONE]
                 for i, (name, args) in enumerate(reply.get('calls') or []):
                     send(dict(choices=[dict(index=0, delta=dict(tool_calls=[dict(index=i, id=f'call{len(outer.requests)}_{i}', type='function',
                                                                                 function=dict(name=name, arguments=json.dumps(args)))]))]))
@@ -258,6 +259,13 @@ class AssistantTests(unittest.TestCase):
         one = self.a._look(cid, 'list_prompts', dict(name='default'))
         self.assertEqual((one['lead'], one['teammate'], one['team']), ('You lead.', 'You help.', 'Build a team.'))
         self.assertIn('error', self.a._look(cid, 'list_prompts', dict(id='nope')))
+
+    def test_an_answer_the_server_broke_off_says_so_instead_of_stopping_silently(self):
+        m = self.model([dict(content='Let me create the environment.', cut=True)])
+        cid = self.a.create()['id']
+        self.send(cid, m, 'Build it'); c = self.wait(cid)
+        self.assertEqual(c['events'][-1]['kind'], 'error')
+        self.assertIn('broke off its answer', c['events'][-1]['text'])
 
     def test_an_unknown_environment_is_sent_back_with_the_real_ones(self):
         m = self.model([dict(calls=[('show_test_setup', dict(spec=dict(SPEC, environment='segmented_office')))]), dict(content='Fixed.')])

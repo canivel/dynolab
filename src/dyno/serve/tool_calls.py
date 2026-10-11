@@ -193,7 +193,7 @@ def _typed(value: str, schema: dict):
     if kind in ("string", "str", "text"):
         return value
     try:
-        return json.loads(value)
+        return json.loads(value, strict=False)  # models put raw line breaks inside long strings
     except ValueError:
         return value
 
@@ -202,7 +202,7 @@ def parse_tool_call(text: str, tools: list | None = None):
     """A tool call written in the built-in format: JSON, or <function=name><parameter=x>v</parameter></function>."""
     text = text.strip()
     if text.startswith("{"):
-        call = json.loads(text)
+        call = json.loads(text, strict=False)
         if not isinstance(call, dict) or not call.get("name"):
             raise ValueError("A tool call needs a name.")
         arguments = call.get("arguments", call.get("parameters", {}))
@@ -291,11 +291,33 @@ def ensure_tool_calling(tokenizer, model_dir: Path | None, roots: list[Path] | N
             tokenizer._chat_template = render
             _set_tool_format(tokenizer, TOOL_CALL_START, TOOL_CALL_END, parse_tool_call)
             how = "built-in"
+    if getattr(tokenizer, "_tool_parser", None) is not None:
+        tokenizer._tool_parser = _safe(tokenizer._tool_parser)
     if how.startswith("borrowed:") or how == "built-in":
         logging.warning("This model's chat template doesn't handle tools; tool calling uses %s.",
                         "the template of " + how.split(":", 1)[1] if how != "built-in" else "Dyno's built-in format")
     tokenizer._dyno_tools = how
     return how
+
+
+def _safe(parser):
+    """A tool parser that never takes the reply down. mlx_lm drops a call whose parser raises ValueError, but any other
+    error (Qwen's parser falls back to ast.literal_eval, which raises SyntaxError on a long JSON argument) escapes and
+    cuts the stream off with no finish and no error. Try the lenient parser instead, else drop the call cleanly."""
+    if getattr(parser, "_dyno_safe", False):
+        return parser
+
+    def parse(text, tools=None):
+        try:
+            return parser(text, tools)
+        except Exception as error:  # noqa: BLE001
+            try:
+                return parse_tool_call(text, tools)
+            except Exception:  # noqa: BLE001
+                raise ValueError(f"unreadable tool call ({type(error).__name__}: {error})") from None
+
+    parse._dyno_safe = True
+    return parse
 
 
 def _display(path: Path) -> str:

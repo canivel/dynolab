@@ -22,6 +22,7 @@ estimated from characters and calibrated on what the server reports.
 """
 from __future__ import annotations
 
+import http.client
 import json
 import os
 from pathlib import Path
@@ -1086,14 +1087,15 @@ class Assistant:
                                      headers={'Content-Type': 'application/json'})
         out = dict(content='', reasoning='', tool_calls=[], usage=None, finish_reason=None)
         calls = {}
+        done = stopped = False
         try:
             with urllib.request.urlopen(req, timeout=900) as r:
                 for raw in r:
-                    if stop and stop(): break
+                    if stop and stop(): stopped = True; break
                     line = raw.decode('utf-8', 'replace').strip()
                     if not line.startswith('data:'): continue  # keepalives while the prompt is read
                     data = line[5:].strip()
-                    if data == '[DONE]': break
+                    if data == '[DONE]': done = True; break
                     try: chunk = json.loads(data)
                     except ValueError: continue
                     if chunk.get('usage'): out['usage'] = chunk['usage']
@@ -1112,6 +1114,12 @@ class Assistant:
                         if choice.get('finish_reason'): out['finish_reason'] = choice['finish_reason']
         except urllib.error.URLError as error:
             raise RuntimeError(f"the model on port {model['port']} did not answer ({error.reason}). Is it still running in Models?") from None
+        except (http.client.HTTPException, ConnectionError) as error:
+            raise RuntimeError(f"the model server on port {model['port']} broke off its answer ({type(error).__name__}). Send your message again.") from None
+        if not done and not stopped and not out['finish_reason']:
+            # The server closed the stream mid-answer (it failed while writing, e.g. on a tool call it couldn't read).
+            raise RuntimeError(f"the model server on port {model['port']} broke off its answer part-way. Send your message again; "
+                               "if it keeps happening, ask for a shorter step.")
         out['tool_calls'] = [dict(id=c['id'] or uuid.uuid4().hex[:12], name=c['name'], arguments=c['arguments'] or '{}')
                              for _, c in sorted(calls.items())]
         if not out['tool_calls'] and '<tool_call>' in out['content']:

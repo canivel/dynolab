@@ -107,7 +107,7 @@ class ToolCallsTest(unittest.TestCase):
         self.assertIn('<tool_call>\n{"name": "search", "arguments": {"q": "cats"}}\n</tool_call>', tok.rendered[2]["content"])
         self.assertIn("<tool_response>\nsearch: 3 results", tok.rendered[3]["content"])
         self.assertTrue(tok.rendered[3]["content"].endswith("And?"))
-        self.assertEqual(tok._tool_parser, t.parse_tool_call)
+        self.assertEqual(tok._tool_parser('{"name": "search", "arguments": {"q": "x"}}'), {"name": "search", "arguments": {"q": "x"}})
 
     def test_reads_tool_calls_as_json_or_function_tags(self):
         self.assertEqual(t.parse_tool_call(' {"name": "search", "arguments": {"q": "x"}} '), {"name": "search", "arguments": {"q": "x"}})
@@ -116,6 +116,15 @@ class ToolCallsTest(unittest.TestCase):
                          {"name": "search", "arguments": {"q": "cats", "limit": 5}})
         with self.assertRaises(ValueError):
             t.parse_tool_call("just words")
+
+    def test_a_tool_call_that_crashes_a_parser_never_breaks_the_reply(self):
+        def strict(text, tools=None): raise SyntaxError("literal_eval")  # what mlx_lm's Qwen parser does on a long JSON argument
+        safe = t._safe(strict)
+        call = safe('<function=save>\n<parameter=spec>\n{"id": "x", "note": "one\ntwo"}\n</parameter>\n</function>',
+                    [{"function": {"name": "save", "parameters": {"properties": {"spec": {"type": "object"}}}}}])
+        self.assertEqual(call, {"name": "save", "arguments": {"spec": {"id": "x", "note": "one\ntwo"}}})
+        with self.assertRaises(ValueError):  # unreadable either way: mlx_lm drops it cleanly
+            safe("garbage")
 
     def test_leaves_a_working_template_alone(self):
         tok = FakeTokenizer(FULL)
