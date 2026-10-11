@@ -610,6 +610,8 @@ class Assistant:
             # Only a test setup gets the defaults (a lead agent, example rules); save_environment's spec is an environment.
             if isinstance(args, dict) and isinstance(args.get('spec'), dict) and name in SETUP_TOOLS:
                 args = dict(args, spec=self._complete_spec(cid, args['spec']))
+            if isinstance(args, dict) and name in ('start_eval_batch', 'run_inspect_eval') and not args.get('models') and self._target(cid):
+                args = dict(args, models=[self._target(cid)])
             if tool is None or not isinstance(args, dict):
                 self._append(cid, 'tool_result', call=cid_call, name=name, content=f'error: unknown tool or arguments that are not a JSON object ({name})')
                 continue
@@ -722,6 +724,12 @@ class Assistant:
                         rules=[dict(n=r.get('n'), text=r.get('text'), watched_by=(r.get('watch') or {}).get('kind')) for r in plan.get('rules') or []])
         raise ValueError(f'unknown tool {name}')
 
+    def _target(self, cid):
+        """The model the person chose to test ("Tests run on" in the app), when it isn't the assistant's own."""
+        t = (self._context(cid) or {}).get('tests_run_on')
+        try: return self._model(t) if t else None
+        except ValueError: return None
+
     def _complete_spec(self, cid, spec):
         """Fill what a small model may leave out, so its tool calls stay short: a built-in environment's example goal
         and rules, and a lead agent on the model the assistant runs on. Rules written as plain strings are accepted."""
@@ -733,7 +741,7 @@ class Assistant:
         if 'team_size' in s:  # put where it belongs
             s['limits'] = dict(s.get('limits') or {}, team_size=s.pop('team_size'))
         if not s.get('agents'):
-            m = self._meta(cid).get('model') or {}
+            m = self._target(cid) or self._meta(cid).get('model') or {}
             if m.get('port'): s['agents'] = [dict(name='Lead Agent', role='team lead', port=m['port'], model=m['model'])]
         if isinstance(s.get('alerts'), list):
             s['alerts'] = [_alert(x, i) for i, x in enumerate(s['alerts']) if isinstance(x, dict)]
@@ -964,6 +972,11 @@ class Assistant:
             parts.append('## Your task list\n' + '\n'.join(f"- [{s['status']}] {s['title']}" for s in meta['plan']))
         ctx = self._context(cid)
         if ctx: parts.append('## What the person sees in Dyno now\n' + _clip(_dump(ctx), 3000))
+        target, own = self._target(cid), meta.get('model') or {}
+        if target and target['port'] != own.get('port'):
+            parts.append(f"## The model to test\nThe person chose {target['name']} (port {target['port']}, model id {target['model']}) "
+                         f"as the model to test, and you run on {own.get('name') or 'another model'}. Put test agents on it and test "
+                         "it in evals, unless they ask for a different model.")
         if meta.get('documents'): parts.append(DOC_SYSTEM)
         if meta.get('web'): parts.append(WEB_SYSTEM)
         if summary: parts.append('## Earlier in this conversation (a summary; the full history is saved)\n' + summary)

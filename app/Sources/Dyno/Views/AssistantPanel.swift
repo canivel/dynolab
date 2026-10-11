@@ -10,6 +10,8 @@ struct AssistantPanel: View {
     var onPlainChat: () -> Void
 
     @AppStorage("assistantModel") private var modelID = ""
+    /// The model the assistant's tests run on, when it isn't the assistant's own ("" = the same model).
+    @AppStorage("assistantTestModel") private var testModelID = ""
     @AppStorage("roomDraft") private var storedDraft = ""
     @State private var text = ""
     @State private var spoken = ""   // what the text held when voice started
@@ -31,6 +33,8 @@ struct AssistantPanel: View {
             return Server(port: Int(p), model: s.identifier, name: s.name, path: s.path)
         }
     }
+    /// Where tests go: the chosen test model while it is running, else the assistant's own.
+    private var testTarget: Server? { servers.first { $0.key == testModelID && $0.key != chosen?.key } }
     private var chosen: Server? {
         servers.first { $0.key == modelID } ?? servers.first { $0.model == modelID && $0.model != "default_model" } ?? servers.first
     }
@@ -130,6 +134,17 @@ struct AssistantPanel: View {
                 Text("on this Mac").font(.caption2).foregroundStyle(.secondary)
                 Spacer()
             }.help("The assistant only uses a model running on this Mac, and keeps conversations here.")
+            if servers.count > 1 {
+                HStack(spacing: 6) {
+                    Image(systemName: "testtube.2").font(.caption2).foregroundStyle(.secondary)
+                    Text("Tests run on").font(.caption).foregroundStyle(.secondary)
+                    Picker("", selection: Binding(get: { testTarget?.key ?? "" }, set: { testModelID = $0 })) {
+                        Text("The same model").tag("")
+                        ForEach(servers.filter { $0.key != chosen?.key }, id: \.key) { s in Text("\(s.name) · :\(String(s.port))").tag(s.key) }
+                    }.labelsHidden().controlSize(.small).frame(maxWidth: 220)
+                    Spacer()
+                }.help("The model the assistant puts test agents on and tests in evals. It can be a different model from the one the assistant runs on.")
+            }
             webRow
         }.padding(.horizontal, 12).padding(.vertical, 10)
     }
@@ -627,6 +642,7 @@ struct AssistantPanel: View {
         }
         var c: [String: Any] = ["screen": screen,
                                 "running_models": servers.map { ["port": $0.port, "model": $0.model, "name": $0.name] }]
+        if let t = testTarget { c["tests_run_on"] = ["port": t.port, "model": t.model, "name": t.name] }
         if let data = storedDraft.data(using: .utf8), let draft = try? JSONDecoder().decode(RoomDraft.self, from: data) {
             var setup: [String: Any] = ["environment": draft.environment ?? "plain machine", "goal": draft.goal,
                                         "rules": draft.rules.map(\.text), "team_size": draft.teamSize ?? draft.teamLimit, "turns": draft.rounds]

@@ -227,6 +227,15 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual(spec['limits'], dict(team_size=2))
         self.assertEqual(spec['agents'][0]['port'], m.port)  # the lead on the assistant's model
 
+    def test_tests_default_to_the_model_chosen_to_test_not_the_assistants(self):
+        m = self.model([dict(calls=[('show_test_setup', dict(spec=dict(environment='bastion-admin')))]), dict(content='Shown.')])
+        cid = self.a.create()['id']
+        target = dict(port=8972, model='default_model', name='Qwen3.8-27B-MLX-4bit')
+        self.send(cid, m, 'Set it up', dict(tests_run_on=target)); c = self.wait(cid)
+        spec = next(e for e in c['events'] if e['kind'] == 'ui')['args']['spec']
+        self.assertEqual((spec['agents'][0]['port'], spec['agents'][0]['model']), (8972, 'default_model'))
+        self.assertIn('Qwen3.8-27B-MLX-4bit (port 8972', m.requests[0]['messages'][0]['content'])
+
     def test_an_unknown_environment_is_sent_back_with_the_real_ones(self):
         m = self.model([dict(calls=[('show_test_setup', dict(spec=dict(SPEC, environment='segmented_office')))]), dict(content='Fixed.')])
         cid = self.a.create()['id']
