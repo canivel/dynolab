@@ -39,7 +39,9 @@ a model whose template doesn't handle tools, it fixes that:
    are returned as tool calls (JSON, or the `<function=…>` form Qwen models use).
 
 A model whose own template handles tools is left alone. `/stats` reports which applies under `model.tool_calls`:
-`own`, `borrowed:<model>`, `built-in`, or `none` when the model has no chat template at all.
+`own`, `borrowed:<model>`, `built-in`, or `none`. A model that ships no chat template at all also borrows one from its family when it can; with none to borrow it stays on mlx_lm's plain prompt format (`none`).
+
+If a model can't load (for example a download that stopped part-way and is missing a weight file), `dyno serve` exits with one line saying why instead of answering requests it can never complete. The app marks such a model *incomplete download* and won't start it.
 
 ## The metrics
 

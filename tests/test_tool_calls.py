@@ -116,6 +116,14 @@ class ToolCallsTest(unittest.TestCase):
         self.assertIsNone(tok._chat_template)
         self.assertEqual(t.ensure_tool_calling(FakeTokenizer(None), None), "none")
 
+    def test_a_model_with_no_template_borrows_one_from_its_family(self):
+        own = model(self.root, "lab/no-template", "qwen3_5", None)
+        model(self.root, "Qwen/Qwen3.8-27B", "qwen3_5", FULL)
+        tok = FakeTokenizer(None)
+        self.assertEqual(t.ensure_tool_calling(tok, own, roots=[self.root]), "borrowed:Qwen/Qwen3.8-27B")
+        self.assertEqual(tok.chat_template, FULL)
+        self.assertTrue(tok.has_chat_template and tok.has_tool_calling)
+
 
 if __name__ == "__main__":
     unittest.main()

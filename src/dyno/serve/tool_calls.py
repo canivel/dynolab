@@ -250,7 +250,18 @@ def ensure_tool_calling(tokenizer, model_dir: Path | None, roots: list[Path] | N
         _set_tool_format(tokenizer, TOOL_CALL_START, TOOL_CALL_END, parse_tool_call)
         how = "own+parser"
     elif not isinstance(template, str):
-        how = "none"  # no chat template at all: mlx_lm's plain prompt format, nothing to fix here
+        # No chat template at all (some uploads leave it out): mlx_lm would fall back to a plain "USER:/ASSISTANT:"
+        # prompt the model wasn't trained on, with no tools. A same-family template fixes both; else leave it.
+        donor = find_donor(model_dir, _vocab(tokenizer), roots) if model_dir else None
+        if donor:
+            import importlib
+            module = importlib.import_module(f"mlx_lm.tool_parsers.{_parser_kind(donor[1])}")
+            tokenizer.chat_template = donor[1]
+            tokenizer.has_chat_template = True
+            _set_tool_format(tokenizer, module.tool_call_start, module.tool_call_end, module.parse_tool_call)
+            how = "borrowed:" + _display(donor[0])
+        else:
+            how = "none"
     else:
         donor = find_donor(model_dir, _vocab(tokenizer), roots) if model_dir else None
         if donor:
