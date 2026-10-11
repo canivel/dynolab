@@ -9,6 +9,7 @@ additions are the timing hooks and two new endpoints.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import time
 from typing import Any
@@ -77,7 +78,15 @@ def _patch(server_module: Any) -> None:
 
     def load(self, model_path, *args, **kwargs):
         started = time.perf_counter()
-        result = original_load(self, model_path, *args, **kwargs)
+        try:
+            result = original_load(self, model_path, *args, **kwargs)
+        except Exception as error:  # noqa: BLE001
+            if model_path != "default_model":
+                raise
+            # mlx_lm loads the model in its generation thread: if that fails the server keeps answering /health and
+            # every request waits forever. Stop instead, with one line the app can show.
+            print(f"Could not load the model: {_first_line(error)}", file=sys.stderr, flush=True)
+            os._exit(1)
         elapsed = time.perf_counter() - started
         # `load` is also called for an already-resident model, which returns
         # instantly; reporting that as the load time would be misleading.
@@ -93,6 +102,13 @@ def _patch(server_module: Any) -> None:
         return result
 
     provider.load = load
+
+
+def _first_line(error: Exception) -> str:
+    text = " ".join(str(error).split()) or type(error).__name__
+    if text.startswith("Missing") and "parameters" in text:
+        text = text.split(":", 1)[0] + " (a weight file is missing or incomplete: download the model again)"
+    return text[:300]
 
 
 def _announce(argv: list[str]) -> None:

@@ -8,6 +8,9 @@ public struct LocalModel: Sendable, Identifiable, Equatable, Hashable {
     public var sizeBytes: Int64
     /// Where it came from, for grouping in the picker.
     public var source: String
+    /// Weight files its index lists that aren't on disk: a download that stopped part-way. It can't load.
+    public var missingFiles: [String] = []
+    public var isIncomplete: Bool { !missingFiles.isEmpty }
 
     public var sizeGB: Double { Double(sizeBytes) / GB }
 
@@ -59,7 +62,8 @@ public enum ModelLibrary {
                     path: directory,
                     name: displayName(for: directory),
                     sizeBytes: size,
-                    source: label
+                    source: label,
+                    missingFiles: missingWeights(in: directory)
                 )
                 if found.count >= limit { break }
             }
@@ -101,6 +105,18 @@ public enum ModelLibrary {
         else { return false }
         return entries.contains { entry in
             weightSuffixes.contains { entry.hasSuffix($0) }
+        }
+    }
+
+    /// Shards named in `model.safetensors.index.json` that are missing (or a cache link with no blob behind it).
+    public static func missingWeights(in path: String) -> [String] {
+        let index = (path as NSString).appendingPathComponent("model.safetensors.index.json")
+        guard let data = FileManager.default.contents(atPath: index),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let map = json["weight_map"] as? [String: String] else { return [] }
+        return Set(map.values).sorted().filter { file in
+            // fileExists follows the link, so a cache link to a blob that never finished counts as missing.
+            !FileManager.default.fileExists(atPath: (path as NSString).appendingPathComponent(file))
         }
     }
 

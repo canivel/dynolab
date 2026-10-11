@@ -370,9 +370,9 @@ private struct ModelRow: View {
                 Text(candidate.shortName)
                     .font(.system(size: 12, weight: isRunning ? .semibold : .regular))
                     .lineLimit(1).truncationMode(.tail)
-                Text([candidate.owner, Format.bytes(candidate.sizeBytes)]
+                Text([candidate.owner, candidate.isIncomplete ? "incomplete download" : Format.bytes(candidate.sizeBytes)]
                         .compactMap { $0 }.joined(separator: "  ·  "))
-                    .font(.system(size: 10)).foregroundStyle(.tertiary)
+                    .font(.system(size: 10)).foregroundStyle(candidate.isIncomplete ? AnyShapeStyle(.orange) : AnyShapeStyle(.tertiary))
                     .lineLimit(1).truncationMode(.tail)
             }
             Spacer(minLength: 0)

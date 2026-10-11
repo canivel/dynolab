@@ -431,6 +431,11 @@ final class MonitorModel {
     func startSelectedModel() {
         guard let model = selectedModel else { return }
         serverActionError = nil
+        guard !model.isIncomplete else {
+            serverActionError = "\(model.shortName) didn't finish downloading: \(model.missingFiles.joined(separator: ", ")) "
+                + "\(model.missingFiles.count == 1 ? "is" : "are") missing. Download it again in Discover (it resumes), then start it."
+            return
+        }
         guard let first = UInt16(exactly: launchPort), first > 0 else {
             serverActionError = "Choose a port between 1 and 65535."; return
         }
