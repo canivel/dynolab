@@ -12,6 +12,8 @@ public final class ProcessScanner {
     /// line decides the label.
     private static let runtimeRules: [(label: String, pattern: NSRegularExpression)] = {
         let definitions: [(String, String)] = [
+            // Dyno's own server is mlx_lm; its command line only says "mlx" when the model's folder does.
+            ("MLX", #"(?:^|[ /])dyno(?:-cli)?\s+serve(?:\s|$)"#),
             ("Ollama", #"\bollama\b"#),
             ("llama.cpp", #"\b(llama-server|llama-cli|llama-bench|llama-run|llama-quantize)\b"#),
             ("LM Studio", #"LM Studio|lmstudio|\blms\b"#),
@@ -32,6 +34,12 @@ public final class ProcessScanner {
             return (label, regex)
         }
     }()
+
+    /// The runtime a command line belongs to, by the first rule that matches.
+    static func runtime(for command: String) -> String? {
+        let range = NSRange(command.startIndex..., in: command)
+        return runtimeRules.first { $0.pattern.firstMatch(in: command, range: range) != nil }?.label
+    }
 
     /// Shells and helpers whose command line often merely mentions a runtime.
     private static let notARuntime: Set<String> = [
@@ -105,15 +113,7 @@ public final class ProcessScanner {
             guard !command.isEmpty else { continue }
             let name = Self.displayName(for: command)
 
-            var runtime: String?
-            if !Self.notARuntime.contains(name) {
-                let range = NSRange(command.startIndex..., in: command)
-                for rule in Self.runtimeRules
-                where rule.pattern.firstMatch(in: command, range: range) != nil {
-                    runtime = rule.label
-                    break
-                }
-            }
+            let runtime = Self.notARuntime.contains(name) ? nil : Self.runtime(for: command)
 
             let knownRuntime = runtime != nil && memory >= Self.runtimeMinimumMemory
             guard knownRuntime || (usesGPU && memory >= minimumMemory) else { continue }
