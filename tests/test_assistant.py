@@ -249,7 +249,7 @@ class AssistantTests(unittest.TestCase):
         self.assertIn("Don't check again now", results[0])
         self.assertIn('already made this exact call', results[1])
         self.assertEqual(c['events'][-1]['text'].strip(), 'It is running; watch it in Room & Observer.')
-        self.send(cid, m, 'And now?')  # a new message may look again
+        self.a._append(cid, 'user', text='And now?')  # a new message may look again
         self.assertFalse(self.a._repeated(cid, *call))
 
     def test_reads_a_prompts_text_when_asked_for_one(self):
