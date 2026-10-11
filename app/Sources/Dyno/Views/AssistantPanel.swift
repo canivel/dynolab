@@ -539,9 +539,16 @@ struct AssistantPanel: View {
         }
     }
 
+    /// An id from an approved action's result ({"test_id": ...}), so its link opens that test and not the last one.
+    static func resultID(_ decision: [String: Any], _ key: String) -> String? {
+        guard let text = decision["result"] as? String, let data = text.data(using: .utf8),
+              let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return result[key] as? String
+    }
+
     @ViewBuilder private func followUp(_ name: String, _ d: [String: Any]) -> some View {
         switch name {
-        case "start_test": Button("Watch it in Agents → Room & Observer") { open("agents_room", id: nil) }.buttonStyle(.link).font(.caption)
+        case "start_test": Button("Watch it in Agents → Room & Observer") { open("agents_room", id: Self.resultID(d, "test_id")) }.buttonStyle(.link).font(.caption)
         case "start_eval_batch", "run_inspect_eval": Button("See it in Evals") { open(name == "start_eval_batch" ? "evals" : "evals", id: nil) }.buttonStyle(.link).font(.caption)
         default: EmptyView()
         }
