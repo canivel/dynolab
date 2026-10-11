@@ -5,6 +5,13 @@ from pathlib import Path
 
 from dyno.serve import tool_calls as t
 
+try:
+    import mlx_lm.tokenizer_utils  # noqa: F401 - borrowing a template reads its tool format through mlx_lm
+    HAS_MLX_LM = True
+except ImportError:
+    HAS_MLX_LM = False
+needs_mlx_lm = unittest.skipUnless(HAS_MLX_LM, "needs mlx_lm (Apple Silicon)")
+
 STRIPPED = """{%- for message in messages %}<|im_start|>{{ message.role }}
 {{ message.content }}<|im_end|>
 {%- endfor %}{%- if add_generation_prompt %}<|im_start|>assistant
@@ -65,6 +72,7 @@ class ToolCallsTest(unittest.TestCase):
         self.assertTrue(t.handles_tools(FULL))
         self.assertFalse(t.handles_tools(None))
 
+    @needs_mlx_lm
     def test_borrows_the_template_of_the_same_family_when_its_tokens_fit(self):
         own = model(self.root, "lab/abliterated", "qwen3_5", STRIPPED)
         model(self.root, "other/llama", "llama", FULL)  # another family: never
@@ -116,6 +124,7 @@ class ToolCallsTest(unittest.TestCase):
         self.assertIsNone(tok._chat_template)
         self.assertEqual(t.ensure_tool_calling(FakeTokenizer(None), None), "none")
 
+    @needs_mlx_lm
     def test_a_model_with_no_template_borrows_one_from_its_family(self):
         own = model(self.root, "lab/no-template", "qwen3_5", None)
         model(self.root, "Qwen/Qwen3.8-27B", "qwen3_5", FULL)
