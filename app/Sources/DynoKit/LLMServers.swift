@@ -263,8 +263,10 @@ public final class ModelMonitor: @unchecked Sendable {
         // Prefer the richer JSON endpoint when the server offers it.
         if let payload = await getJSON(port: port, path: "/stats"), payload["live"] != nil {
             caps.stats = true
-            if let model = payload["model"] as? [String: Any],
-               let name = model["name"] as? String, !name.isEmpty {
+            let model = payload["model"] as? [String: Any]
+            // The server answers before its model has loaded; ask again next time rather than keep a guess.
+            if (model?["name"] as? String ?? "").isEmpty { caps.probed = false }
+            if let model, let name = model["name"] as? String, !name.isEmpty {
                 caps.staticName = name
                 if let path = model["path"] as? String, !path.isEmpty {
                     caps.loadedDisplayName = Self.shortName(path)
@@ -382,6 +384,8 @@ public final class ModelMonitor: @unchecked Sendable {
         let tokens = command.split(separator: " ").map(String.init)
         let flags: Set<String> = ["--model", "-m", "--model-path", "--hf-repo", "--hf-model"]
         for (index, token) in tokens.enumerated() {
+            // `python -m dyno serve`: there -m names the Python module, not a model.
+            if token == "-m", index > 0, (tokens[index - 1] as NSString).lastPathComponent.hasPrefix("python") { continue }
             if flags.contains(token), index + 1 < tokens.count {
                 return tokens[index + 1]
             }
