@@ -459,6 +459,8 @@ class AssistantTests(unittest.TestCase):
         with unittest.mock.patch.dict(os.environ, HF_HUB_CACHE=str(Path(self.tmp.name) / 'hub')):
             self.assertEqual(assistant.model_context('org/small'), 40960)
             self.assertIsNone(assistant.model_context('org/unknown')); self.assertIsNone(assistant.model_context('../etc'))
+            self.assertEqual(assistant.model_context(str(hub)), 40960)  # the folder a Dyno server loaded
+            self.assertIsNone(assistant.model_context('default_model')); self.assertIsNone(assistant.model_context(str(hub.parent)))
             self.assertEqual(self.a._budget(dict(budget=262144, model=dict(model='org/small'))), 40960)  # never more than it reads
 
     def test_calibrates_tokens_on_what_the_server_counted(self):

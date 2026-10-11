@@ -29,7 +29,7 @@ import Observation
     /// Files being read for the assistant ("Reading paper.pdf…"), and how many tokens the chosen model can read.
     var attaching: String?
     var modelContext: [String: Int] = [:]
-    /// The model this conversation last used ({"port", "model", "name"}), so reopening it picks that model again.
+    /// The model this conversation last used ("port model"), so reopening it picks that model again.
     var conversationModel: String?
     /// For "Undo" on a setup the assistant filled in: the setup that was on screen before, by action id.
     var undo: [String: String] = [:]
@@ -220,7 +220,8 @@ import Observation
         budget = c["budget"] as? Int ?? 32768
         thinking = c["thinking"] as? Bool ?? false
         web = c["web"] as? Bool ?? false
-        conversationModel = (c["model"] as? [String: Any])?["model"] as? String
+        let used = c["model"] as? [String: Any]
+        conversationModel = (used?["model"] as? String).map { m in (used?["port"] as? Int).map { "\($0) \(m)" } ?? m }
         live = r["live"] as? [String: Any]
         pending = r["pending"] as? [String: Any]
         contextUse = r["context"] as? [String: Any]

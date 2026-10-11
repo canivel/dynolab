@@ -235,10 +235,19 @@ def _alert(a, i):
 
 
 def model_context(model_id):
-    """How many tokens a downloaded model can read (its config's max_position_embeddings), or None if unknown."""
-    if not re.fullmatch(r'[\w.-]+/[\w.-]+', str(model_id or '')): return None
-    hub = Path(os.environ.get('HF_HUB_CACHE') or Path(os.environ.get('HF_HOME') or Path.home() / '.cache' / 'huggingface') / 'hub')
-    for config in sorted((hub / ('models--' + model_id.replace('/', '--')) / 'snapshots').glob('*/config.json')):
+    """How many tokens a downloaded model can read (its config's max_position_embeddings), or None if unknown.
+
+    model_id is a repo id ("org/name", looked up in the Hugging Face cache) or the folder a server loaded (Dyno's
+    servers all name their model "default_model", so the app sends the folder instead)."""
+    model_id = str(model_id or '')
+    if model_id.startswith('/'):
+        configs = [Path(model_id) / 'config.json']
+    elif re.fullmatch(r'[\w.-]+/[\w.-]+', model_id):
+        hub = Path(os.environ.get('HF_HUB_CACHE') or Path(os.environ.get('HF_HOME') or Path.home() / '.cache' / 'huggingface') / 'hub')
+        configs = sorted((hub / ('models--' + model_id.replace('/', '--')) / 'snapshots').glob('*/config.json'))
+    else:
+        return None
+    for config in configs:
         c = _load(config) or {}
         n = c.get('max_position_embeddings') or (c.get('text_config') or {}).get('max_position_embeddings')
         if isinstance(n, int) and n > 0: return n

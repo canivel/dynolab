@@ -55,6 +55,9 @@ public struct LLMModel: Sendable, Identifiable, Equatable {
     /// it: mlx_lm lists every model it *could* serve, so picking the first
     /// entry can ask a server to unload a 27B model and load something else.
     public var identifier: String = ""
+    /// The folder the server loaded, when it says (Dyno's own servers do). Every server Dyno starts names its model
+    /// "default_model" in requests, so this is what tells two of them apart.
+    public var path: String?
     public var runtime: String
     public var pid: Int32
     public var port: UInt16?
@@ -93,6 +96,7 @@ private struct ServerCapabilities {
     /// lives, except on Ollama, which is covered by `ollamaPS`.
     var staticName: String?
     var loadedDisplayName: String?
+    var loadedPath: String?
     var staticContext: Int?
     var probed = false
 }
@@ -208,6 +212,7 @@ public final class ModelMonitor: @unchecked Sendable {
             sizeBytes: process.memory,
             contextLength: caps.staticContext
         )
+        model.path = caps.loadedPath
 
         if caps.stats, let stats = await serverStats(port: port) {
             model.stats = stats
@@ -263,6 +268,7 @@ public final class ModelMonitor: @unchecked Sendable {
                 caps.staticName = name
                 if let path = model["path"] as? String, !path.isEmpty {
                     caps.loadedDisplayName = Self.shortName(path)
+                    caps.loadedPath = path
                 }
             }
         } else {

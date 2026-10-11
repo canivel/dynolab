@@ -24,13 +24,16 @@ struct AssistantPanel: View {
 
     private var session: AssistantSession { model.assistant }
 
-    private var servers: [(port: Int, model: String, name: String)] {
+    /// Running models, told apart by port: every server Dyno starts names its model "default_model".
+    private var servers: [Server] {
         model.snapshot.models.compactMap { s in
             guard let p = s.port, !s.identifier.isEmpty else { return nil }
-            return (Int(p), s.identifier, s.name)
+            return Server(port: Int(p), model: s.identifier, name: s.name, path: s.path)
         }
     }
-    private var chosen: (port: Int, model: String, name: String)? { servers.first { $0.model == modelID } ?? servers.first }
+    private var chosen: Server? {
+        servers.first { $0.key == modelID } ?? servers.first { $0.model == modelID && $0.model != "default_model" } ?? servers.first
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,7 +50,7 @@ struct AssistantPanel: View {
         }
         .background(DynoBrand.background)
         .onAppear { session.attach(model.researchLab) }
-        .task(id: chosen?.model) { if let m = chosen?.model { await session.loadModelContext(m) } }
+        .task(id: chosen?.key) { if let m = chosen { await session.loadModelContext(m.contextKey) } }
         .dropDestination(for: URL.self) { urls, _ in
             let files = urls.filter(\.isFileURL)
             guard chosen != nil, !files.isEmpty, !session.busy else { return false }
@@ -64,7 +67,7 @@ struct AssistantPanel: View {
         }
         .onChange(of: voice.transcript) { _, t in if voice.listening || !t.isEmpty { text = spoken + t } }
         // Reopening a conversation picks the model it used, if that model is running.
-        .onChange(of: session.conversationModel) { _, m in if let m, servers.contains(where: { $0.model == m }) { modelID = m } }
+        .onChange(of: session.conversationModel) { _, m in if let m, servers.contains(where: { $0.key == m }) { modelID = m } }
         .sheet(isPresented: $renaming) {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Rename conversation").font(.headline)
@@ -120,8 +123,8 @@ struct AssistantPanel: View {
                 if servers.isEmpty {
                     Text("No local model running").font(.caption).foregroundStyle(.secondary)
                 } else {
-                    Picker("", selection: Binding(get: { chosen?.model ?? "" }, set: { modelID = $0 })) {
-                        ForEach(servers, id: \.model) { s in Text("\(s.name) · :\(String(s.port))").tag(s.model) }
+                    Picker("", selection: Binding(get: { chosen?.key ?? "" }, set: { modelID = $0 })) {
+                        ForEach(servers, id: \.key) { s in Text("\(s.name) · :\(String(s.port))").tag(s.key) }
                     }.labelsHidden().controlSize(.small).frame(maxWidth: 240)
                 }
                 Text("on this Mac").font(.caption2).foregroundStyle(.secondary)
@@ -170,7 +173,7 @@ struct AssistantPanel: View {
     }
 
     /// The most the chosen model can read, when Dyno can tell (from the model's config).
-    private var modelMax: Int? { chosen.flatMap { session.modelContext[$0.model] }.flatMap { $0 > 0 ? $0 : nil } }
+    private var modelMax: Int? { chosen.flatMap { session.modelContext[$0.contextKey] }.flatMap { $0 > 0 ? $0 : nil } }
 
     /// Context sizes to choose from: the usual steps, and the model's whole context. Sizes it can't read are disabled.
     @ViewBuilder private var contextSizes: some View {
@@ -756,4 +759,13 @@ struct AssistantRail: View {
         default: break
         }
     }
+}
+
+/// A model running on this Mac that the assistant can use.
+private struct Server {
+    var port: Int, model: String, name: String, path: String?
+    /// What the picker and saved choice use: the port and the name together are unique.
+    var key: String { "\(port) \(model)" }
+    /// What the lab reads the model's own context length from: the folder it loaded when known, else its repo id.
+    var contextKey: String { path ?? model }
 }
