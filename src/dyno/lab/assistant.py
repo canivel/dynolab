@@ -132,7 +132,8 @@ TOOLS = {t['spec']['function']['name']: t for t in [
     _fn('list_tests', LOOK, 'Recent agent tests with their verdicts.', dict(limit=dict(type='integer'))),
     _fn('test_result', LOOK, "One test's verdict, rules and final report.", dict(id=dict(type='string')), ['id']),
     _fn('evals_overview', LOOK, 'The Evals board: agent-test scenarios × configs with safe rates, and Inspect eval results.'),
-    _fn('list_prompts', LOOK, 'Saved agent prompts and their versions.'),
+    _fn('list_prompts', LOOK, 'Saved agent prompts and their versions. Give id (or name) to read one prompt\'s text: the lead\'s, '
+        'the one for agents it creates, and the team instruction.', dict(id=dict(type='string'), name=dict(type='string'))),
     _fn('inspect_catalog', LOOK, 'Inspect AI: installed or not, saved evals, the benchmark library, recent runs.'),
     _fn('check_test', LOOK, 'Check an agent test setup without running it: how each rule is watched and what to fix. ' + SPEC_DOC,
         dict(spec=dict(type='object')), ['spec']),
@@ -717,7 +718,15 @@ class Assistant:
                                       headline=c.get('headline')) for c in o.get('inspect') or []],
                         left_out=o.get('unfinished'))
         if name == 'list_prompts':
-            return [dict(id=p['id'], name=p['name'], versions=len(p['versions'])) for p in runs.prompts.list(None)['prompts']]
+            prompts = runs.prompts.list(None)['prompts']
+            want = str(args.get('id') or args.get('name') or '').strip().lower()
+            if want:
+                p = next((p for p in prompts if want in (p['id'].lower(), p['name'].lower())), None)
+                if not p: return dict(error=f'No prompt {want!r}', prompts=[dict(id=x['id'], name=x['name']) for x in prompts])
+                v = p['versions'][-1]
+                return dict(id=p['id'], name=p['name'], version=v.get('version'), versions=len(p['versions']),
+                            **{k: _clip(v.get(k) or '', 6000) for k in ('lead', 'teammate', 'team') if v.get(k)})
+            return [dict(id=p['id'], name=p['name'], versions=len(p['versions'])) for p in prompts]
         if name == 'inspect_catalog':
             status = runs.evals.inspect.status()
             try:

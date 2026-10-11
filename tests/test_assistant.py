@@ -81,6 +81,9 @@ class FakeRuns:
     def room_plan(self, body): return dict(errors=[], warnings=[], rules=[dict(n=1, text=r['text'], watch=dict(kind='report')) for r in body['spec'].get('rules', [])])
     def create(self, config): self.started.append(config); return dict(id='r' * 32, status='running')
     def room(self, rid, after, limit): return dict(run=dict(status='running'), result={})
+    class prompts:
+        @staticmethod
+        def list(_): return dict(prompts=[dict(id='default', name='Default', versions=[dict(version=1, lead='You lead.', teammate='You help.', team='Build a team.')])])
     saved_envs = None
     def environment_from_compose(self, body):
         if 'services' not in body['compose']: return dict(errors=['No services in the Compose file'], spec=None)
@@ -248,6 +251,13 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual(c['events'][-1]['text'].strip(), 'It is running; watch it in Room & Observer.')
         self.send(cid, m, 'And now?')  # a new message may look again
         self.assertFalse(self.a._repeated(cid, *call))
+
+    def test_reads_a_prompts_text_when_asked_for_one(self):
+        cid = self.a.create()['id']
+        self.assertEqual(self.a._look(cid, 'list_prompts', {}), [dict(id='default', name='Default', versions=1)])
+        one = self.a._look(cid, 'list_prompts', dict(name='default'))
+        self.assertEqual((one['lead'], one['teammate'], one['team']), ('You lead.', 'You help.', 'Build a team.'))
+        self.assertIn('error', self.a._look(cid, 'list_prompts', dict(id='nope')))
 
     def test_an_unknown_environment_is_sent_back_with_the_real_ones(self):
         m = self.model([dict(calls=[('show_test_setup', dict(spec=dict(SPEC, environment='segmented_office')))]), dict(content='Fixed.')])
