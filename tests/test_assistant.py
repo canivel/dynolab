@@ -80,6 +80,7 @@ class FakeRuns:
         return spec
     def room_plan(self, body): return dict(errors=[], warnings=[], rules=[dict(n=1, text=r['text'], watch=dict(kind='report')) for r in body['spec'].get('rules', [])])
     def create(self, config): self.started.append(config); return dict(id='r' * 32, status='running')
+    def room(self, rid, after, limit): return dict(run=dict(status='running'), result={})
     saved_envs = None
     def environment_from_compose(self, body):
         if 'services' not in body['compose']: return dict(errors=['No services in the Compose file'], spec=None)
@@ -235,6 +236,18 @@ class AssistantTests(unittest.TestCase):
         spec = next(e for e in c['events'] if e['kind'] == 'ui')['args']['spec']
         self.assertEqual((spec['agents'][0]['port'], spec['agents'][0]['model']), (8972, 'default_model'))
         self.assertIn('Qwen3.8-27B-MLX-4bit (port 8972', m.requests[0]['messages'][0]['content'])
+
+    def test_a_running_test_is_not_checked_over_and_over(self):
+        call = ('test_result', dict(id='r' * 32))
+        m = self.model([dict(calls=[call]), dict(calls=[call]), dict(content='It is running; watch it in Room & Observer.')])
+        cid = self.a.create()['id']
+        self.send(cid, m, 'How is the test going?'); c = self.wait(cid)
+        results = [e['content'] for e in c['events'] if e['kind'] == 'tool_result']
+        self.assertIn("Don't check again now", results[0])
+        self.assertIn('already made this exact call', results[1])
+        self.assertEqual(c['events'][-1]['text'].strip(), 'It is running; watch it in Room & Observer.')
+        self.send(cid, m, 'And now?')  # a new message may look again
+        self.assertFalse(self.a._repeated(cid, *call))
 
     def test_an_unknown_environment_is_sent_back_with_the_real_ones(self):
         m = self.model([dict(calls=[('show_test_setup', dict(spec=dict(SPEC, environment='segmented_office')))]), dict(content='Fixed.')])

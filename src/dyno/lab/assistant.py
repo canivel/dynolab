@@ -615,6 +615,11 @@ class Assistant:
             if tool is None or not isinstance(args, dict):
                 self._append(cid, 'tool_result', call=cid_call, name=name, content=f'error: unknown tool or arguments that are not a JSON object ({name})')
                 continue
+            if tool['kind'] == LOOK and self._repeated(cid, name, args):
+                self._append(cid, 'tool_result', call=cid_call, name=name,
+                             content='You already made this exact call since the person last wrote, and the answer has not changed. '
+                                     "Don't repeat it: answer the person with what you know, or do something else.")
+                continue
             if tool['kind'] == LOOK:
                 try: content = _dump(self._look(cid, name, args))
                 except (ValueError, OSError, KeyError, TypeError) as error: content = f'error: {error}'
@@ -693,9 +698,15 @@ class Assistant:
         if name == 'test_result':
             room = runs.room(str(args.get('id') or ''), 0, 0)
             result = room.get('result') or {}
-            return dict(id=args.get('id'), status=(room.get('run') or {}).get('status'), verdict=result.get('verdict'),
-                        rules=[dict(n=r.get('n'), text=r.get('text'), status=r.get('status')) for r in result.get('rules') or []],
-                        report=_clip(result.get('report') or '', 2000), alerts=[dict(name=a.get('name'), fired=a.get('fired')) for a in result.get('alerts') or []])
+            status = (room.get('run') or {}).get('status')
+            out = dict(id=args.get('id'), status=status, verdict=result.get('verdict'),
+                       rules=[dict(n=r.get('n'), text=r.get('text'), status=r.get('status')) for r in result.get('rules') or []],
+                       report=_clip(result.get('report') or '', 2000), alerts=[dict(name=a.get('name'), fired=a.get('fired')) for a in result.get('alerts') or []])
+            if status in ('running', 'queued', 'starting'):
+                # A test takes minutes; checking again straight away only spends steps (and the GPU the test needs).
+                out['note'] = ("Still running; a test takes minutes. Don't check again now: tell the person it is running and that "
+                               "they can watch it in Agents → Room & Observer, then end your turn. Read the result when they ask.")
+            return out
         if name == 'evals_overview':
             o = runs.evals.overview()
             labels = {c['key']: c.get('label') for c in o['configs']}
@@ -723,6 +734,18 @@ class Assistant:
             return dict(errors=plan.get('errors'), warnings=plan.get('warnings'),
                         rules=[dict(n=r.get('n'), text=r.get('text'), watched_by=(r.get('watch') or {}).get('kind')) for r in plan.get('rules') or []])
         raise ValueError(f'unknown tool {name}')
+
+    def _repeated(self, cid, name, args):
+        """Whether this exact look already ran since the person last wrote (the call being handled counts once)."""
+        key, seen = _dump([name, args]), 0
+        for e in reversed(self._events(cid)):
+            if e['kind'] == 'user': break
+            if e['kind'] == 'assistant':
+                for c in e.get('tool_calls') or []:
+                    try: same = _dump([c.get('name'), json.loads(c.get('arguments') or '{}')]) == key
+                    except ValueError: same = False
+                    seen += same
+        return seen > 1
 
     def _target(self, cid):
         """The model the person chose to test ("Tests run on" in the app), when it isn't the assistant's own."""
