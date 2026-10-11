@@ -82,7 +82,7 @@ struct ExecutionView: View {
         for server in model.snapshot.models {
             if let port = server.port { ports[port] = server.name }
         }
-        if case let .running(name, port) = model.serverState { ports[port] = name }
+        for state in model.serverStates.values { if case let .running(name, port) = state { ports[port] = name } }
         for backend in model.router.backends {
             if let url = URL(string: backend.url),
                ["localhost", "127.0.0.1", "::1"].contains(url.host ?? ""),

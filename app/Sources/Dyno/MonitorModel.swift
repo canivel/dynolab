@@ -24,7 +24,16 @@ final class MonitorModel {
     // -- local model serving -------------------------------------------------
     private(set) var localModels: [LocalModel] = []
     private(set) var ggufModels: [LocalGGUF] = []
-    private(set) var serverState: ServerController.State = .stopped
+    /// Each model Dyno serves has its own server, so several can run at once (by model folder).
+    private(set) var serverStates: [String: ServerController.State] = [:]
+    /// The selected model's server: what the Models panel shows and controls.
+    var serverState: ServerController.State { selectedModel.flatMap { serverStates[$0.path] } ?? .stopped }
+    /// A model still loading, else one that failed to start: for the runtime popover.
+    var startupState: ServerController.State {
+        serverStates.values.first { $0.isBusy }
+            ?? serverStates.values.first { if case .failed = $0 { return true } else { return false } } ?? .stopped
+    }
+    func isServing(_ path: String) -> Bool { serverStates[path]?.runningModel != nil }
     private(set) var runtime: Runtime.Kind?
     var selectedModel: LocalModel?
     /// Thinking is on unless someone turned it off. Before 0.6 the default was the model's own
@@ -144,7 +153,7 @@ final class MonitorModel {
     /// Model discovery does loopback HTTP, so it runs far less often than the
     /// counter reads.
     @ObservationIgnored private let modelRefreshInterval: TimeInterval = 3.0
-    @ObservationIgnored private let server = ServerController()
+    @ObservationIgnored private var servers: [String: ServerController] = [:]
     @ObservationIgnored private let downloader = DownloadManager()
     @ObservationIgnored private var searchTask: Task<Void, Never>?
 
@@ -180,9 +189,6 @@ final class MonitorModel {
                 + "GPU Monitor needs an Apple Silicon Mac."
         }
         runtime = Runtime.current
-        server.onStateChange = { [weak self] state in
-            Task { @MainActor in self?.serverState = state }
-        }
         downloader.onChange = { [weak self] progress in
             Task { @MainActor in
                 guard let self else { return }
@@ -207,8 +213,8 @@ final class MonitorModel {
         guard CommandLine.arguments.contains("--snapshot"),
               let served = snapshot.models.first(where: { $0.stats != nil }),
               let port = served.port else { return }
-        selectedModel = localModels.first { $0.name == served.name || $0.path == served.identifier }
-        serverState = .running(model: served.name, port: port)
+        selectedModel = localModels.first { $0.name == served.name || $0.path == served.identifier || $0.path == served.path }
+        if let path = selectedModel?.path { serverStates[path] = .running(model: served.name, port: port) }
     }
 
     // MARK: - Catalog
@@ -386,14 +392,14 @@ final class MonitorModel {
 
     /// Started by Dyno (here or in an earlier session), as opposed to a server someone ran by hand.
     func isDynoEndpoint(_ endpoint: LLMModel) -> Bool {
-        if server.ownedPID == endpoint.pid { return true }
+        if servers.values.contains(where: { $0.ownedPID == endpoint.pid }) { return true }
         guard let command = snapshot.processes.first(where: { $0.pid == endpoint.pid })?.command else { return false }
         return ServerController.isDynoServe(command)
     }
 
     func stopEndpoint(_ endpoint: LLMModel) {
         serverActionError = nil
-        if server.ownedPID == endpoint.pid { server.stop(); return }
+        if let owner = servers.values.first(where: { $0.ownedPID == endpoint.pid }) { owner.stop(); return }
         guard let command = snapshot.processes.first(where: { $0.pid == endpoint.pid })?.command,
               let port = endpoint.port else { return }
         do {
@@ -402,23 +408,47 @@ final class MonitorModel {
         } catch { serverActionError = error.localizedDescription }
     }
 
+    private func controller(for path: String) -> ServerController {
+        if let existing = servers[path] { return existing }
+        let controller = ServerController()
+        controller.onStateChange = { [weak self] state in
+            Task { @MainActor in self?.serverStates[path] = state }
+        }
+        servers[path] = controller
+        return controller
+    }
+
+    /// The start port, or the next one after it that no model is using or loading on.
+    private func freePort(from first: UInt16) -> UInt16? {
+        var taken = Set(snapshot.models.compactMap(\.port))
+        for (path, state) in serverStates where path != selectedModel?.path {
+            if case let .running(_, port) = state { taken.insert(port) }
+            if state.isBusy, let port = servers[path]?.port { taken.insert(port) }
+        }
+        return (first...UInt16.max).prefix(100).first { !taken.contains($0) }
+    }
+
     func startSelectedModel() {
         guard let model = selectedModel else { return }
         serverActionError = nil
-        guard let port = UInt16(exactly: launchPort), port > 0 else {
+        guard let first = UInt16(exactly: launchPort), first > 0 else {
             serverActionError = "Choose a port between 1 and 65535."; return
         }
-        guard !snapshot.models.contains(where: { $0.port == port }) else {
-            serverActionError = "Port \(port) is already serving. Stop that endpoint first or choose another port."; return
+        guard let port = freePort(from: first) else {
+            serverActionError = "No free port from \(first). Choose another start port."; return
         }
-        server.start(
-            model: model, port: port == 0 ? 8971 : port,
+        controller(for: model.path).start(
+            model: model, port: port,
             extraArguments: launchOptions.arguments + (thinkingMode == "default" ? [] : ["--chat-template-args", thinkingMode == "on" ? "{\"enable_thinking\":true}" : "{\"enable_thinking\":false}"])
         )
     }
 
     func stopServer() {
-        server.stop()
+        if let path = selectedModel?.path { servers[path]?.stop() }
+    }
+
+    func cancelStartups() {
+        for (path, state) in serverStates where state.isBusy { servers[path]?.stop() }
     }
 
     /// Called when the app quits so a model server is never left orphaned.
@@ -426,11 +456,11 @@ final class MonitorModel {
         conversations.saveNow()
         researchLab.stop()
         routerController.stop()
-        server.stop()
+        servers.values.forEach { $0.stop() }
         stop()
     }
 
-    var serverLog: String { server.log }
+    var serverLog: String { selectedModel.flatMap { servers[$0.path]?.log } ?? "" }
 
     func start() {
         guard isAvailable else { return }

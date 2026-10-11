@@ -25,6 +25,7 @@ public final class ServerController: @unchecked Sendable {
 
     private let lock = NSLock()
     private var process: Process?
+    private var _port: UInt16?
     private var _state: State = .stopped
     private var recentOutput: [String] = []
 
@@ -49,6 +50,12 @@ public final class ServerController: @unchecked Sendable {
         let callback = onStateChange
         lock.unlock()
         callback?(new)
+    }
+
+    /// The port of the last start, while it loads or runs.
+    public var port: UInt16? {
+        lock.lock(); defer { lock.unlock() }
+        return _port
     }
 
     public var ownedPID: Int32? {
@@ -104,7 +111,7 @@ public final class ServerController: @unchecked Sendable {
         }
 
         setState(.launching(model: model.name))
-        lock.lock(); recentOutput = []; lock.unlock()
+        lock.lock(); recentOutput = []; _port = port; lock.unlock()
 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: invocation.executable)
