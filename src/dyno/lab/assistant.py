@@ -655,11 +655,16 @@ class Assistant:
                 if waiting:
                     self._append(cid, 'tool_result', call=cid_call, name=name, content='Not proposed: one proposal at a time. Wait for the answer to the first.')
                     continue
+                asked = _dump([name, args])  # as the model wrote it, before the checks fill things in
+                if self._already_done(cid, asked):
+                    self._append(cid, 'tool_result', call=cid_call, name=name,
+                                 content='Not proposed: the person already approved this exact call and it worked. Tell them what it did and end your turn.')
+                    continue
                 problems = self._check_act(name, args, cid)
                 if problems:
                     self._append(cid, 'tool_result', call=cid_call, name=name, content='error: ' + problems)
                     continue
-                self._append(cid, 'proposal', id=cid_call, name=name, args=args, summary=self._summary(name, args))
+                self._append(cid, 'proposal', id=cid_call, name=name, args=args, asked=asked, summary=self._summary(name, args))
                 waiting = True
         return waiting
 
@@ -756,6 +761,15 @@ class Assistant:
                     except ValueError: same = False
                     seen += same
         return seen > 1
+
+    def _already_done(self, cid, asked):
+        """Whether this exact act was already approved and succeeded since the person last wrote."""
+        done, same = set(), set()
+        for e in reversed(self._events(cid)):
+            if e['kind'] == 'user': break
+            if e['kind'] == 'decision' and e.get('approve') and e.get('ok'): done.add(e.get('proposal'))
+            if e['kind'] == 'proposal' and e.get('asked') == asked: same.add(e.get('id'))
+        return bool(done & same)
 
     def _target(self, cid):
         """The model the person chose to test ("Tests run on" in the app), when it isn't the assistant's own."""

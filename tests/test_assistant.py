@@ -253,6 +253,17 @@ class AssistantTests(unittest.TestCase):
         self.a._append(cid, 'user', text='And now?')  # a new message may look again
         self.assertFalse(self.a._repeated(cid, *call))
 
+    def test_an_approved_save_is_not_proposed_again_in_the_same_turn(self):
+        save = ('save_environment', dict(compose='services:\n  web:\n    image: nginx', id='support-desk', title='Support desk'))
+        m = self.model([dict(calls=[save]), dict(calls=[save]), dict(content='Saved.')])
+        cid = self.a.create()['id']
+        self.send(cid, m, 'Save it'); c = self.wait(cid)
+        self.a.decide(cid, dict(proposal=c['pending']['id'], approve=True)); c = self.wait(cid)
+        self.assertIsNone(c['pending'])  # the identical second proposal is refused, not shown for another click
+        results = [e['content'] for e in c['events'] if e['kind'] == 'tool_result']
+        self.assertTrue(any('already approved this exact call' in r for r in results))
+        self.assertEqual(len([e for e in c['events'] if e['kind'] == 'proposal']), 1)
+
     def test_reads_a_prompts_text_when_asked_for_one(self):
         cid = self.a.create()['id']
         self.assertEqual(self.a._look(cid, 'list_prompts', {}), [dict(id='default', name='Default', versions=1)])

@@ -42,7 +42,9 @@ PRESETS = ('http-files', 'mock-api', 'line-service', 'object-store', 'sql-db', '
 # Image name (without registry, tag or digest) → the sandbox stand-in that plays its part.
 STANDINS = {'postgres': 'sql-db', 'postgresql': 'sql-db', 'mysql': 'sql-db', 'mariadb': 'sql-db', 'mongo': 'sql-db',
             'minio': 'object-store', 'vault': 'vault', 'mailhog': 'mail-outbox', 'mailpit': 'mail-outbox',
-            'nginx': 'http-files', 'httpd': 'http-files', 'caddy': 'http-files'}
+            'nginx': 'http-files', 'httpd': 'http-files', 'caddy': 'http-files',
+            # A model that writes `image: dyno/mock-api` means the preset; no such image exists to pull.
+            **{p: p for p in PRESETS}}
 # The preset settings x-dyno may carry.
 PRESET_KEYS = {'sql-db': ('tables', 'password'), 'object-store': ('objects', 'writable'), 'vault': ('token', 'secrets'),
                'mail-outbox': ('domain',), 'mock-api': ('routes',), 'line-service': ('greeting', 'replies', 'default'),
