@@ -344,7 +344,7 @@ class SandboxRuns:
     def _room_spec(self, spec, complete=True):
         """The spec the harness reads. Agents reach their models only through Dyno's loopback endpoints."""
         if not isinstance(spec, dict) or set(spec) - {'title', 'environment', 'goal', 'rules', 'agents', 'limits', 'prompt',
-                                                      'script', 'rules_from', 'history', 'alerts', 'source'}:
+                                                      'script', 'rules_from', 'history', 'alerts', 'source', 'submit_summary'}:
             raise ValueError('Unsupported room spec')
         out = dict(title=str(spec.get('title') or '')[:120], goal=str(spec.get('goal') or '')[:8000], rules=[], agents=[])
         prompts, out['prompt_ref'] = self.prompts.resolve(spec.get('prompt'))
@@ -389,20 +389,32 @@ class SandboxRuns:
         script = spec.get('script') or []
         if not isinstance(script, list) or len(script) > 200: raise ValueError('A script has at most 200 messages')
         for m in script:
-            if not isinstance(m, dict) or set(m) - {'after', 'name', 'text'} or not isinstance(m.get('text'), str) or not m['text'].strip() or len(m['text']) > 4000:
-                raise ValueError('Each script message has text (1–4,000 characters), and optionally after and name')
+            if not isinstance(m, dict) or set(m) - {'after', 'name', 'text', 'raw'} or not isinstance(m.get('text'), str) or not m['text'].strip() or len(m['text']) > 4000:
+                raise ValueError('Each script message has text (1–4,000 characters), and optionally after, name and raw')
+            if m.get('raw', False) not in (True, False): raise ValueError('A script message is raw: true or false')
             after = m.get('after', 'submit')
             if not (after in ('start', 'submit') or (isinstance(after, str) and re.fullmatch(r'round:([1-9]\d{0,2})', after))):
                 raise ValueError('A script message is sent after start, submit or round:N')
-        if script: out['script'] = [dict(after=m.get('after', 'submit'), name=str(m.get('name') or 'User')[:40], text=m['text']) for m in script]
+        # raw: the line reaches the agents as their whole user turn, exactly as written (no "Team goal" or room wrapper).
+        if script: out['script'] = [dict(after=m.get('after', 'submit'), name=str(m.get('name') or 'User')[:40], text=m['text'],
+                                         **({'raw': True} if m.get('raw') else {})) for m in script]
         if spec.get('rules_from'): out['rules_from'] = str(spec['rules_from'])[:40]
         history = spec.get('history') or []
         if not isinstance(history, list) or len(history) > 400: raise ValueError('history has at most 400 messages')
         for h in history:
-            if not isinstance(h, dict) or set(h) - {'role', 'content'} or h.get('role') not in ('user', 'assistant') \
-                    or not isinstance(h.get('content'), str) or not h['content'].strip() or len(h['content']) > 8000:
-                raise ValueError('Each history message has a role (user or assistant) and 1–8,000 characters of content')
-        if history: out['history'] = [dict(role=h['role'], content=h['content']) for h in history]
+            if not isinstance(h, dict) or set(h) - {'role', 'content', 'tool_calls', 'tool_call_id'} or h.get('role') not in ('user', 'assistant', 'tool') \
+                    or not isinstance(h.get('content', ''), (str, type(None))) or len(h.get('content') or '') > 8000:
+                raise ValueError('Each history message has a role (user, assistant or tool) and at most 8,000 characters of content')
+            calls = h.get('tool_calls')
+            if calls is not None and (h['role'] != 'assistant' or not isinstance(calls, list) or len(calls) > 20 or not all(isinstance(c, dict) for c in calls)):
+                raise ValueError('Only an assistant history message has tool_calls, a list of at most 20')
+            if h['role'] == 'tool' and not isinstance(h.get('tool_call_id'), str): raise ValueError('A tool history message needs the tool_call_id it answers')
+            if h['role'] != 'tool' and not calls and not (h.get('content') or '').strip():
+                raise ValueError('Each history message has 1–8,000 characters of content (an assistant turn may have only tool calls)')
+        # Tool calls and results go to the model as native messages; the harness checks every call has its result.
+        if history: out['history'] = [{k: h[k] for k in ('role', 'content', 'tool_calls', 'tool_call_id') if h.get(k) is not None} for h in history]
+        if spec.get('submit_summary', True) not in (True, False): raise ValueError('submit_summary is true or false')
+        if spec.get('submit_summary') is False: out['submit_summary'] = False  # submit without "What you did", a self-review prompt
         test_alerts = spec.get('alerts') or []  # the test's own alerts (from a shared test), next to the library's
         if not isinstance(test_alerts, list) or len(test_alerts) > 30: raise ValueError('A test has at most 30 alerts of its own')
         if test_alerts: out['test_alerts'] = [dict(self.alerts.normalize(a), enabled=True) for a in test_alerts]

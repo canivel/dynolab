@@ -15,8 +15,40 @@ struct RoomRule: Identifiable, Codable, Equatable {
 /// A message the test sends by itself, so a long session runs without anyone at the keyboard.
 struct ScriptLine: Identifiable, Codable, Equatable {
     var id = UUID(); var after = "submit"; var round = 3; var name = ""; var text = ""
+    /// Sent as the agents' whole user turn, exactly as written: no "Team goal" or room wrapper. Optional so older drafts load.
+    var raw: Bool? = nil
 }
-struct HistoryTurn: Codable, Equatable { var role: String; var content: String }
+/// A prefilled turn. An assistant turn may carry tool calls, each answered by a tool turn, sent to the model as native messages.
+struct HistoryTurn: Codable, Equatable {
+    struct Call: Codable, Equatable { var id: String; var name: String; var arguments: String }
+    var role: String; var content: String
+    var toolCalls: [Call]? = nil
+    var toolCallID: String? = nil
+
+    /// From the OpenAI message shape: {"role", "content", "tool_calls": [{"id", "function": {"name", "arguments"}}], "tool_call_id"}.
+    init?(json h: [String: Any]) {
+        guard let role = h["role"] as? String else { return nil }
+        self.role = role; content = h["content"] as? String ?? ""
+        toolCallID = h["tool_call_id"] as? String
+        if let calls = h["tool_calls"] as? [[String: Any]] {
+            toolCalls = calls.map { c in
+                let fn = c["function"] as? [String: Any] ?? c
+                let args = fn["arguments"]
+                let text = args as? String
+                    ?? args.flatMap { try? JSONSerialization.data(withJSONObject: $0, options: [.sortedKeys]) }.flatMap { String(data: $0, encoding: .utf8) }
+                    ?? "{}"
+                return Call(id: c["id"] as? String ?? "", name: fn["name"] as? String ?? "", arguments: text)
+            }
+        }
+    }
+
+    var json: [String: Any] {
+        var d: [String: Any] = ["role": role, "content": content]
+        if let toolCalls { d["tool_calls"] = toolCalls.map { ["id": $0.id, "type": "function", "function": ["name": $0.name, "arguments": $0.arguments]] } }
+        if let toolCallID { d["tool_call_id"] = toolCallID }
+        return d
+    }
+}
 /// An Observer alert that belongs to one test (from a shared test package), next to your library's.
 struct TestAlert: Codable, Equatable, Identifiable {
     var id: String; var name: String; var kind: String; var reads: [String]
@@ -95,6 +127,8 @@ struct RoomDraft: Codable, Equatable {
     var script: [ScriptLine]? = nil
     var rulesFrom: String? = nil
     var history: [HistoryTurn]? = nil
+    /// false: submit has no "What you did" field, which itself prompts a self-review. nil: it has one.
+    var submitSummary: Bool? = nil
     // From a shared test package.
     var testAlerts: [TestAlert]? = nil
     var title: String? = nil
@@ -122,11 +156,14 @@ struct RoomDraft: Codable, Equatable {
         if !lines.isEmpty {
             s["script"] = lines.map { l -> [String: Any] in
                 let after = l.after == "round" ? "round:\(l.round)" : l.after
-                return ["after": after, "name": l.name.isEmpty ? (rulesFrom ?? "User") : l.name, "text": l.text]
+                var d: [String: Any] = ["after": after, "name": l.name.isEmpty ? (rulesFrom ?? "User") : l.name, "text": l.text]
+                if l.raw == true { d["raw"] = true }
+                return d
             }
         }
         if let from = rulesFrom, !from.isEmpty { s["rules_from"] = from }
-        if let history, !history.isEmpty { s["history"] = history.map { ["role": $0.role, "content": $0.content] } }
+        if let history, !history.isEmpty { s["history"] = history.map(\.json) }
+        if submitSummary == false { s["submit_summary"] = false }
         if let testAlerts, !testAlerts.isEmpty { s["alerts"] = testAlerts.map(\.json) }
         if let title, !title.isEmpty { s["title"] = title }
         if let source { s["source"] = ["research": source.research, "scenario": source.scenario].compactMapValues { $0 } }
@@ -170,17 +207,15 @@ extension RoomDraft {
         }
         rulesFrom = spec["rules_from"] as? String
         let lines = (spec["script"] as? [[String: Any]] ?? []).map { m -> ScriptLine in
-            var l = ScriptLine(name: m["name"] as? String ?? "", text: m["text"] as? String ?? "")
+            var l = ScriptLine(name: m["name"] as? String ?? "", text: m["text"] as? String ?? "", raw: m["raw"] as? Bool == true ? true : nil)
             let after = m["after"] as? String ?? "submit"
             if after.hasPrefix("round:") { l.after = "round"; l.round = Int(after.dropFirst(6)) ?? 3 } else { l.after = after }
             return l
         }
         script = lines.isEmpty ? nil : lines
-        let turns = (spec["history"] as? [[String: Any]] ?? []).compactMap { h -> HistoryTurn? in
-            guard let role = h["role"] as? String, let content = h["content"] as? String else { return nil }
-            return HistoryTurn(role: role, content: content)
-        }
+        let turns = (spec["history"] as? [[String: Any]] ?? []).compactMap(HistoryTurn.init(json:))
         history = turns.isEmpty ? nil : turns
+        submitSummary = spec["submit_summary"] as? Bool == false ? false : nil
         if let list = spec["alerts"] as? [[String: Any]], !list.isEmpty,
            let data = try? JSONSerialization.data(withJSONObject: list), let alerts = try? JSONDecoder().decode([TestAlert].self, from: data) {
             testAlerts = alerts
@@ -538,6 +573,9 @@ struct TestSetupView: View {
                     }.labelsHidden().frame(width: 160).controlSize(.small)
                     if line.after == "round" { Stepper("\(line.round)", value: $line.round, in: 1...500).frame(width: 70).controlSize(.small) }
                     TextField("Message", text: $line.text, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(1...3)
+                    Toggle("As written", isOn: Binding(get: { line.raw == true }, set: { line.raw = $0 ? true : nil }))
+                        .toggleStyle(.checkbox).font(.caption).controlSize(.small)
+                        .help("Send it as the agents' whole turn, exactly as written: no “Team goal” and no “Messages in the room”, the way a user's follow-up reaches a model. For papers that measure spontaneous behaviour.")
                     Button { draft.script?.removeAll { $0.id == line.id } } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).foregroundStyle(.secondary)
                 }
             }
@@ -546,23 +584,30 @@ struct TestSetupView: View {
                 Spacer()
                 Text(historySummary).font(.caption).foregroundStyle(.secondary)
                 Button("Load history…", action: loadHistory).controlSize(.small)
-                    .help("A JSON list of {\"role\": \"user\" | \"assistant\", \"content\": …} turns every agent sees after its system prompt: SCARBench's long condition.")
+                    .help("A JSON list of turns every agent sees after its system prompt (SCARBench's long condition, or a prefilled session): {\"role\": \"user\" | \"assistant\", \"content\"}, an assistant turn with \"tool_calls\": [{\"id\", \"function\": {\"name\", \"arguments\"}}], and {\"role\": \"tool\", \"tool_call_id\", \"content\"} for each result. They reach the model as native messages.")
                 if draft.history != nil { Button("Clear") { draft.history = nil }.controlSize(.small) }
             }
+            Toggle("Final report asks “What you did”", isOn: Binding(get: { draft.submitSummary != false }, set: { draft.submitSummary = $0 ? nil : false }))
+                .toggleStyle(.checkbox).font(.caption)
+                .help("The submit tool's summary field. It prompts the agent to review its own work, so turn it off when that review is what you measure.")
         }
     }
 
     private var historySummary: String {
-        let n = draft.history?.count ?? 0
-        return n == 0 ? "No prefilled history" : "Prefilled history: \(n) messages"
+        let n = draft.history?.count ?? 0, calls = draft.history?.reduce(0) { $0 + ($1.toolCalls?.count ?? 0) } ?? 0
+        return n == 0 ? "No prefilled history" : "Prefilled history: \(n) messages" + (calls > 0 ? ", \(calls) tool call\(calls == 1 ? "" : "s")" : "")
     }
 
     private func loadHistory() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url, let data = try? Data(contentsOf: url) else { return }
-        do { draft.history = try JSONDecoder().decode([HistoryTurn].self, from: data); issue = nil }
-        catch { issue = "History must be a JSON list of {role, content}: \(error.localizedDescription)" }
+        guard let list = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else {
+            issue = "History must be a JSON list of messages: {role, content}, with tool_calls and tool results as in the OpenAI API."; return
+        }
+        let turns = list.compactMap(HistoryTurn.init(json:))
+        guard turns.count == list.count else { issue = "Every history message needs a role."; return }
+        draft.history = turns; issue = nil
     }
 
     /// All environments as cards: built-in first, then yours, A to Z. Plain machine counts as built-in.
@@ -1290,7 +1335,7 @@ struct RoomObserverView: View {
                 default: out.append(ChatItem(id: seq * 10, agent: agent, ts: ts, kind: .command, text: tool))
                 }
             case "user_message":
-                let who = (e["name"] as? String ?? "You") + (e["scripted"] as? Bool == true ? " · script" : "")
+                let who = (e["name"] as? String ?? "You") + (e["scripted"] as? Bool == true ? (e["raw"] as? Bool == true ? " · script, as written" : " · script") : "")
                 out.append(ChatItem(id: seq * 10, agent: nil, ts: ts, kind: .user, text: e["content"] as? String ?? "", detail: who))
             case "waiting":
                 let minutes = max(1, (e["seconds"] as? Int ?? 300) / 60)
