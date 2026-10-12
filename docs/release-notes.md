@@ -1,3 +1,33 @@
+# Dyno Lab 0.6.8
+
+Dyno Lab 0.6.8 lets the assistant run on any model you download, including abliterated and merged models whose chat template can't call tools, and test a different model from the one it runs on. It also reads documents, runs several models at once, deletes downloaded models, and links each Observer card to the moment in the Room behind it.
+
+## Any model in the assistant
+
+- **Tool calling for any model.** Some models (often abliterated or merged ones) ship a chat template that drops tools, or no template at all, so the assistant stopped after its first step. `dyno serve` now borrows the template of a downloaded model of the same family when its special tokens fit, or uses a built-in tool format that works through any template. `/stats` says which under `model.tool_calls`. See [Tool calling for any model](runtime-notes.md#tool-calling-for-any-model).
+- **A long tool call no longer stops the assistant silently.** mlx_lm's Qwen tool parser crashed on a long JSON argument with a line break in it, and the reply just ended. Dyno now reads such calls with a more forgiving parser, and an answer that breaks off part-way shows an error instead of silence.
+- **Tests run on.** With two or more models running, choose which one the assistant tests. It keeps running on its own model.
+- **Several models at once.** Start more than one model in Models; each gets a free port. The assistant's picker tells servers apart by port, so two Dyno servers no longer look like one.
+- **Incomplete downloads.** A model missing a weight file is marked *incomplete download* and won't start, and `dyno serve` exits with one line saying why instead of hanging.
+
+## The assistant
+
+- **Documents.** Attach files with the paperclip or drop them on the panel: PDF (scanned pages read with OCR), Word, RTF, HTML, text and images. Text is read on your Mac. Short documents go to the model whole; long ones through search and page reads.
+- **Context size.** Click the meter to choose from 16K up to the model's own context, before or during a conversation.
+- **No more loops.** It no longer polls a running test over and over, asks you to approve the same action again after it worked, or re-reads the same prompt list.
+- **Environments save.** Saving an environment always failed with `Unsupported environment fields: ['agents']`. An image named after a Dyno preset (`dyno/mock-api`) is now that preset instead of an image Docker can't pull.
+- **Watch it** opens the test that is running, not the previous one, and chat text can be selected and copied.
+
+## Room & Observer
+
+- **Click an Observer card** to see the moment behind it. The Room scrolls to the command, message or output and outlines it, in Conversation or Full log.
+
+## Models
+
+- **Delete downloaded models.** A Trash button in Discover → Downloaded, and **Move to Trash…** in the Models sidebar. It shows the real size, removes a Hugging Face cache entry whole, refuses a model that is being served, and uses the Trash, so it can be undone.
+
+---
+
 # Dyno Lab 0.6.7
 
 Dyno Lab 0.6.7 lets the assistant search the web if you allow it, save environments and import whole tests, and fixes a crash when switching to an empty assistant conversation.
