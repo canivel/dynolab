@@ -1056,6 +1056,10 @@ struct RoomObserverView: View {
     @State private var managingAlerts = false
     @State private var toast: [String: Any]?
     @State private var agentFilter = "all"
+    /// The log event behind an Observer card the person clicked (a transcript `seq`), and which card it was.
+    @State private var focus: Int?
+    @State private var focusedObservation: Int?
+    @State private var focusToken = 0
     @AppStorage("roomDraft") private var storedDraft = ""
 
     private var run: [String: Any] { data["run"] as? [String: Any] ?? [:] }
@@ -1106,7 +1110,7 @@ struct RoomObserverView: View {
         }
         .sheet(isPresented: $managingAlerts) { AlertsManagerView(lab: lab, servers: []) }
         .task(id: roomID) {
-            events = []; observed = []; last = 0; lastObserved = 0; data = [:]; toast = nil
+            events = []; observed = []; last = 0; lastObserved = 0; data = [:]; toast = nil; focus = nil; focusedObservation = nil
             await loadRooms()
             if roomID == nil, let first = rooms.first?["id"] as? String { roomID = first; return }
             while !Task.isCancelled, let id = roomID {
@@ -1181,17 +1185,34 @@ struct RoomObserverView: View {
                 }
             }.padding(14)
             Divider()
+            if focus != nil {
+                HStack(spacing: 8) {
+                    Image(systemName: "scope").foregroundStyle(Color.accentColor)
+                    Text("The moment behind the observation you picked").font(.caption)
+                    Spacer()
+                    Button(detail == "full" ? "Show in Conversation" : "Show in Full log") { detail = detail == "full" ? "short" : "full"; focusToken += 1 }
+                        .controlSize(.small)
+                    Button { focus = nil; focusedObservation = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain).help("Clear")
+                }.padding(.horizontal, 14).padding(.vertical, 6).background(Color.accentColor.opacity(0.12))
+                Divider()
+            }
             if detail == "full" {
-                RoomFullLog(events: events, agents: agents, running: running, port: modelPort, agentFilter: $agentFilter)
+                RoomFullLog(events: events, agents: agents, running: running, port: modelPort, agentFilter: $agentFilter, focus: focus, focusToken: focusToken)
             } else {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
-                        ForEach(chat) { item in ChatRow(item: item, agent: agents[item.agent ?? ""], target: agents[item.target ?? ""], showThinking: showThinking).id(item.id) }
+                        ForEach(chat) { item in
+                            ChatRow(item: item, agent: agents[item.agent ?? ""], target: agents[item.target ?? ""], showThinking: showThinking).id(item.id)
+                                .padding(4)
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor, lineWidth: 2).opacity(item.id == chatTarget ? 1 : 0))
+                        }
                         if running { HStack(spacing: 6) { DynoSpinner(size: 12); Text("Agents are working…").font(.caption).foregroundStyle(.secondary) } }
                         if chat.isEmpty && !running { Text("Nothing was said in this room.").foregroundStyle(.secondary) }
                     }.padding(14)
-                }.onChange(of: chat.count) { _, _ in if let id = chat.last?.id { withAnimation { proxy.scrollTo(id, anchor: .bottom) } } }
+                }.onChange(of: chat.count) { _, _ in if focus == nil, let id = chat.last?.id { withAnimation { proxy.scrollTo(id, anchor: .bottom) } } }
+                .onChange(of: focusToken) { _, _ in if let id = chatTarget { withAnimation { proxy.scrollTo(id, anchor: .center) } } }
+                .onAppear { if let id = chatTarget { DispatchQueue.main.async { proxy.scrollTo(id, anchor: .center) } } }
             }
             }
             Divider()
@@ -1199,6 +1220,47 @@ struct RoomObserverView: View {
             Text("What the agents see: the goal, the rules, each other's messages and yours, their own command output and, for a created agent, its creator's instructions. Nothing from the Observer.")
                 .font(.caption).foregroundStyle(.secondary).padding(12)
         }.background(RoundedRectangle(cornerRadius: 14).fill(DynoBrand.surface)).overlay(RoundedRectangle(cornerRadius: 14).stroke(.quaternary))
+    }
+
+    /// The conversation row for the focused log event: itself, or the last row before it when it has none.
+    private var chatTarget: Int? {
+        guard let focus else { return nil }
+        return chat.last(where: { $0.id / 10 <= focus })?.id
+    }
+
+    /// The log event an Observer card is about. The two logs are separate files, so they are matched by
+    /// agent and time: a command or output or message just before the card was written, or the user's message.
+    private func moment(for card: [String: Any]) -> Int? {
+        let kind = card["kind"] as? String ?? "rule_event", source = card["source"] as? String ?? ""
+        let agent = card["agent_id"] as? String
+        let wanted: Set<String>
+        switch kind {
+        case "intervention", "scripted_message": wanted = ["user_message"]
+        case "agent_created": wanted = ["agent_created"]
+        case "alert" where source == "thinking" || source == "messages": wanted = ["model"]
+        case "alert" where source == "outputs": wanted = ["tool_result"]
+        default: wanted = ["tool_call"]
+        }
+        guard let at = Self.seconds(card["ts"]) else { return nil }
+        let nearOnly = wanted == ["user_message"] || wanted == ["agent_created"]
+        let found = events.compactMap { e -> (seq: Int, gap: Double)? in
+            guard wanted.contains(e["event"] as? String ?? ""), let seq = e["seq"] as? Int, let t = Self.seconds(e["ts"]) else { return nil }
+            if !nearOnly, let agent, e["agent_id"] as? String != agent { return nil }
+            return (seq, nearOnly ? abs(at - t) : (t <= at + 0.001 ? at - t : 3600 + (t - at)))
+        }
+        return found.min(by: { $0.gap < $1.gap })?.seq
+    }
+
+    private static func seconds(_ ts: Any?) -> Double? {
+        guard let ts = ts as? String, ts.count >= 23 else { return nil }
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f.date(from: String(ts.prefix(23)) + "Z")?.timeIntervalSince1970
+    }
+
+    private func jump(to i: Int) {
+        focusedObservation = i
+        guard observed.indices.contains(i), let seq = moment(for: observed[i]) else { focus = nil; issue = "Couldn't find that moment in the log."; return }
+        issue = nil; agentFilter = "all"; focus = seq; focusToken += 1
     }
 
     struct ChatItem: Identifiable {
@@ -1310,7 +1372,12 @@ struct RoomObserverView: View {
                     alertSummary
                     if agents.count > 1 { teamTree }
                     if observed.allSatisfy({ ["agent_created", "intervention", "sandbox_restart", "scripted_message"].contains($0["kind"] as? String ?? "") }) { Text(running ? "Watching. Nothing flagged yet." : "Nothing was flagged.").font(.callout).foregroundStyle(.secondary) }
-                    ForEach(observed.indices, id: \.self) { i in ObserverCard(event: observed[i], agents: agents) }
+                    ForEach(observed.indices, id: \.self) { i in
+                        ObserverCard(event: observed[i], agents: agents)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.accentColor, lineWidth: 2).opacity(focusedObservation == i ? 1 : 0))
+                            .contentShape(Rectangle()).onTapGesture { jump(to: i) }
+                            .help("Click to see this moment in the conversation or the full log")
+                    }
                     if let result { outcome(result) }
                 }.padding(14)
             }

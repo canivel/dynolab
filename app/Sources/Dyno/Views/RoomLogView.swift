@@ -11,6 +11,9 @@ struct RoomFullLog: View {
     var running: Bool
     var port: UInt16?
     @Binding var agentFilter: String
+    /// A log event to scroll to and outline (an Observer card the person clicked), and a counter so the same one can be asked for again.
+    var focus: Int? = nil
+    var focusToken = 0
     @State private var live: ExecutionTrace?
     @State private var follow = true
 
@@ -69,6 +72,18 @@ struct RoomFullLog: View {
         return out.filter { if case .turn(let t) = $0 { return t.agent == agentFilter }; return true }
     }
 
+    /// The block that holds the focused event.
+    private var focusBlock: Int? {
+        guard let focus else { return nil }
+        for b in blocks {
+            switch b {
+            case .turn(let t): if t.id == focus || t.steps.contains(where: { $0.id == focus || $0.calls.contains(where: { $0.id == focus }) }) { return b.id }
+            case .note(let id, _, _, _, _): if id / 100 == focus { return id }
+            }
+        }
+        return nil
+    }
+
     /// The agent whose model call is running now: its turn has started and no answer has come back yet.
     private var waitingOn: String? {
         guard running, let last = events.last(where: { ["room_update", "model", "tool_result", "end", "waiting"].contains($0["event"] as? String ?? "") }) else { return nil }
@@ -84,14 +99,20 @@ struct RoomFullLog: View {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     ForEach(blocks) { block in
                         switch block {
-                        case .turn(let t): TurnCard(turn: t, agent: agents[t.agent]).id(block.id)
-                        case .note(let id, let ts, let text, let agent, let detail): NoteRow(ts: ts, text: text, color: agent.flatMap { RoomPalette.color(agents[$0]?["color"] as? String) }, detail: detail).id(id)
+                        case .turn(let t):
+                            TurnCard(turn: t, agent: agents[t.agent]).id(block.id)
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.accentColor, lineWidth: 2).opacity(block.id == focusBlock ? 1 : 0))
+                        case .note(let id, let ts, let text, let agent, let detail):
+                            NoteRow(ts: ts, text: text, color: agent.flatMap { RoomPalette.color(agents[$0]?["color"] as? String) }, detail: detail).id(id)
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor, lineWidth: 2).opacity(id == focusBlock ? 1 : 0))
                         }
                     }
                     if let who = waitingOn, agentFilter == "all" || agentFilter == who { LiveCard(agent: agents[who], trace: live).id("live") }
                     Color.clear.frame(height: 1).id("bottom")
                 }.padding(14)
             }
+            .onChange(of: focusToken) { _, _ in if let id = focusBlock { follow = false; withAnimation { proxy.scrollTo(id, anchor: .top) } } }
+            .onAppear { if let id = focusBlock { follow = false; DispatchQueue.main.async { proxy.scrollTo(id, anchor: .top) } } }
             .onChange(of: events.count) { _, _ in if follow { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } } }
             .onChange(of: live?.events?.last?.updated) { _, _ in if follow { proxy.scrollTo("bottom", anchor: .bottom) } }
             .overlay(alignment: .bottomTrailing) {
