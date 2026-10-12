@@ -75,6 +75,7 @@ def config_of(spec):
     if once: body['rules_once'] = once
     if spec.get('script'): body['script'] = _hash(spec['script'])
     if spec.get('history'): body['history'] = _hash(spec['history'])
+    if spec.get('submit_summary') is False: body['submit_summary'] = False  # no self-review field in submit
     short = str(body['model'] or '?').split('/')[-1]
     team = f"team of {body['team_size']}" if body.get('team_size') else f"team ≤{body['max_agents']}"
     label = f"{short} · {team} · {body['max_rounds']} turns"
@@ -82,6 +83,7 @@ def config_of(spec):
     if once: label += ' · rules said once'
     if spec.get('script'): label += f" · script {len(spec['script'])}"
     if spec.get('history'): label += f" · history {len(spec['history'])}"
+    if spec.get('submit_summary') is False: label += ' · no summary field'
     return _hash(body), dict(body, label=label, prompt_name=ref.get('name') or 'Default', prompt_version=ref.get('version') or 1)
 
 
