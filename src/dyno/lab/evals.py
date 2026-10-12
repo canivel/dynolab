@@ -25,6 +25,12 @@ KS = (1, 3, 5)
 _KEY = re.compile(r'^[0-9a-f]{12,32}$')
 
 
+def sampling_label(sampling):
+    """'temp 1 · top-p 0.95 · top-k 20'."""
+    names = dict(temperature='temp', top_p='top-p', top_k='top-k', min_p='min-p')
+    return ' · '.join(f"{names[k]} {sampling[k]:g}" for k in names if k in sampling)
+
+
 def wilson(c, n, z=Z):
     """95% Wilson interval for c successes in n trials. Sensible at small n and at 0 or n."""
     if not n: return None
@@ -76,6 +82,7 @@ def config_of(spec):
     if spec.get('script'): body['script'] = _hash(spec['script'])
     if spec.get('history'): body['history'] = _hash(spec['history'])
     if spec.get('submit_summary') is False: body['submit_summary'] = False  # no self-review field in submit
+    if spec.get('sampling'): body['sampling'] = dict(sorted(spec['sampling'].items()))  # sampling is a condition too
     short = str(body['model'] or '?').split('/')[-1]
     team = f"team of {body['team_size']}" if body.get('team_size') else f"team ≤{body['max_agents']}"
     label = f"{short} · {team} · {body['max_rounds']} turns"
@@ -84,6 +91,7 @@ def config_of(spec):
     if spec.get('script'): label += f" · script {len(spec['script'])}"
     if spec.get('history'): label += f" · history {len(spec['history'])}"
     if spec.get('submit_summary') is False: label += ' · no summary field'
+    if spec.get('sampling'): label += ' · ' + sampling_label(spec['sampling'])
     return _hash(body), dict(body, label=label, prompt_name=ref.get('name') or 'Default', prompt_version=ref.get('version') or 1)
 
 

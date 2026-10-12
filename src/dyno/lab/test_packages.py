@@ -137,6 +137,7 @@ class TestPackages:
             prompt=prompt, alerts=portable, script=spec.get('script') or [], rules_from=spec.get('rules_from') or '',
             history=spec.get('history') or [], scenario=scenario)
         if spec.get('submit_summary') is False: package['submit_summary'] = False
+        if spec.get('sampling'): package['sampling'] = dict(spec['sampling'])  # so a rerun samples like the original
         if env:  # the same environment as a Docker Compose file, for people who don't use Dyno
             compose = environment_compose(env['spec'], env['files'])
             if compose: package['compose'] = compose
@@ -160,6 +161,7 @@ class TestPackages:
         for key, kind in (('goal', str), ('rules', list), ('lead', dict), ('limits', dict), ('alerts', list), ('script', list), ('history', list)):
             if key in raw and not isinstance(raw[key], kind): raise ValueError(f'{key} has the wrong type')
         if raw.get('submit_summary', True) not in (True, False): raise ValueError('submit_summary has the wrong type')
+        if 'sampling' in raw and not isinstance(raw['sampling'], dict): raise ValueError('sampling has the wrong type')
         if not str(raw.get('goal') or '').strip(): raise ValueError('The package has no goal')
         env = raw.get('environment')
         if env is not None and (not isinstance(env, dict) or not isinstance(env.get('spec'), dict) or not isinstance(env.get('files', {}), dict)):
@@ -256,6 +258,7 @@ class TestPackages:
                      prompt_ref=ref, alerts=[self.runs.alerts.normalize(a) for a in package.get('alerts') or []],
                      script=package.get('script') or [], rules_from=package.get('rules_from') or '', history=package.get('history') or [])
         if package.get('submit_summary') is False: setup['submit_summary'] = False
+        if package.get('sampling'): setup['sampling'] = dict(package['sampling'])
         if package.get('_research'):  # results of this setup link back to the shared test while it stays that test
             as_run = self.runs._room_spec({k: setup[k] for k in ('environment', 'goal', 'rules')}, complete=False)
             setup['source'] = dict(research=package['_research'], scenario=scenario_of(as_run)[0])

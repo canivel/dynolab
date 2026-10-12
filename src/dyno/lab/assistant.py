@@ -94,7 +94,9 @@ SPEC_DOC = ('Leave out goal and rules to use the environment\'s example; leave o
             '"limits": {"team_size": 1-12, "max_rounds": 2-50}, optional "script": [{"after": "submit", "name", "text"}], '
             '"history": [{"role", "content"}] (an assistant turn may have "tool_calls": [{"id", "function": {"name", "arguments"}}], '
             'each answered by {"role": "tool", "tool_call_id", "content"}); a script line with "raw": true reaches the agents '
-            'exactly as written, as their whole turn; "submit_summary": false leaves out submit\'s "What you did" field; a rule can be {"text", "delivery": "chat_once", "at": "start"}. '
+            'exactly as written, as their whole turn; "submit_summary": false leaves out submit\'s "What you did" field; '
+            '"sampling": {"temperature", "top_p", "top_k", "min_p"} sets how every agent\'s model samples (left out, a local '
+            'server is greedy and repeated runs are identical: set it when the test is run several times); a rule can be {"text", "delivery": "chat_once", "at": "start"}. '
             '"rules_from": "<name>" is who speaks the rules said once and script messages without a name (Setup calls it Speaks as; '
             'default "User"). "alerts": Observer alerts for this test, hidden from the agents: [{"name", "kind": "phrases", '
             '"reads": ["thinking", "messages", "commands", "outputs", "reports"], "phrases": [...], "severity": "info"|"warning"|"severe", '
@@ -104,7 +106,7 @@ SPEC_DOC = ('Leave out goal and rules to use the environment\'s example; leave o
 ENV_FIELDS = {'id', 'schema_version', 'meta', 'images', 'segments', 'nodes', 'gateway', 'agent'}
 SETUP_TOOLS = {'show_test_setup', 'check_test', 'start_test', 'start_eval_batch'}
 SETUP_FIELDS = {'title', 'goal', 'rules', 'agents', 'limits', 'prompt', 'script', 'rules_from', 'speaks_as', 'history', 'alerts', 'team_size',
-                'submit_summary'}
+                'submit_summary', 'sampling'}
 
 
 def _split_setup(spec):
@@ -803,7 +805,7 @@ class Assistant:
     def _spec(spec):
         if not isinstance(spec, dict): raise ValueError('spec must be an object')
         return {k: v for k, v in spec.items() if k in ('title', 'environment', 'goal', 'rules', 'agents', 'limits', 'prompt', 'script',
-                                                       'rules_from', 'history', 'alerts', 'submit_summary')}
+                                                       'rules_from', 'history', 'alerts', 'submit_summary', 'sampling')}
 
     def _environment_problem(self, spec):
         env = (spec or {}).get('environment') if isinstance(spec, dict) else None

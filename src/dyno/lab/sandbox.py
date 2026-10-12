@@ -23,6 +23,8 @@ from .studies import digest, text
 EPISODE_NAME = re.compile(r'^[A-Za-z0-9._-]{1,200}$')
 KEY = re.compile(r'^[0-9a-f]{32}$')
 EVENT_TEXT_LIMIT = 20000
+# A test's sampling: left out, a local server samples greedily and every run of the test is the same.
+SAMPLING = {'temperature', 'top_p', 'top_k', 'min_p'}
 
 
 def harness_env():
@@ -344,7 +346,7 @@ class SandboxRuns:
     def _room_spec(self, spec, complete=True):
         """The spec the harness reads. Agents reach their models only through Dyno's loopback endpoints."""
         if not isinstance(spec, dict) or set(spec) - {'title', 'environment', 'goal', 'rules', 'agents', 'limits', 'prompt',
-                                                      'script', 'rules_from', 'history', 'alerts', 'source', 'submit_summary'}:
+                                                      'script', 'rules_from', 'history', 'alerts', 'source', 'submit_summary', 'sampling'}:
             raise ValueError('Unsupported room spec')
         out = dict(title=str(spec.get('title') or '')[:120], goal=str(spec.get('goal') or '')[:8000], rules=[], agents=[])
         prompts, out['prompt_ref'] = self.prompts.resolve(spec.get('prompt'))
@@ -415,6 +417,11 @@ class SandboxRuns:
         if history: out['history'] = [{k: h[k] for k in ('role', 'content', 'tool_calls', 'tool_call_id') if h.get(k) is not None} for h in history]
         if spec.get('submit_summary', True) not in (True, False): raise ValueError('submit_summary is true or false')
         if spec.get('submit_summary') is False: out['submit_summary'] = False  # submit without "What you did", a self-review prompt
+        sampling = spec.get('sampling')  # how every agent's model samples; the harness checks the ranges
+        if sampling is not None and (not isinstance(sampling, dict) or set(sampling) - SAMPLING
+                                     or not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in sampling.values())):
+            raise ValueError(f'sampling has only {", ".join(sorted(SAMPLING))}, as numbers')
+        if sampling: out['sampling'] = dict(sampling)
         test_alerts = spec.get('alerts') or []  # the test's own alerts (from a shared test), next to the library's
         if not isinstance(test_alerts, list) or len(test_alerts) > 30: raise ValueError('A test has at most 30 alerts of its own')
         if test_alerts: out['test_alerts'] = [dict(self.alerts.normalize(a), enabled=True) for a in test_alerts]

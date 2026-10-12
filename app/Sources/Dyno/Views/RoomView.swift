@@ -18,6 +18,25 @@ struct ScriptLine: Identifiable, Codable, Equatable {
     /// Sent as the agents' whole user turn, exactly as written: no "Team goal" or room wrapper. Optional so older drafts load.
     var raw: Bool? = nil
 }
+/// How every agent's model samples. nil fields keep the server's own value.
+struct Sampling: Codable, Equatable {
+    var temperature: Double? = nil; var topP: Double? = nil; var topK: Int? = nil
+    var isEmpty: Bool { temperature == nil && topP == nil && topK == nil }
+    init(temperature: Double? = nil, topP: Double? = nil, topK: Int? = nil) { self.temperature = temperature; self.topP = topP; self.topK = topK }
+    init?(json s: [String: Any]?) {
+        guard let s else { return nil }
+        temperature = (s["temperature"] as? NSNumber)?.doubleValue; topP = (s["top_p"] as? NSNumber)?.doubleValue; topK = (s["top_k"] as? NSNumber)?.intValue
+        if isEmpty { return nil }
+    }
+    var json: [String: Any] { ([("temperature", temperature as Any?), ("top_p", topP), ("top_k", topK)] as [(String, Any?)]).reduce(into: [:]) { d, kv in if let v = kv.1 { d[kv.0] = v } } }
+    /// What a model folder's generation_config.json recommends, if it says.
+    static func recommended(modelFolder: String?) -> Sampling? {
+        guard let modelFolder, let data = try? Data(contentsOf: URL(fileURLWithPath: modelFolder).appendingPathComponent("generation_config.json")),
+              let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return Sampling(json: config)
+    }
+    var summary: String { [temperature.map { "temperature \($0.formatted())" }, topP.map { "top-p \($0.formatted())" }, topK.map { "top-k \($0)" }].compactMap { $0 }.joined(separator: " · ") }
+}
 /// A prefilled turn. An assistant turn may carry tool calls, each answered by a tool turn, sent to the model as native messages.
 struct HistoryTurn: Codable, Equatable {
     struct Call: Codable, Equatable { var id: String; var name: String; var arguments: String }
@@ -129,6 +148,8 @@ struct RoomDraft: Codable, Equatable {
     var history: [HistoryTurn]? = nil
     /// false: submit has no "What you did" field, which itself prompts a self-review. nil: it has one.
     var submitSummary: Bool? = nil
+    /// nil: the server's sampling, which for a local model is greedy, so repeated runs are identical.
+    var sampling: Sampling? = nil
     // From a shared test package.
     var testAlerts: [TestAlert]? = nil
     var title: String? = nil
@@ -164,6 +185,7 @@ struct RoomDraft: Codable, Equatable {
         if let from = rulesFrom, !from.isEmpty { s["rules_from"] = from }
         if let history, !history.isEmpty { s["history"] = history.map(\.json) }
         if submitSummary == false { s["submit_summary"] = false }
+        if let sampling, !sampling.isEmpty { s["sampling"] = sampling.json }
         if let testAlerts, !testAlerts.isEmpty { s["alerts"] = testAlerts.map(\.json) }
         if let title, !title.isEmpty { s["title"] = title }
         if let source { s["source"] = ["research": source.research, "scenario": source.scenario].compactMapValues { $0 } }
@@ -216,6 +238,7 @@ extension RoomDraft {
         let turns = (spec["history"] as? [[String: Any]] ?? []).compactMap(HistoryTurn.init(json:))
         history = turns.isEmpty ? nil : turns
         submitSummary = spec["submit_summary"] as? Bool == false ? false : nil
+        sampling = Sampling(json: spec["sampling"] as? [String: Any])
         if let list = spec["alerts"] as? [[String: Any]], !list.isEmpty,
            let data = try? JSONSerialization.data(withJSONObject: list), let alerts = try? JSONDecoder().decode([TestAlert].self, from: data) {
             testAlerts = alerts
@@ -320,6 +343,34 @@ struct TestSetupView: View {
     @State private var managingAlerts = false
     struct EnvEdit: Identifiable { let id = UUID(); var existing: String?; var detail: [String: Any] }
     @AppStorage("roomEnvFilter") private var envFilter = "all"
+
+    /// The lead's model folder, from the server running it (Dyno's own servers say).
+    private var leadModelFolder: String? {
+        model.snapshot.models.first { s in s.port.map(Int.init) == draft.agents.first?.port }?.path
+    }
+
+    @ViewBuilder private var samplingRow: some View {
+        let s = draft.sampling ?? Sampling()
+        let field = { (label: String, get: Double?, set: @escaping (Double?) -> Void) in
+            TextField(label, value: Binding(get: { get }, set: { v in set(v); if draft.sampling?.isEmpty == true { draft.sampling = nil } }),
+                      format: .number).textFieldStyle(.roundedBorder).frame(width: 74).controlSize(.small)
+        }
+        HStack(spacing: 8) {
+            Text("Sampling").font(.caption)
+            field("Temp", s.temperature) { draft.sampling = Sampling(temperature: $0, topP: s.topP, topK: s.topK) }
+            field("Top-p", s.topP) { draft.sampling = Sampling(temperature: s.temperature, topP: $0, topK: s.topK) }
+            field("Top-k", s.topK.map(Double.init)) { draft.sampling = Sampling(temperature: s.temperature, topP: s.topP, topK: $0.map { Int($0) }) }
+            if let rec = Sampling.recommended(modelFolder: leadModelFolder), rec != draft.sampling {
+                Button("Use the model's") { draft.sampling = rec }.controlSize(.small)
+                    .help("This model's generation_config.json recommends \(rec.summary).")
+            }
+            if draft.sampling != nil { Button("Server default") { draft.sampling = nil }.controlSize(.small) }
+        }
+        .help("How the agents' model picks each token, sent with every request. Empty: the model server's own settings, which for a local model is temperature 0: every run of the test comes out the same. Set it, for example to the model's recommended values, when you run a test several times or in Evals.")
+        if draft.sampling == nil {
+            Text("Server default: a local model answers the same way every run.").font(.caption2).foregroundStyle(.secondary)
+        }
+    }
 
     private var servers: [(port: Int, label: String, model: String)] {
         model.snapshot.models.compactMap { s in
@@ -590,6 +641,7 @@ struct TestSetupView: View {
             Toggle("Final report asks “What you did”", isOn: Binding(get: { draft.submitSummary != false }, set: { draft.submitSummary = $0 ? nil : false }))
                 .toggleStyle(.checkbox).font(.caption)
                 .help("The submit tool's summary field. It prompts the agent to review its own work, so turn it off when that review is what you measure.")
+            samplingRow
         }
     }
 
