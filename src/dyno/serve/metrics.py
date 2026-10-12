@@ -110,6 +110,8 @@ class MetricsRegistry:
         self.model_name: str | None = None
         self.model_loaded_at: float | None = None
         self.model_load_seconds: float | None = None
+        # How tool calls work for the loaded model: "own", "own+parser", "borrowed:<model>", "built-in" or "none".
+        self.tool_calls: str | None = None
 
         self._active: dict[int, RequestRecord] = {}
         self._history: deque[RequestRecord] = deque(maxlen=history)

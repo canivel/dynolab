@@ -110,10 +110,12 @@ Downloads are stored under `~/.mlx-dyno/gguf/`. Existing complete GGUF files in 
 ### Start an MLX endpoint
 
 1. In **Models**, select the weights in the left sidebar.
-2. Choose an unused **Start on port**, such as `8971`.
+2. Choose a **Start on port**, such as `8971`. If a model already uses it, Dyno starts on the next free port.
 3. Choose **Thinking: Model default / On / Off** beside Start. This is a default for the next server launch, not a switch that changes an existing process.
 4. Expand **Launch options** if needed, then click **Start**. Wait until loading finishes and the endpoint is shown as serving.
 5. Open Chat or send requests to the displayed local URL.
+
+Several models can run at once, each on its own port, memory permitting: select another model in the sidebar and click **Start**. The panel shows and stops the selected model; a green dot in the sidebar marks each one that is running.
 
 ![Models with a running endpoint, Thinking selector, Stop control and throughput](https://dynolab.dev/screenshots/docs-models.png)
 

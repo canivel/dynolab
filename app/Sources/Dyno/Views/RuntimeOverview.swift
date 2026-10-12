@@ -14,7 +14,7 @@ struct RuntimeOverview: View {
 
     var body: some View {
         Button { showing.toggle() } label: {
-            Label(model.serverState.isBusy ? "Loading model" : (hasRuntime ? "Runtime active" : "No runtime"), systemImage: hasRuntime ? "server.rack" : "power")
+            Label(model.startupState.isBusy ? "Loading model" : (hasRuntime ? "Runtime active" : "No runtime"), systemImage: hasRuntime ? "server.rack" : "power")
                 .font(.system(size: 11, weight: .medium))
         }
         .help("See running models, requests and pool status")
@@ -30,10 +30,10 @@ struct RuntimeOverview: View {
                     if endpoints.isEmpty && !pool.running {
                         Text("No model endpoint detected. Saved studies remain available; start a model or pool to run new requests.")
                     }
-                    switch model.serverState {
+                    switch model.startupState {
                     case .launching(let name):
                         Label("Loading \(name)", systemImage: "hourglass")
-                        Button("Cancel model startup", role: .destructive) { model.stopServer() }
+                        Button("Cancel model startup", role: .destructive) { model.cancelStartups() }
                     case .failed(let error):
                         RecoveryNotice(error: error) { navigate(.run) }
                     default: EmptyView()

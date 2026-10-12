@@ -10,6 +10,8 @@ struct AssistantPanel: View {
     var onPlainChat: () -> Void
 
     @AppStorage("assistantModel") private var modelID = ""
+    /// The model the assistant's tests run on, when it isn't the assistant's own ("" = the same model).
+    @AppStorage("assistantTestModel") private var testModelID = ""
     @AppStorage("roomDraft") private var storedDraft = ""
     @State private var text = ""
     @State private var spoken = ""   // what the text held when voice started
@@ -24,13 +26,18 @@ struct AssistantPanel: View {
 
     private var session: AssistantSession { model.assistant }
 
-    private var servers: [(port: Int, model: String, name: String)] {
+    /// Running models, told apart by port: every server Dyno starts names its model "default_model".
+    private var servers: [Server] {
         model.snapshot.models.compactMap { s in
             guard let p = s.port, !s.identifier.isEmpty else { return nil }
-            return (Int(p), s.identifier, s.name)
+            return Server(port: Int(p), model: s.identifier, name: s.name, path: s.path)
         }
     }
-    private var chosen: (port: Int, model: String, name: String)? { servers.first { $0.model == modelID } ?? servers.first }
+    /// Where tests go: the chosen test model while it is running, else the assistant's own.
+    private var testTarget: Server? { servers.first { $0.key == testModelID && $0.key != chosen?.key } }
+    private var chosen: Server? {
+        servers.first { $0.key == modelID } ?? servers.first { $0.model == modelID && $0.model != "default_model" } ?? servers.first
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,7 +54,7 @@ struct AssistantPanel: View {
         }
         .background(DynoBrand.background)
         .onAppear { session.attach(model.researchLab) }
-        .task(id: chosen?.model) { if let m = chosen?.model { await session.loadModelContext(m) } }
+        .task(id: chosen?.key) { if let m = chosen { await session.loadModelContext(m.contextKey) } }
         .dropDestination(for: URL.self) { urls, _ in
             let files = urls.filter(\.isFileURL)
             guard chosen != nil, !files.isEmpty, !session.busy else { return false }
@@ -64,7 +71,7 @@ struct AssistantPanel: View {
         }
         .onChange(of: voice.transcript) { _, t in if voice.listening || !t.isEmpty { text = spoken + t } }
         // Reopening a conversation picks the model it used, if that model is running.
-        .onChange(of: session.conversationModel) { _, m in if let m, servers.contains(where: { $0.model == m }) { modelID = m } }
+        .onChange(of: session.conversationModel) { _, m in if let m, servers.contains(where: { $0.key == m }) { modelID = m } }
         .sheet(isPresented: $renaming) {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Rename conversation").font(.headline)
@@ -120,13 +127,24 @@ struct AssistantPanel: View {
                 if servers.isEmpty {
                     Text("No local model running").font(.caption).foregroundStyle(.secondary)
                 } else {
-                    Picker("", selection: Binding(get: { chosen?.model ?? "" }, set: { modelID = $0 })) {
-                        ForEach(servers, id: \.model) { s in Text("\(s.name) · :\(String(s.port))").tag(s.model) }
+                    Picker("", selection: Binding(get: { chosen?.key ?? "" }, set: { modelID = $0 })) {
+                        ForEach(servers, id: \.key) { s in Text("\(s.name) · :\(String(s.port))").tag(s.key) }
                     }.labelsHidden().controlSize(.small).frame(maxWidth: 240)
                 }
                 Text("on this Mac").font(.caption2).foregroundStyle(.secondary)
                 Spacer()
             }.help("The assistant only uses a model running on this Mac, and keeps conversations here.")
+            if servers.count > 1 {
+                HStack(spacing: 6) {
+                    Image(systemName: "testtube.2").font(.caption2).foregroundStyle(.secondary)
+                    Text("Tests run on").font(.caption).foregroundStyle(.secondary)
+                    Picker("", selection: Binding(get: { testTarget?.key ?? "" }, set: { testModelID = $0 })) {
+                        Text("The same model").tag("")
+                        ForEach(servers.filter { $0.key != chosen?.key }, id: \.key) { s in Text("\(s.name) · :\(String(s.port))").tag(s.key) }
+                    }.labelsHidden().controlSize(.small).frame(maxWidth: 220)
+                    Spacer()
+                }.help("The model the assistant puts test agents on and tests in evals. It can be a different model from the one the assistant runs on.")
+            }
             webRow
         }.padding(.horizontal, 12).padding(.vertical, 10)
     }
@@ -170,7 +188,7 @@ struct AssistantPanel: View {
     }
 
     /// The most the chosen model can read, when Dyno can tell (from the model's config).
-    private var modelMax: Int? { chosen.flatMap { session.modelContext[$0.model] }.flatMap { $0 > 0 ? $0 : nil } }
+    private var modelMax: Int? { chosen.flatMap { session.modelContext[$0.contextKey] }.flatMap { $0 > 0 ? $0 : nil } }
 
     /// Context sizes to choose from: the usual steps, and the model's whole context. Sizes it can't read are disabled.
     @ViewBuilder private var contextSizes: some View {
@@ -521,9 +539,16 @@ struct AssistantPanel: View {
         }
     }
 
+    /// An id from an approved action's result ({"test_id": ...}), so its link opens that test and not the last one.
+    static func resultID(_ decision: [String: Any], _ key: String) -> String? {
+        guard let text = decision["result"] as? String, let data = text.data(using: .utf8),
+              let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return result[key] as? String
+    }
+
     @ViewBuilder private func followUp(_ name: String, _ d: [String: Any]) -> some View {
         switch name {
-        case "start_test": Button("Watch it in Agents → Room & Observer") { open("agents_room", id: nil) }.buttonStyle(.link).font(.caption)
+        case "start_test": Button("Watch it in Agents → Room & Observer") { open("agents_room", id: Self.resultID(d, "test_id")) }.buttonStyle(.link).font(.caption)
         case "start_eval_batch", "run_inspect_eval": Button("See it in Evals") { open(name == "start_eval_batch" ? "evals" : "evals", id: nil) }.buttonStyle(.link).font(.caption)
         default: EmptyView()
         }
@@ -624,6 +649,7 @@ struct AssistantPanel: View {
         }
         var c: [String: Any] = ["screen": screen,
                                 "running_models": servers.map { ["port": $0.port, "model": $0.model, "name": $0.name] }]
+        if let t = testTarget { c["tests_run_on"] = ["port": t.port, "model": t.model, "name": t.name] }
         if let data = storedDraft.data(using: .utf8), let draft = try? JSONDecoder().decode(RoomDraft.self, from: data) {
             var setup: [String: Any] = ["environment": draft.environment ?? "plain machine", "goal": draft.goal,
                                         "rules": draft.rules.map(\.text), "team_size": draft.teamSize ?? draft.teamLimit, "turns": draft.rounds]
@@ -756,4 +782,13 @@ struct AssistantRail: View {
         default: break
         }
     }
+}
+
+/// A model running on this Mac that the assistant can use.
+private struct Server {
+    var port: Int, model: String, name: String, path: String?
+    /// What the picker and saved choice use: the port and the name together are unique.
+    var key: String { "\(port) \(model)" }
+    /// What the lab reads the model's own context length from: the folder it loaded when known, else its repo id.
+    var contextKey: String { path ?? model }
 }

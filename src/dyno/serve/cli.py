@@ -8,10 +8,13 @@ additions are the timing hooks and two new endpoints.
 
 from __future__ import annotations
 
+import logging
+import os
 import sys
 import time
 from typing import Any
 
+from . import tool_calls
 from .instrument import InstrumentedAPIHandler, InstrumentedResponseGenerator, registry
 
 from .. import __version__
@@ -75,16 +78,37 @@ def _patch(server_module: Any) -> None:
 
     def load(self, model_path, *args, **kwargs):
         started = time.perf_counter()
-        result = original_load(self, model_path, *args, **kwargs)
+        try:
+            result = original_load(self, model_path, *args, **kwargs)
+        except Exception as error:  # noqa: BLE001
+            if model_path != "default_model":
+                raise
+            # mlx_lm loads the model in its generation thread: if that fails the server keeps answering /health and
+            # every request waits forever. Stop instead, with one line the app can show.
+            print(f"Could not load the model: {_first_line(error)}", file=sys.stderr, flush=True)
+            os._exit(1)
         elapsed = time.perf_counter() - started
         # `load` is also called for an already-resident model, which returns
         # instantly; reporting that as the load time would be misleading.
         registry.note_model_loaded(
             name=str(model_path), load_seconds=elapsed if elapsed > 0.05 else None
         )
+        # A chat template that can't do tools would leave every agent stuck after its first step.
+        try:
+            folder = tool_calls.resolve_model_dir(str(self._model_map.get(model_path, model_path)))
+            registry.tool_calls = tool_calls.ensure_tool_calling(result[1], folder)
+        except Exception as error:  # noqa: BLE001 - never stop a model from serving over this
+            logging.warning("Could not check tool calling: %s", error)
         return result
 
     provider.load = load
+
+
+def _first_line(error: Exception) -> str:
+    text = " ".join(str(error).split()) or type(error).__name__
+    if text.startswith("Missing") and "parameters" in text:
+        text = text.split(":", 1)[0] + " (a weight file is missing or incomplete: download the model again)"
+    return text[:300]
 
 
 def _announce(argv: list[str]) -> None:

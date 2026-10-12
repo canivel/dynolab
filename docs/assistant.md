@@ -15,6 +15,7 @@ The assistant is the panel on the right of every tab. Tell it what you want to f
 
 - **Open, minimize, resize.** The **Assistant** button (⌘J) opens or minimizes the panel. Minimized, it's a thin rail that still shows when the assistant is working or waiting for you. Drag the panel's left edge to resize it.
 - **Pick the model** at the top of the panel. A larger model plans better; a smaller one answers faster. Each conversation remembers its model.
+- **Test a different model.** With more than one model running, **Tests run on** (under the model picker) chooses the model the assistant tests: it puts test agents on it and tests it in Evals batches and Inspect evals, while the assistant itself keeps running on the model above. **The same model** tests the assistant's own model. You can still ask for another model in the chat, and change it in the card or in **Setup** before approving.
 - **Talk to it.** Return sends; Shift-Return starts a new line. The mic turns what you say into text as you speak; check it and send.
 - **What it does on its own:**
   - looks at your screen, environments, past tests, the Evals board, prompts and Inspect benchmarks;

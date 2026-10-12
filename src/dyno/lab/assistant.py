@@ -22,6 +22,7 @@ estimated from characters and calibrated on what the server reports.
 """
 from __future__ import annotations
 
+import http.client
 import json
 import os
 from pathlib import Path
@@ -132,7 +133,8 @@ TOOLS = {t['spec']['function']['name']: t for t in [
     _fn('list_tests', LOOK, 'Recent agent tests with their verdicts.', dict(limit=dict(type='integer'))),
     _fn('test_result', LOOK, "One test's verdict, rules and final report.", dict(id=dict(type='string')), ['id']),
     _fn('evals_overview', LOOK, 'The Evals board: agent-test scenarios × configs with safe rates, and Inspect eval results.'),
-    _fn('list_prompts', LOOK, 'Saved agent prompts and their versions.'),
+    _fn('list_prompts', LOOK, 'Saved agent prompts and their versions. Give id (or name) to read one prompt\'s text: the lead\'s, '
+        'the one for agents it creates, and the team instruction.', dict(id=dict(type='string'), name=dict(type='string'))),
     _fn('inspect_catalog', LOOK, 'Inspect AI: installed or not, saved evals, the benchmark library, recent runs.'),
     _fn('check_test', LOOK, 'Check an agent test setup without running it: how each rule is watched and what to fix. ' + SPEC_DOC,
         dict(spec=dict(type='object')), ['spec']),
@@ -235,10 +237,19 @@ def _alert(a, i):
 
 
 def model_context(model_id):
-    """How many tokens a downloaded model can read (its config's max_position_embeddings), or None if unknown."""
-    if not re.fullmatch(r'[\w.-]+/[\w.-]+', str(model_id or '')): return None
-    hub = Path(os.environ.get('HF_HUB_CACHE') or Path(os.environ.get('HF_HOME') or Path.home() / '.cache' / 'huggingface') / 'hub')
-    for config in sorted((hub / ('models--' + model_id.replace('/', '--')) / 'snapshots').glob('*/config.json')):
+    """How many tokens a downloaded model can read (its config's max_position_embeddings), or None if unknown.
+
+    model_id is a repo id ("org/name", looked up in the Hugging Face cache) or the folder a server loaded (Dyno's
+    servers all name their model "default_model", so the app sends the folder instead)."""
+    model_id = str(model_id or '')
+    if model_id.startswith('/'):
+        configs = [Path(model_id) / 'config.json']
+    elif re.fullmatch(r'[\w.-]+/[\w.-]+', model_id):
+        hub = Path(os.environ.get('HF_HUB_CACHE') or Path(os.environ.get('HF_HOME') or Path.home() / '.cache' / 'huggingface') / 'hub')
+        configs = sorted((hub / ('models--' + model_id.replace('/', '--')) / 'snapshots').glob('*/config.json'))
+    else:
+        return None
+    for config in configs:
         c = _load(config) or {}
         n = c.get('max_position_embeddings') or (c.get('text_config') or {}).get('max_position_embeddings')
         if isinstance(n, int) and n > 0: return n
@@ -601,8 +612,15 @@ class Assistant:
             # Only a test setup gets the defaults (a lead agent, example rules); save_environment's spec is an environment.
             if isinstance(args, dict) and isinstance(args.get('spec'), dict) and name in SETUP_TOOLS:
                 args = dict(args, spec=self._complete_spec(cid, args['spec']))
+            if isinstance(args, dict) and name in ('start_eval_batch', 'run_inspect_eval') and not args.get('models') and self._target(cid):
+                args = dict(args, models=[self._target(cid)])
             if tool is None or not isinstance(args, dict):
                 self._append(cid, 'tool_result', call=cid_call, name=name, content=f'error: unknown tool or arguments that are not a JSON object ({name})')
+                continue
+            if tool['kind'] == LOOK and self._repeated(cid, name, args):
+                self._append(cid, 'tool_result', call=cid_call, name=name,
+                             content='You already made this exact call since the person last wrote, and the answer has not changed. '
+                                     "Don't repeat it: answer the person with what you know, or do something else.")
                 continue
             if tool['kind'] == LOOK:
                 try: content = _dump(self._look(cid, name, args))
@@ -637,11 +655,16 @@ class Assistant:
                 if waiting:
                     self._append(cid, 'tool_result', call=cid_call, name=name, content='Not proposed: one proposal at a time. Wait for the answer to the first.')
                     continue
+                asked = _dump([name, args])  # as the model wrote it, before the checks fill things in
+                if self._already_done(cid, asked):
+                    self._append(cid, 'tool_result', call=cid_call, name=name,
+                                 content='Not proposed: the person already approved this exact call and it worked. Tell them what it did and end your turn.')
+                    continue
                 problems = self._check_act(name, args, cid)
                 if problems:
                     self._append(cid, 'tool_result', call=cid_call, name=name, content='error: ' + problems)
                     continue
-                self._append(cid, 'proposal', id=cid_call, name=name, args=args, summary=self._summary(name, args))
+                self._append(cid, 'proposal', id=cid_call, name=name, args=args, asked=asked, summary=self._summary(name, args))
                 waiting = True
         return waiting
 
@@ -682,9 +705,15 @@ class Assistant:
         if name == 'test_result':
             room = runs.room(str(args.get('id') or ''), 0, 0)
             result = room.get('result') or {}
-            return dict(id=args.get('id'), status=(room.get('run') or {}).get('status'), verdict=result.get('verdict'),
-                        rules=[dict(n=r.get('n'), text=r.get('text'), status=r.get('status')) for r in result.get('rules') or []],
-                        report=_clip(result.get('report') or '', 2000), alerts=[dict(name=a.get('name'), fired=a.get('fired')) for a in result.get('alerts') or []])
+            status = (room.get('run') or {}).get('status')
+            out = dict(id=args.get('id'), status=status, verdict=result.get('verdict'),
+                       rules=[dict(n=r.get('n'), text=r.get('text'), status=r.get('status')) for r in result.get('rules') or []],
+                       report=_clip(result.get('report') or '', 2000), alerts=[dict(name=a.get('name'), fired=a.get('fired')) for a in result.get('alerts') or []])
+            if status in ('running', 'queued', 'starting'):
+                # A test takes minutes; checking again straight away only spends steps (and the GPU the test needs).
+                out['note'] = ("Still running; a test takes minutes. Don't check again now: tell the person it is running and that "
+                               "they can watch it in Agents → Room & Observer, then end your turn. Read the result when they ask.")
+            return out
         if name == 'evals_overview':
             o = runs.evals.overview()
             labels = {c['key']: c.get('label') for c in o['configs']}
@@ -695,7 +724,15 @@ class Assistant:
                                       headline=c.get('headline')) for c in o.get('inspect') or []],
                         left_out=o.get('unfinished'))
         if name == 'list_prompts':
-            return [dict(id=p['id'], name=p['name'], versions=len(p['versions'])) for p in runs.prompts.list(None)['prompts']]
+            prompts = runs.prompts.list(None)['prompts']
+            want = str(args.get('id') or args.get('name') or '').strip().lower()
+            if want:
+                p = next((p for p in prompts if want in (p['id'].lower(), p['name'].lower())), None)
+                if not p: return dict(error=f'No prompt {want!r}', prompts=[dict(id=x['id'], name=x['name']) for x in prompts])
+                v = p['versions'][-1]
+                return dict(id=p['id'], name=p['name'], version=v.get('version'), versions=len(p['versions']),
+                            **{k: _clip(v.get(k) or '', 6000) for k in ('lead', 'teammate', 'team') if v.get(k)})
+            return [dict(id=p['id'], name=p['name'], versions=len(p['versions'])) for p in prompts]
         if name == 'inspect_catalog':
             status = runs.evals.inspect.status()
             try:
@@ -713,6 +750,33 @@ class Assistant:
                         rules=[dict(n=r.get('n'), text=r.get('text'), watched_by=(r.get('watch') or {}).get('kind')) for r in plan.get('rules') or []])
         raise ValueError(f'unknown tool {name}')
 
+    def _repeated(self, cid, name, args):
+        """Whether this exact look already ran since the person last wrote (the call being handled counts once)."""
+        key, seen = _dump([name, args]), 0
+        for e in reversed(self._events(cid)):
+            if e['kind'] == 'user': break
+            if e['kind'] == 'assistant':
+                for c in e.get('tool_calls') or []:
+                    try: same = _dump([c.get('name'), json.loads(c.get('arguments') or '{}')]) == key
+                    except ValueError: same = False
+                    seen += same
+        return seen > 1
+
+    def _already_done(self, cid, asked):
+        """Whether this exact act was already approved and succeeded since the person last wrote."""
+        done, same = set(), set()
+        for e in reversed(self._events(cid)):
+            if e['kind'] == 'user': break
+            if e['kind'] == 'decision' and e.get('approve') and e.get('ok'): done.add(e.get('proposal'))
+            if e['kind'] == 'proposal' and e.get('asked') == asked: same.add(e.get('id'))
+        return bool(done & same)
+
+    def _target(self, cid):
+        """The model the person chose to test ("Tests run on" in the app), when it isn't the assistant's own."""
+        t = (self._context(cid) or {}).get('tests_run_on')
+        try: return self._model(t) if t else None
+        except ValueError: return None
+
     def _complete_spec(self, cid, spec):
         """Fill what a small model may leave out, so its tool calls stay short: a built-in environment's example goal
         and rules, and a lead agent on the model the assistant runs on. Rules written as plain strings are accepted."""
@@ -724,7 +788,7 @@ class Assistant:
         if 'team_size' in s:  # put where it belongs
             s['limits'] = dict(s.get('limits') or {}, team_size=s.pop('team_size'))
         if not s.get('agents'):
-            m = self._meta(cid).get('model') or {}
+            m = self._target(cid) or self._meta(cid).get('model') or {}
             if m.get('port'): s['agents'] = [dict(name='Lead Agent', role='team lead', port=m['port'], model=m['model'])]
         if isinstance(s.get('alerts'), list):
             s['alerts'] = [_alert(x, i) for i, x in enumerate(s['alerts']) if isinstance(x, dict)]
@@ -955,6 +1019,11 @@ class Assistant:
             parts.append('## Your task list\n' + '\n'.join(f"- [{s['status']}] {s['title']}" for s in meta['plan']))
         ctx = self._context(cid)
         if ctx: parts.append('## What the person sees in Dyno now\n' + _clip(_dump(ctx), 3000))
+        target, own = self._target(cid), meta.get('model') or {}
+        if target and target['port'] != own.get('port'):
+            parts.append(f"## The model to test\nThe person chose {target['name']} (port {target['port']}, model id {target['model']}) "
+                         f"as the model to test, and you run on {own.get('name') or 'another model'}. Put test agents on it and test "
+                         "it in evals, unless they ask for a different model.")
         if meta.get('documents'): parts.append(DOC_SYSTEM)
         if meta.get('web'): parts.append(WEB_SYSTEM)
         if summary: parts.append('## Earlier in this conversation (a summary; the full history is saved)\n' + summary)
@@ -1032,14 +1101,15 @@ class Assistant:
                                      headers={'Content-Type': 'application/json'})
         out = dict(content='', reasoning='', tool_calls=[], usage=None, finish_reason=None)
         calls = {}
+        done = stopped = False
         try:
             with urllib.request.urlopen(req, timeout=900) as r:
                 for raw in r:
-                    if stop and stop(): break
+                    if stop and stop(): stopped = True; break
                     line = raw.decode('utf-8', 'replace').strip()
                     if not line.startswith('data:'): continue  # keepalives while the prompt is read
                     data = line[5:].strip()
-                    if data == '[DONE]': break
+                    if data == '[DONE]': done = True; break
                     try: chunk = json.loads(data)
                     except ValueError: continue
                     if chunk.get('usage'): out['usage'] = chunk['usage']
@@ -1058,6 +1128,12 @@ class Assistant:
                         if choice.get('finish_reason'): out['finish_reason'] = choice['finish_reason']
         except urllib.error.URLError as error:
             raise RuntimeError(f"the model on port {model['port']} did not answer ({error.reason}). Is it still running in Models?") from None
+        except (http.client.HTTPException, ConnectionError) as error:
+            raise RuntimeError(f"the model server on port {model['port']} broke off its answer ({type(error).__name__}). Send your message again.") from None
+        if not done and not stopped and not out['finish_reason']:
+            # The server closed the stream mid-answer (it failed while writing, e.g. on a tool call it couldn't read).
+            raise RuntimeError(f"the model server on port {model['port']} broke off its answer part-way. Send your message again; "
+                               "if it keeps happening, ask for a shorter step.")
         out['tool_calls'] = [dict(id=c['id'] or uuid.uuid4().hex[:12], name=c['name'], arguments=c['arguments'] or '{}')
                              for _, c in sorted(calls.items())]
         if not out['tool_calls'] and '<tool_call>' in out['content']:

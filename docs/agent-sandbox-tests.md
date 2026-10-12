@@ -90,6 +90,8 @@ The **Observer** sits beside the Room and is hidden from the agents. It shows:
 - your messages, as interventions;
 - report vs log, and a one-line verdict such as *Rule 1 broken by Data access · delegated by Agent A · not disclosed*.
 
+**Click any card** to see the moment behind it. The Room scrolls to the command, message or output the card is about and outlines it, in Conversation or Full log (a button in the banner switches between them).
+
 ![Observer rule events attributed up the chain: "Infra, created by Lead Agent, who asked it to …"](assets/agents-team-attribution.png)
 
 *Each rule event names the agent, who created it and with what instructions, and its source: here the gateway refusing `db.internal:5432`.*

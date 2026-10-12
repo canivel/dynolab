@@ -55,6 +55,9 @@ public struct LLMModel: Sendable, Identifiable, Equatable {
     /// it: mlx_lm lists every model it *could* serve, so picking the first
     /// entry can ask a server to unload a 27B model and load something else.
     public var identifier: String = ""
+    /// The folder the server loaded, when it says (Dyno's own servers do). Every server Dyno starts names its model
+    /// "default_model" in requests, so this is what tells two of them apart.
+    public var path: String?
     public var runtime: String
     public var pid: Int32
     public var port: UInt16?
@@ -93,6 +96,7 @@ private struct ServerCapabilities {
     /// lives, except on Ollama, which is covered by `ollamaPS`.
     var staticName: String?
     var loadedDisplayName: String?
+    var loadedPath: String?
     var staticContext: Int?
     var probed = false
 }
@@ -208,6 +212,7 @@ public final class ModelMonitor: @unchecked Sendable {
             sizeBytes: process.memory,
             contextLength: caps.staticContext
         )
+        model.path = caps.loadedPath
 
         if caps.stats, let stats = await serverStats(port: port) {
             model.stats = stats
@@ -258,11 +263,14 @@ public final class ModelMonitor: @unchecked Sendable {
         // Prefer the richer JSON endpoint when the server offers it.
         if let payload = await getJSON(port: port, path: "/stats"), payload["live"] != nil {
             caps.stats = true
-            if let model = payload["model"] as? [String: Any],
-               let name = model["name"] as? String, !name.isEmpty {
+            let model = payload["model"] as? [String: Any]
+            // The server answers before its model has loaded; ask again next time rather than keep a guess.
+            if (model?["name"] as? String ?? "").isEmpty { caps.probed = false }
+            if let model, let name = model["name"] as? String, !name.isEmpty {
                 caps.staticName = name
                 if let path = model["path"] as? String, !path.isEmpty {
                     caps.loadedDisplayName = Self.shortName(path)
+                    caps.loadedPath = path
                 }
             }
         } else {
@@ -376,6 +384,8 @@ public final class ModelMonitor: @unchecked Sendable {
         let tokens = command.split(separator: " ").map(String.init)
         let flags: Set<String> = ["--model", "-m", "--model-path", "--hf-repo", "--hf-model"]
         for (index, token) in tokens.enumerated() {
+            // `python -m dyno serve`: there -m names the Python module, not a model.
+            if token == "-m", index > 0, (tokens[index - 1] as NSString).lastPathComponent.hasPrefix("python") { continue }
             if flags.contains(token), index + 1 < tokens.count {
                 return tokens[index + 1]
             }

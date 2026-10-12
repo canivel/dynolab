@@ -51,6 +51,12 @@ class ComposeTests(unittest.TestCase):
         self.assertIn("access must be one of", errors)
         self.assertIn("privileged left out", " ".join(r["warnings"]))
 
+    def test_an_image_named_after_a_preset_is_that_preset_not_a_pull(self):
+        r = from_compose(compose(api={"image": "dyno/mock-api", "command": "mock-api 8080", "ports": ["8080"]}))
+        self.assertEqual(r["errors"], [])
+        self.assertEqual(r["spec"]["images"], {})  # nothing to build: dyno/mock-api is not an image on any registry
+        self.assertEqual(r["spec"]["nodes"][0]["service"], {"preset": "mock-api", "port": 8080})
+
     def test_keep_image_hidden_and_presets(self):
         r = from_compose(compose(
             store={"image": "minio/minio", "command": "server /data", "ports": ["9000", "9001"],

@@ -102,6 +102,7 @@ def stats_json(registry: MetricsRegistry, model_path: str | None = None) -> str:
             "path": model_path,
             "loaded_at": registry.model_loaded_at,
             "load_seconds": _round(registry.model_load_seconds),
+            "tool_calls": registry.tool_calls,
         },
         "live": {
             "requests_active": registry.active_requests,

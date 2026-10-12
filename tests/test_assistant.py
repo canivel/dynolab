@@ -37,6 +37,7 @@ class ScriptedModel:
                     if piece: send(dict(choices=[dict(index=0, delta=dict(reasoning=piece + ' '))]))
                 for piece in (reply.get('content') or '').split(' '):
                     if piece: send(dict(choices=[dict(index=0, delta=dict(content=piece + ' '))]))
+                if reply.get('cut'): return  # the server broke off mid-answer: no finish, no [DONE]
                 for i, (name, args) in enumerate(reply.get('calls') or []):
                     send(dict(choices=[dict(index=0, delta=dict(tool_calls=[dict(index=i, id=f'call{len(outer.requests)}_{i}', type='function',
                                                                                 function=dict(name=name, arguments=json.dumps(args)))]))]))
@@ -80,6 +81,10 @@ class FakeRuns:
         return spec
     def room_plan(self, body): return dict(errors=[], warnings=[], rules=[dict(n=1, text=r['text'], watch=dict(kind='report')) for r in body['spec'].get('rules', [])])
     def create(self, config): self.started.append(config); return dict(id='r' * 32, status='running')
+    def room(self, rid, after, limit): return dict(run=dict(status='running'), result={})
+    class prompts:
+        @staticmethod
+        def list(_): return dict(prompts=[dict(id='default', name='Default', versions=[dict(version=1, lead='You lead.', teammate='You help.', team='Build a team.')])])
     saved_envs = None
     def environment_from_compose(self, body):
         if 'services' not in body['compose']: return dict(errors=['No services in the Compose file'], spec=None)
@@ -226,6 +231,52 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual(spec['rules'], [dict(text='Stay off admin.internal.')])  # its own rules kept, as objects
         self.assertEqual(spec['limits'], dict(team_size=2))
         self.assertEqual(spec['agents'][0]['port'], m.port)  # the lead on the assistant's model
+
+    def test_tests_default_to_the_model_chosen_to_test_not_the_assistants(self):
+        m = self.model([dict(calls=[('show_test_setup', dict(spec=dict(environment='bastion-admin')))]), dict(content='Shown.')])
+        cid = self.a.create()['id']
+        target = dict(port=8972, model='default_model', name='Qwen3.8-27B-MLX-4bit')
+        self.send(cid, m, 'Set it up', dict(tests_run_on=target)); c = self.wait(cid)
+        spec = next(e for e in c['events'] if e['kind'] == 'ui')['args']['spec']
+        self.assertEqual((spec['agents'][0]['port'], spec['agents'][0]['model']), (8972, 'default_model'))
+        self.assertIn('Qwen3.8-27B-MLX-4bit (port 8972', m.requests[0]['messages'][0]['content'])
+
+    def test_a_running_test_is_not_checked_over_and_over(self):
+        call = ('test_result', dict(id='r' * 32))
+        m = self.model([dict(calls=[call]), dict(calls=[call]), dict(content='It is running; watch it in Room & Observer.')])
+        cid = self.a.create()['id']
+        self.send(cid, m, 'How is the test going?'); c = self.wait(cid)
+        results = [e['content'] for e in c['events'] if e['kind'] == 'tool_result']
+        self.assertIn("Don't check again now", results[0])
+        self.assertIn('already made this exact call', results[1])
+        self.assertEqual(c['events'][-1]['text'].strip(), 'It is running; watch it in Room & Observer.')
+        self.a._append(cid, 'user', text='And now?')  # a new message may look again
+        self.assertFalse(self.a._repeated(cid, *call))
+
+    def test_an_approved_save_is_not_proposed_again_in_the_same_turn(self):
+        save = ('save_environment', dict(compose='services:\n  web:\n    image: nginx', id='support-desk', title='Support desk'))
+        m = self.model([dict(calls=[save]), dict(calls=[save]), dict(content='Saved.')])
+        cid = self.a.create()['id']
+        self.send(cid, m, 'Save it'); c = self.wait(cid)
+        self.a.decide(cid, dict(proposal=c['pending']['id'], approve=True)); c = self.wait(cid)
+        self.assertIsNone(c['pending'])  # the identical second proposal is refused, not shown for another click
+        results = [e['content'] for e in c['events'] if e['kind'] == 'tool_result']
+        self.assertTrue(any('already approved this exact call' in r for r in results))
+        self.assertEqual(len([e for e in c['events'] if e['kind'] == 'proposal']), 1)
+
+    def test_reads_a_prompts_text_when_asked_for_one(self):
+        cid = self.a.create()['id']
+        self.assertEqual(self.a._look(cid, 'list_prompts', {}), [dict(id='default', name='Default', versions=1)])
+        one = self.a._look(cid, 'list_prompts', dict(name='default'))
+        self.assertEqual((one['lead'], one['teammate'], one['team']), ('You lead.', 'You help.', 'Build a team.'))
+        self.assertIn('error', self.a._look(cid, 'list_prompts', dict(id='nope')))
+
+    def test_an_answer_the_server_broke_off_says_so_instead_of_stopping_silently(self):
+        m = self.model([dict(content='Let me create the environment.', cut=True)])
+        cid = self.a.create()['id']
+        self.send(cid, m, 'Build it'); c = self.wait(cid)
+        self.assertEqual(c['events'][-1]['kind'], 'error')
+        self.assertIn('broke off its answer', c['events'][-1]['text'])
 
     def test_an_unknown_environment_is_sent_back_with_the_real_ones(self):
         m = self.model([dict(calls=[('show_test_setup', dict(spec=dict(SPEC, environment='segmented_office')))]), dict(content='Fixed.')])
@@ -459,6 +510,8 @@ class AssistantTests(unittest.TestCase):
         with unittest.mock.patch.dict(os.environ, HF_HUB_CACHE=str(Path(self.tmp.name) / 'hub')):
             self.assertEqual(assistant.model_context('org/small'), 40960)
             self.assertIsNone(assistant.model_context('org/unknown')); self.assertIsNone(assistant.model_context('../etc'))
+            self.assertEqual(assistant.model_context(str(hub)), 40960)  # the folder a Dyno server loaded
+            self.assertIsNone(assistant.model_context('default_model')); self.assertIsNone(assistant.model_context(str(hub.parent)))
             self.assertEqual(self.a._budget(dict(budget=262144, model=dict(model='org/small'))), 40960)  # never more than it reads
 
     def test_calibrates_tokens_on_what_the_server_counted(self):

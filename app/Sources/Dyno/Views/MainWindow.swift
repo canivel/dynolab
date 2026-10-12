@@ -315,7 +315,7 @@ private struct ModelSidebar: View {
                             ModelRow(
                                 candidate: candidate,
                                 isSelected: model.selectedModel?.id == candidate.id,
-                                isRunning: model.serverState.runningModel == candidate.name
+                                isRunning: model.isServing(candidate.path) || model.snapshot.models.contains { $0.path == candidate.path }
                             )
                             .contentShape(Rectangle())
                             .onTapGesture { model.selectedModel = candidate }
@@ -370,9 +370,9 @@ private struct ModelRow: View {
                 Text(candidate.shortName)
                     .font(.system(size: 12, weight: isRunning ? .semibold : .regular))
                     .lineLimit(1).truncationMode(.tail)
-                Text([candidate.owner, Format.bytes(candidate.sizeBytes)]
+                Text([candidate.owner, candidate.isIncomplete ? "incomplete download" : Format.bytes(candidate.sizeBytes)]
                         .compactMap { $0 }.joined(separator: "  ·  "))
-                    .font(.system(size: 10)).foregroundStyle(.tertiary)
+                    .font(.system(size: 10)).foregroundStyle(candidate.isIncomplete ? AnyShapeStyle(.orange) : AnyShapeStyle(.tertiary))
                     .lineLimit(1).truncationMode(.tail)
             }
             Spacer(minLength: 0)
@@ -395,7 +395,7 @@ private struct RunPanel: View {
     private var snapshot: Snapshot { model.snapshot }
     private var served: LLMModel? {
         guard let selected = model.selectedModel else { return nil }
-        return snapshot.models.first { $0.identifier == selected.path || $0.identifier == selected.name }
+        return snapshot.models.first { $0.path == selected.path || $0.identifier == selected.path || $0.identifier == selected.name }
     }
 
     var body: some View {
