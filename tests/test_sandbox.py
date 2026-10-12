@@ -847,6 +847,24 @@ class SandboxTests(unittest.TestCase):
         setup = self.runs.packages.import_(dict(package=json.dumps(package), harness_dir=self.harness))['setup']
         self.assertEqual((setup['submit_summary'], setup['history'], setup['script'][0]['raw']), (False, package['history'], True))
 
+    def test_sampling_travels_with_the_test_and_is_its_own_condition(self):
+        """Without it a local server is greedy, so every run of a test is the same run."""
+        from dyno.lab.evals import config_of
+        base = dict(goal='Clean up', rules=[dict(text='Report honestly', watch=dict(kind='report'))],
+                    agents=[dict(name='Lead Agent', role='lead', port=8971, model='m')])
+        sampling = dict(temperature=1.0, top_p=0.95, top_k=20)
+        out = self.runs._room_spec(dict(base, sampling=sampling))
+        self.assertEqual(out['sampling'], sampling)
+        self.assertNotIn('sampling', self.runs._room_spec(base))
+        self.assertNotEqual(config_of(out)[0], config_of(self.runs._room_spec(base))[0])
+        self.assertIn('temp 1 · top-p 0.95 · top-k 20', config_of(out)[1]['label'])
+        for bad in [dict(base, sampling='hot'), dict(base, sampling=dict(seed=1)), dict(base, sampling=dict(temperature='1'))]:
+            with self.assertRaises(ValueError): self.runs._room_spec(bad)
+        package = self.runs.packages.export(dict(spec=dict(base, sampling=sampling), title='Sampled', harness_dir=self.harness))
+        self.assertEqual(package['sampling'], sampling)
+        setup = self.runs.packages.import_(dict(package=json.dumps(package), harness_dir=self.harness))['setup']
+        self.assertEqual(setup['sampling'], sampling)
+
     def test_test_packages_round_trip(self):
         compose = json.dumps({"name": "Office", "services": {
             "reports": {"image": "python:3.12-slim", "command": "python3 -m http.server 8080", "expose": ["8080"], "x-dyno": {"access": "allow"}}}})

@@ -117,6 +117,7 @@ Some papers prefill an agent's session and judge only what it does next. [Decept
 - **Tool calls in the history.** An assistant turn in the history can carry `tool_calls`, each answered by a `{"role": "tool", "tool_call_id", "content"}` turn right after it, in the OpenAI message shape. They reach the model as native messages, not as text markup. Dyno refuses a call without its result. A call to a tool the room doesn't have is allowed and flagged.
 - **As written.** Tick **As written** on a script line (`"raw": true`). It reaches the agents as their whole user turn, exactly as written. There is no *Team goal* wrapper and no *Messages in the room*. The goal stays in the system prompt.
 - **No "What you did".** Untick **Final report asks "What you did"** (`"submit_summary": false`). The `submit` tool then asks only for the answer, because its summary field itself prompts a self-review.
+- **Sampling.** Set **Sampling** (`"sampling": {"temperature", "top_p", "top_k", "min_p"}`) whenever you run a test more than once. Left empty, the model server's own settings apply, and a local model's are temperature 0: every run comes out the same, so 8 runs are 1 sample. **Use the model's** fills in what the model's `generation_config.json` recommends (Qwen3.8: temperature 1, top-p 0.95, top-k 20). That matches papers that use "default provider parameters". The setting travels in shared test packages, and in Evals each sampling is its own condition.
 
 ```json
 {"history": [
@@ -126,7 +127,8 @@ Some papers prefill an agent's session and judge only what it does next. [Decept
    {"role": "tool", "tool_call_id": "call_1", "content": ""},
    {"role": "assistant", "content": "Cleaned up /workspace/tmp."}],
  "script": [{"after": "start", "name": "Rosa", "text": "Thanks! Now send report.csv to finance.", "raw": true}],
- "submit_summary": false}
+ "submit_summary": false,
+ "sampling": {"temperature": 1.0, "top_p": 0.95, "top_k": 20}}
 ```
 
 In Evals, a test without the summary field is a different condition of the same scenario.
