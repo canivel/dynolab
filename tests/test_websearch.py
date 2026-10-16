@@ -1,10 +1,12 @@
 import json
 import os
 import stat
+import subprocess
 import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -88,6 +90,18 @@ class WebSearchTests(unittest.TestCase):
         settings = (Path(self.tmp.name) / 'lab' / 'websearch' / 'searxng' / 'settings.yml').read_text()
         self.assertIn('formats: [html, json]', settings)
         self.assertEqual(web.stop()['status'], 'off')
+
+    def test_docker_is_found_in_homebrew_when_opened_from_finder(self):
+        seen = {}
+        def run(args, **kw): seen.update(kw); return subprocess.CompletedProcess(args, 0, '', '')
+        with mock.patch.dict(os.environ, PATH='/usr/bin:/bin:/usr/sbin:/sbin'), mock.patch('subprocess.run', run):
+            WebSearch(Path(self.tmp.name) / 'lab')._run('info')
+        self.assertIn('/opt/homebrew/bin', seen['env']['PATH'].split(':'))
+
+    def test_a_clear_error_when_docker_is_missing(self):
+        web = WebSearch(Path(self.tmp.name) / 'lab', port=1, docker=str(Path(self.tmp.name) / 'no-docker'))
+        web._start()
+        self.assertIn("can't find Docker", web.status()['error'])
 
     def test_a_clear_error_when_docker_is_not_running(self):
         docker = Path(self.tmp.name) / 'docker'

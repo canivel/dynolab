@@ -26,6 +26,8 @@ import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
 
+from .sandbox import harness_env
+
 # SearXNG 2026.10.9, pinned by digest so every Dyno runs the same search engine.
 IMAGE = 'searxng/searxng@sha256:5903efa50bc6b99293fa059f7a0ff37eddd910210196af77d02e5536ccdfb387'
 CONTAINER = 'dyno-searxng'
@@ -64,7 +66,8 @@ class WebSearch:
             return False
 
     def _run(self, *args, timeout=60):
-        return subprocess.run([self.docker, *args], capture_output=True, text=True, timeout=timeout)
+        # A Dyno opened from Finder has a minimal PATH, and docker lives in Homebrew.
+        return subprocess.run([self.docker, *args], capture_output=True, text=True, timeout=timeout, env=harness_env())
 
     def status(self):
         with self.lock:
@@ -85,7 +88,8 @@ class WebSearch:
     def _start(self):
         try:
             try: info = self._run('info', '--format', '{{.ServerVersion}}', timeout=20)
-            except (OSError, subprocess.TimeoutExpired): info = None
+            except OSError: raise RuntimeError("Dyno can't find Docker. Install Docker (Colima) with Homebrew and try again.") from None
+            except subprocess.TimeoutExpired: info = None
             if info is None or info.returncode != 0:
                 raise RuntimeError("Docker isn't running. Start Docker (Colima) and try again.")
             self.folder.mkdir(parents=True, exist_ok=True, mode=0o700)
