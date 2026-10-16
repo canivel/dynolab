@@ -6,6 +6,7 @@ translated back; `apis.py` serves it. Standard library only.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 
 STOP = {'stop': 'end_turn', 'length': 'max_tokens', 'tool_calls': 'tool_use', 'function_call': 'tool_use'}
@@ -20,6 +21,22 @@ def _text(content):
     if isinstance(content, str): return content
     if not isinstance(content, list): return ''
     return '\n'.join(b.get('text', '') for b in content if isinstance(b, dict) and b.get('type') == 'text')
+
+
+# Claude Code's system prompt: its sections from here on change with the folder, the date and the session (memory
+# path, working directory, git, model). A chat template puts the system prompt before the tools (~12k tokens), so
+# one changed line there makes a model re-read the tools; these sections go after them instead.
+SESSION = re.compile(r'^# (Memory|auto memory|Environment)\s*$', re.M)
+
+
+def _system(system):
+    """(the part that's the same in every session, the part that isn't). Claude Code's billing line is dropped:
+    it changes with its version and entry point, and means nothing to a local model."""
+    if isinstance(system, list):
+        system = [b for b in system if not (isinstance(b, dict) and str(b.get('text', '')).startswith('x-anthropic-billing-header:'))]
+    text = _text(system)
+    found = SESSION.search(text)
+    return (text[:found.start()].rstrip(), text[found.start():].strip()) if found else (text, '')
 
 
 def _image(block):
@@ -78,8 +95,7 @@ def to_openai(body, model='default_model'):
     messages = body.get('messages')
     if not isinstance(messages, list) or not messages: raise RequestError('messages: give at least one message')
     out = []
-    system = _text(body.get('system'))
-    if system: out.append({'role': 'system', 'content': system})
+    system, session = _system(body.get('system'))
     for m in messages:
         if not isinstance(m, dict) or m.get('role') not in ('user', 'assistant', 'system'):
             raise RequestError('Each message has a role: user, assistant or system')
@@ -93,6 +109,14 @@ def to_openai(body, model='default_model'):
             else: out.append({'role': 'user', 'content': text})
             continue
         out.extend(_user(m.get('content')) if m['role'] == 'user' else _assistant(m.get('content')))
+    first = next((m for m in out if m['role'] == 'user'), None)
+    if session and first is not None:
+        note = f'<system-reminder>\n{session}\n</system-reminder>'
+        first['content'] = (note + '\n\n' + first['content'] if isinstance(first['content'], str)
+                            else [{'type': 'text', 'text': note}, *first['content']])
+    elif session:
+        system = f'{system}\n\n{session}'.strip()
+    if system: out.insert(0, {'role': 'system', 'content': system})
     request = {'model': model, 'messages': out, 'stream': bool(body.get('stream'))}
     if isinstance(body.get('max_tokens'), int): request['max_tokens'] = body['max_tokens']
     for key in ('temperature', 'top_p', 'top_k'):
@@ -178,6 +202,10 @@ class StreamTranslator:
         return self.event('message_start', {'type': 'message_start', 'message': {
             'id': 'msg_' + uuid.uuid4().hex[:24], 'type': 'message', 'role': 'assistant', 'model': self.model,
             'content': [], 'stop_reason': None, 'stop_sequence': None, 'usage': dict(self.usage)}})
+
+    def keepalive(self):
+        """While the model reads a long prompt: Anthropic's ping event, so the client doesn't give up on a silent stream."""
+        return (b'' if self.started else self.start()) + self.event('ping', {'type': 'ping'})
 
     def _close(self):
         if self.open is None: return b''

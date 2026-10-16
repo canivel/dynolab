@@ -10,16 +10,8 @@ struct CodingToolsSection: View {
     var model: MonitorModel
 
     @State private var chosen: String = ""
-    @State private var installed = CodingToolsSection.commandPath() != nil
-    @State private var note: String?
     @State private var copied: String?
-
-    /// Where the `dyno` command goes: in macOS's default PATH, so a new Terminal window finds it.
-    static let commandFile = "/usr/local/bin/dyno"
-
-    static func commandPath() -> String? {
-        FileManager.default.isExecutableFile(atPath: commandFile) ? commandFile : nil
-    }
+    @ObservedObject private var setup = CommandLineSetup.shared
 
     private var models: [LocalModel] { model.localModels.filter { !$0.isIncomplete } }
     private var modelName: String { chosen.isEmpty ? (model.selectedModel?.name ?? models.first?.name ?? "<model>") : chosen }
@@ -47,17 +39,19 @@ struct CodingToolsSection: View {
             command("dyno models", label: "Downloaded models")
 
             HStack(spacing: 8) {
-                if installed {
-                    Label("The dyno command is installed", systemImage: "checkmark.circle.fill")
+                if let installed = setup.installed {
+                    Label("The dyno command is installed (\(installed))", systemImage: "checkmark.circle.fill")
                         .font(.system(size: 10)).foregroundStyle(.green)
                 } else {
-                    Button("Install the dyno command…", action: installCommand).controlSize(.small)
-                    Text("Adds \(Self.commandFile), so these work in Terminal. macOS asks for your password.")
+                    Button("Install the dyno command…") { setup.installWithPassword() }.controlSize(.small)
+                    Text(setup.conflict.map { "Another program is installed as \($0). Dyno adds \(CommandInstall.systemDirectory)/dyno; macOS asks for your password." }
+                         ?? "Adds \(CommandInstall.systemDirectory)/dyno, so these work in Terminal. macOS asks for your password.")
                         .font(.system(size: 10)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
             }
-            if let note { Text(note).font(.system(size: 10)).foregroundStyle(.orange) }
+            if let note = setup.note { Text(note).font(.system(size: 10)).foregroundStyle(.orange) }
             Text("Needs Claude Code (npm install -g @anthropic-ai/claude-code) or Codex (npm install -g @openai/codex). "
                  + "Arguments after -- go to the tool. Choose the web search provider in Settings.")
                 .font(.system(size: 9)).foregroundStyle(.tertiary)
@@ -81,26 +75,5 @@ struct CodingToolsSection: View {
             .controlSize(.small)
             Spacer(minLength: 0)
         }
-    }
-
-    /// A two-line script, not a symlink: the bundled launcher finds its runtime relative to its own path.
-    private func installCommand() {
-        let launcher = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/dyno-cli").path
-        guard FileManager.default.isExecutableFile(atPath: launcher) else {
-            note = "This copy of Dyno has no bundled command (\(launcher))."; return
-        }
-        let script = "#!/bin/sh\nexec '\(launcher.replacingOccurrences(of: "'", with: "'\\''"))' \"$@\"\n"
-        let staged = FileManager.default.temporaryDirectory.appendingPathComponent("dyno-command-\(UUID().uuidString)")
-        do { try script.write(to: staged, atomically: true, encoding: .utf8) } catch { note = error.localizedDescription; return }
-        let shell = "mkdir -p /usr/local/bin && install -m 755 '\(staged.path)' '\(Self.commandFile)'"
-        let apple = "do shell script \"\(shell.replacingOccurrences(of: "\"", with: "\\\""))\" with administrator privileges"
-        var error: NSDictionary?
-        NSAppleScript(source: apple)?.executeAndReturnError(&error)
-        try? FileManager.default.removeItem(at: staged)
-        if let error, (error[NSAppleScript.errorNumber] as? Int) != -128 {
-            note = error[NSAppleScript.errorMessage] as? String ?? "The command could not be installed."
-        }
-        installed = Self.commandPath() != nil
-        if installed { note = nil }
     }
 }

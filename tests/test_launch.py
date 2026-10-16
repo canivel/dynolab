@@ -61,7 +61,10 @@ class ClaudeEnv(unittest.TestCase):
         self.assertEqual(env['ANTHROPIC_DEFAULT_HAIKU_MODEL'], 'Qwen3.8-27B-MLX-4bit')
         self.assertEqual(env['CLAUDE_CODE_MAX_CONTEXT_TOKENS'], '262144')
         self.assertEqual(env['PATH'], '/bin')
+        self.assertEqual(env['API_TIMEOUT_MS'], '3600000')  # a slow Mac reads a big prompt for over 10 minutes
         self.assertEqual(args, [])
+        own, _ = L.claude_env(8971, {'id': 'a/b'}, {'API_TIMEOUT_MS': '5000'})
+        self.assertEqual(own['API_TIMEOUT_MS'], '5000')
 
     def test_codex_gets_a_dyno_provider_on_the_responses_api(self):
         env, args = L.codex_args(8971, {'id': 'mlx-community/Qwen3-8B-4bit', 'context': 40960}, {'PATH': '/bin'})
@@ -70,6 +73,7 @@ class ClaudeEnv(unittest.TestCase):
         self.assertEqual(options['model_providers.dyno.wire_api'], '"responses"')
         self.assertEqual(options['model_providers.dyno.requires_openai_auth'], 'false')
         self.assertEqual(options['model_context_window'], '40960')
+        self.assertEqual(options['model_providers.dyno.stream_idle_timeout_ms'], '3600000')
         self.assertEqual(args[-2:], ['-m', 'Qwen3-8B-4bit'])
 
 

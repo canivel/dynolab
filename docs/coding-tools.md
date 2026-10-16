@@ -15,7 +15,7 @@ Dyno's model server speaks each tool's own API, so there's no proxy to install a
 2. **The tool.** Install it if you haven't:
     - Claude Code: `npm install -g @anthropic-ai/claude-code`
     - Codex: `npm install -g @openai/codex`
-3. **The `dyno` command.** Open **Router** in Dyno and choose **Install the dyno command…** macOS asks for your password once, and the command is added as `/usr/local/bin/dyno`. If you installed Dyno's Python package with pip, you already have it.
+3. **The `dyno` command.** Dyno adds it when you open the app, so it works in a new Terminal window. If you have Homebrew, it goes in `/opt/homebrew/bin` with no password. Otherwise Dyno asks once to add `/usr/local/bin/dyno`, and macOS asks for your password; choose **Not Now** and you can do it later in **Router → Install the dyno command…**. If you move or update Dyno, the command follows it. Dyno never replaces another program called `dyno`. If you installed Dyno's Python package with pip, you already have the command.
 
 The **Router** tab shows these commands for the model you pick, with a **Copy** button for each.
 
@@ -88,6 +88,7 @@ The model name can be anything the server doesn't list (Claude Code asks for `cl
 
 - **Your model, not Claude or GPT.** The tools work, but a local model makes more mistakes with them, especially on long tasks.
 - **Not translated:** Anthropic's and OpenAI's other hosted tools (code execution, file search), PDFs, and your MCP servers in Codex, which Codex only offers to OpenAI's models. Claude Code's MCP servers work: they're ordinary tools.
+- **The first reply is slow.** Before it answers, the model reads the tool's instructions, about 16,000 to 24,000 tokens. That took 75 seconds on an M5 Max and over 5 minutes on a slower Mac. Later replies read only what's new, and so does a new session while the model is still loaded: about 3,000 tokens instead of 16,000, in any folder. So keep the model loaded between sessions: start it in **Models**, or add `--keep` to `dyno launch`. Dyno keeps the connection alive meanwhile, and `dyno launch` raises the tools' timeouts to an hour (`API_TIMEOUT_MS` for Claude Code). If you point Claude Code at Dyno yourself, set `API_TIMEOUT_MS=3600000` too. A smaller model reads faster.
 - **Token counts are estimates** (about four characters a token). Claude Code uses them to decide when to compact a conversation.
 - **Only this Mac.** The APIs answer programs on this Mac and refuse web pages, so a site you visit can't use your model through them.
 - A model started in Dyno before 0.6.9 doesn't have these APIs. `dyno launch` then starts another copy of the model and says so; restart the model in **Models** to avoid that.
