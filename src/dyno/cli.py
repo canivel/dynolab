@@ -28,6 +28,8 @@ commands:
   serve    run an MLX model and expose its generation metrics
   route    one endpoint in front of every running model, choosing between them
   run      one prompt, one answer, with the numbers
+  models   downloaded models, and which ones are being served
+  launch   run Claude Code on a local model
   ps       model servers that are running
   stop     stop a model server
   pull     download a model from the Hugging Face hub
@@ -43,6 +45,8 @@ examples:
   dyno pull mlx-community/Qwen3-8B-4bit
   dyno serve --model mlx-community/Qwen3-8B-4bit --port 8971
   dyno run "explain B-trees"
+  dyno models
+  dyno launch claude --model qwen3-8b
   dyno route --list
   dyno bench --model A --model B --csv results.csv
   dyno inspect "The capital of France is" --port 8971 --port 8972
@@ -124,6 +128,11 @@ def main(argv: list[str] | None = None) -> int:
             print(SERVE_MISSING, file=sys.stderr, end="")
             return 1
         return module.main(rest)
+
+    if command in ("models", "launch"):
+        from .launch import launch, models
+
+        return {"models": models, "launch": launch}[command](rest)
 
     if command == "harness":
         from .harness import main as harness_main
