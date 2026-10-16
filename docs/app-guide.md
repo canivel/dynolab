@@ -299,6 +299,10 @@ The router exposes one OpenAI-compatible URL in front of your running model endp
 
 LAN inference is unauthenticated: enable it only on a trusted network. Research and Execution APIs stay loopback-only. For WSL clients, use the Mac's LAN address, not `localhost`; confirm that Windows can reach the Mac, both devices are on the same reachable network, and the Mac firewall allows the server. With wired and Wi-Fi interfaces on Windows, routing may choose an unexpected interface. Test connectivity from Windows before debugging the WSL client. See the [API inference example](http-api.md#inference-and-lan-clients).
 
+### Claude Code and Codex
+
+**Use with Claude Code or Codex** on the Router tab shows the command to run either tool on a model you pick, for example `dyno launch claude --model lmstudio-community/Qwen3.8-27B-MLX-4bit`, with **Copy** buttons. **Install the dyno command…** adds `/usr/local/bin/dyno` so the command works in Terminal (macOS asks for your password once). The tools don't need the router: `dyno launch` uses the model's own server. See [Claude Code and Codex on your own models](coding-tools.md).
+
 ### Routing controls and client integrations
 
 Use **Rules → Add** for the built-in coding rule: prompts matching `refactor`, `debug`, `stack trace` or `traceback` request the hard tier. Enable/disable each rule with its toggle or remove it with the trash button. Add currently creates this preset; it is not a general rule editor. **Self-routing** lets the strongest model tag the conversation; this adds a model call. **Cost model** chooses the fastest candidate meeting the tier. **Assume replies of** changes the expected response length used to compare candidates. Read **Decisions** after a request to see the selected backend and any escalation.

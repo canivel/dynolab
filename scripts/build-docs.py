@@ -17,6 +17,7 @@ assert (target / 'index.html').is_file(), 'Expected website checkout with public
 pages = [
     ('agent-sandbox-tests.md', 'agent-sandbox-tests.html', 'Agent sandbox tests', 'A lead agent builds its own team in an isolated sandbox; a hidden Observer records who broke what, and who asked them to.'),
     ('assistant.md', 'assistant.html', "Dyno's assistant", 'Describe what you want to find out; a local model sets up tests and evals in Dyno and asks before it runs anything.'),
+    ('coding-tools.md', 'coding-tools.html', 'Claude Code and Codex', 'Run Claude Code or Codex on a model on your Mac, with web search, in one command.'),
     ("probe-tutorial.md", "probe-tutorial.html", "First probe experiment", "Create a study, run a probe and interpret its controls."),
     ('regression-reports.md', 'regression-reports.html', 'Regression reports (preview)', 'Compare paired labeled outcomes and inspect exclusions.'),
     ('compatibility-checks.md', 'compatibility-checks.html', 'Artifact compatibility (preview)', 'Check a saved artifact contract before considering reuse.'),

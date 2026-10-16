@@ -22,6 +22,7 @@ struct RouterView: View {
                     networkSharing
                     if showingSettings { settings }
                     backends
+                    CodingToolsSection(model: model)
                     harnesses
                     decisions
                 }
@@ -174,7 +175,7 @@ struct RouterView: View {
                 .multilineTextAlignment(.center)
             networkSharing.frame(maxWidth: 560)
             if !model.shareRouterOnNetwork {
-                Text("Local client URL: http://127.0.0.1:\(model.routerPort)/v1 · model: auto")
+                Text("Local client URL: http://127.0.0.1:\(String(model.routerPort))/v1 · model: auto")
                     .font(.system(size: 10)).foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
@@ -189,6 +190,9 @@ struct RouterView: View {
             default:
                 startButton
             }
+            // Claude Code and Codex don't need the router: they run on one model's server.
+            CodingToolsSection(model: model)
+                .frame(maxWidth: 780).padding(.top, 22)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

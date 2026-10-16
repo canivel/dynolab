@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 from dyno.lab.server import validate
 
-PAGES = ['agent-sandbox-tests.html', 'assistant.html', 'probe-tutorial.html', 'regression-reports.html', 'compatibility-checks.html', 'checkpoint-comparisons.html', 'simulated-agent-tasks.html', 'community-reproductions.html', 'probe-validation.html', 'monitor-evaluations.html', 'controlled-studies.html', 'studies.html', 'pool-lab.html', 'pools.html', 'pool-api.html', 'research-tools.html', 'guide.html', 'sdk.html', 'api.html', 'mcp.html']
+PAGES = ['agent-sandbox-tests.html', 'assistant.html', 'coding-tools.html', 'probe-tutorial.html', 'regression-reports.html', 'compatibility-checks.html', 'checkpoint-comparisons.html', 'simulated-agent-tasks.html', 'community-reproductions.html', 'probe-validation.html', 'monitor-evaluations.html', 'controlled-studies.html', 'studies.html', 'pool-lab.html', 'pools.html', 'pool-api.html', 'research-tools.html', 'guide.html', 'sdk.html', 'api.html', 'mcp.html']
 class Page(HTMLParser):
     def __init__(self, source):
         super().__init__()

@@ -240,13 +240,15 @@ def launch(argv):
     elif not speaks_anthropic(port):
         print(f':{port} is not a Dyno server with the coding tools\' APIs (Dyno 0.6.9 or later). Update Dyno, or leave out --port.', file=sys.stderr); return 1
 
-    # The tool owns the terminal: Ctrl-C reaches it, not this wrapper.
-    previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    # The tool owns the terminal: Ctrl-C reaches it, not this wrapper. Closing the terminal (SIGHUP) or being
+    # told to stop (SIGTERM) still runs the cleanup below, so a model this command started never outlives it.
+    def stopped(signum, frame): raise SystemExit(128 + signum)
+    previous = {s: signal.signal(s, h) for s, h in ((signal.SIGINT, signal.SIG_IGN), (signal.SIGHUP, stopped), (signal.SIGTERM, stopped))}
     try:
         env, options = environment(port, model)
         code = subprocess.call([executable, *options, *passthrough], env=env)
     finally:
-        signal.signal(signal.SIGINT, previous)
+        for s, h in previous.items(): signal.signal(s, h)
         if process and not args.keep:
             process.terminate()
             try: process.wait(timeout=20)

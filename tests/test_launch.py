@@ -99,6 +99,17 @@ class Launch(unittest.TestCase):
         self.assertEqual(seen['env']['ANTHROPIC_BASE_URL'], f'http://127.0.0.1:{port}')
         self.assertEqual(seen['env']['ANTHROPIC_MODEL'], 'Qwen3-8B-4bit')
 
+    def test_a_server_it_started_is_stopped_when_the_terminal_closes(self):
+        import signal, subprocess as sp
+        server = mock.MagicMock()
+        def hang_up(*a, **k): os.kill(os.getpid(), signal.SIGHUP)
+        with mock.patch.object(L, 'serving', return_value=[]), mock.patch.object(L, '_free_port', return_value=8979), \
+                mock.patch.object(L, '_start_server', return_value=(server, Path('log'))), mock.patch.object(L, '_wait'), \
+                mock.patch.object(sp, 'call', side_effect=hang_up):
+            with self.assertRaises(SystemExit): L.launch(['claude', '--model', 'qwen3-8b'])
+        server.terminate.assert_called_once()
+        self.assertIs(signal.getsignal(signal.SIGHUP), signal.SIG_DFL)
+
     def test_clear_refusals(self):
         self.assertEqual(L.launch(['claude', '--model', 'mistral', '--port', '1']), 1)
         with mock.patch.object(L, 'speaks_anthropic', return_value=False):

@@ -1,0 +1,93 @@
+# Claude Code and Codex on your own models
+
+Run [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) or [Codex](https://github.com/openai/codex) on a model you've downloaded in Dyno. The model answers on your Mac instead of Anthropic's or OpenAI's servers. The tools themselves may still contact their makers for sign-in, updates or usage data, depending on how you've set them up; `dyno launch` turns off Claude Code's optional traffic.
+
+```
+dyno launch claude --model qwen3.8-27b
+dyno launch codex --model qwen3.8-27b
+```
+
+Dyno's model server speaks each tool's own API, so there's no proxy to install and no config file to edit.
+
+## Before you start
+
+1. **A model.** Download one in **Discover**. A 27B model or larger works best: we tested Qwen3.8-27B (MLX, 4-bit). An 8B model answers simple questions and uses the tools, but it gets lost on multi-step tasks.
+2. **The tool.** Install it if you haven't:
+   - Claude Code: `npm install -g @anthropic-ai/claude-code`
+   - Codex: `npm install -g @openai/codex`
+3. **The `dyno` command.** Open **Router** in Dyno and choose **Install the dyno command…**. macOS asks for your password once, and the command is added as `/usr/local/bin/dyno`. If you installed Dyno's Python package with pip, you already have it.
+
+The **Router** tab shows these commands for the model you pick, with a **Copy** button for each.
+
+## Run it
+
+```
+dyno models
+```
+
+This lists the models you've downloaded, with their size, context window and the port serving them, if any.
+
+```
+dyno launch claude --model qwen3.8-27b
+```
+
+`--model` takes the model's full name (`lmstudio-community/Qwen3.8-27B-MLX-4bit`) or any part of it that matches only one model. Dyno tells you if a name matches several.
+
+`dyno launch` then:
+
+1. **Uses the model if it's already running** in a Dyno server, or starts it on a free port between 8970 and 8979. Loading takes a moment.
+2. **Starts the tool pointed at it.** Every model the tool would use, including Claude Code's background model and subagents, is the one you chose. The tool's context window is set to the model's own.
+3. **Stops the model it started** when you quit the tool, or close the terminal. Add `--keep` to leave it running.
+
+Anything after `--` goes to the tool:
+
+```
+dyno launch claude --model qwen3.8-27b -- -p "The tests fail. Fix them."
+dyno launch codex --model qwen3.8-27b -- exec "The tests fail. Fix them."
+```
+
+What we saw with Qwen3.8-27B on an M5 Max: given a small project with a failing test, Claude Code ran the test, found the bug, fixed it and reran the test in 74 seconds, including loading the model. Codex did the same in 52 seconds.
+
+## Web search
+
+Both tools can search the web while they run on your model. Claude Code's **WebSearch** and Codex's web search normally run on Anthropic's or OpenAI's servers. With Dyno, Dyno runs them:
+
+- The model gets a search tool. When it searches, Dyno runs the search, gives the model the results, and the tool shows the search as usual.
+- Dyno searches with **SearXNG** in Docker on your Mac (free), or with a paid search API you choose in **Settings → Web search**: Brave, Tavily, Exa or Serper. A paid API needs a key; Dyno keeps it in your macOS Keychain. **Test** runs one search so you can check it works.
+- Claude Code's allowed and blocked domains are applied to the results.
+
+Search queries leave your Mac: they go to the search engines (SearXNG) or to the provider you chose. See [Dyno's assistant](assistant.md#web-search-optional) for what that means.
+
+## Without `dyno launch`
+
+Any Dyno model server (`dyno serve`, or a model started in **Models**) answers both APIs, on the same port as its OpenAI API:
+
+| API | Path | Used by |
+|---|---|---|
+| Anthropic Messages | `/v1/messages`, `/v1/messages/count_tokens` | Claude Code, Anthropic SDKs |
+| OpenAI Responses | `/v1/responses` | Codex, OpenAI SDKs |
+| OpenAI Chat Completions | `/v1/chat/completions` | everything else |
+
+To point Claude Code at a model running on port 8971 yourself:
+
+```
+ANTHROPIC_BASE_URL=http://127.0.0.1:8971 ANTHROPIC_AUTH_TOKEN=dyno claude --model Qwen3.8-27B-MLX-4bit
+```
+
+And Codex:
+
+```
+codex -c model_provider=dyno -c 'model_providers.dyno.name="Dyno"' \
+  -c 'model_providers.dyno.base_url="http://127.0.0.1:8971/v1"' \
+  -c 'model_providers.dyno.wire_api="responses"' -m Qwen3.8-27B-MLX-4bit
+```
+
+The model name can be anything the server doesn't list (Claude Code asks for `claude-…` names): the server then uses the model it's serving, and never downloads one.
+
+## Limits
+
+- **Your model, not Claude or GPT.** The tools work, but a local model makes more mistakes with them, especially on long tasks.
+- **Not translated:** Anthropic's and OpenAI's other hosted tools (code execution, file search), PDFs, and your MCP servers in Codex, which Codex only offers to OpenAI's models. Claude Code's MCP servers work: they're ordinary tools.
+- **Token counts are estimates** (about four characters a token). Claude Code uses them to decide when to compact a conversation.
+- **Only this Mac.** The APIs answer programs on this Mac and refuse web pages, so a site you visit can't use your model through them.
+- A model started in Dyno before 0.6.9 doesn't have these APIs. `dyno launch` then starts another copy of the model and says so; restart the model in **Models** to avoid that.

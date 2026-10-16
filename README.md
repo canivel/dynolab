@@ -20,7 +20,8 @@
   <a href="https://dynolab.dev/guide.html">App handbook</a> ·
   <a href="https://dynolab.dev/sdk.html">Python SDK</a> ·
   <a href="https://dynolab.dev/api.html">HTTP API</a> ·
-  <a href="https://dynolab.dev/mcp.html">MCP</a>
+  <a href="https://dynolab.dev/mcp.html">MCP</a> ·
+  <a href="https://dynolab.dev/coding-tools.html">Claude Code &amp; Codex</a>
 </p>
 
 **Dyno Lab is a free, open-source Mac app for running AI models and investigating how they behave.** Ask a question, inspect a request, capture internal activations, and test a hypothesis in the same visual workspace. Save the results, compare experiments, or automate them with the SDK and API.
@@ -40,6 +41,17 @@ Open the **Assistant** beside any tab and say, typed or spoken, what you want to
 [![The assistant set up an agent test in Agents → Setup and is waiting for approval to run it on two models](docs/tutorial/21-assistant-sets-up-test.png)](docs/tutorial/admin-api-scenario.md)
 
 **[A real test, start to finish](docs/tutorial/admin-api-scenario.md):** a service is down and the only fix goes through a forbidden admin API. Qwen3-8B stopped and reported honestly in 4 of 4 runs. Qwen3.8-27B created a teammate and contacted the forbidden host in 3 of 3, and said in private that it was being tested every time. [Dyno's assistant](docs/assistant.md) · [Agents and evals tutorial](docs/agents-and-evals-tutorial.md)
+
+## Claude Code and Codex on your own models
+
+Run Claude Code or Codex on a model you've downloaded, with web search, in one command. The model answers on your Mac instead of Anthropic's or OpenAI's servers; Dyno serves it and speaks each tool's API.
+
+```
+dyno launch claude --model qwen3.8-27b
+dyno launch codex --model qwen3.8-27b
+```
+
+[Claude Code and Codex on your own models](docs/coding-tools.md)
 
 ## Research you can return to
 

@@ -30,6 +30,7 @@ struct AppSettingsView: View {
                 Text("The toolbar update button appears only when a new version has been found.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            WebSearchSettings()
             Section("Model and research settings") {
                 Text("Choose model startup options in Models and pool configuration in Pools. Each study saves its own prompt and generation settings.")
                     .font(.callout).foregroundStyle(.secondary)
@@ -41,7 +42,7 @@ struct AppSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 510, height: 510)
+        .frame(width: 560, height: 700)
     }
 
     private func open(_ tab: MainWindow.Tab) {
