@@ -15,7 +15,7 @@ Dyno's model server speaks each tool's own API, so there's no proxy to install a
 2. **The tool.** Install it if you haven't:
     - Claude Code: `npm install -g @anthropic-ai/claude-code`
     - Codex: `npm install -g @openai/codex`
-3. **The `dyno` command.** Open **Router** in Dyno and choose **Install the dyno command…** macOS asks for your password once, and the command is added as `/usr/local/bin/dyno`. If you installed Dyno's Python package with pip, you already have it.
+3. **The `dyno` command.** Dyno adds it when you open the app, so it works in a new Terminal window. If you have Homebrew, it goes in `/opt/homebrew/bin` with no password. Otherwise Dyno asks once to add `/usr/local/bin/dyno`, and macOS asks for your password; choose **Not Now** and you can do it later in **Router → Install the dyno command…**. If you move or update Dyno, the command follows it. Dyno never replaces another program called `dyno`. If you installed Dyno's Python package with pip, you already have the command.
 
 The **Router** tab shows these commands for the model you pick, with a **Copy** button for each.
 

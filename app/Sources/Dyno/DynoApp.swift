@@ -70,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { AppDelegate.shared?.showMainWindow() }
             }
+            CommandLineSetup.shared.start()
         }
     }
 
