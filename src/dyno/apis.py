@@ -16,6 +16,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import os
+import queue
 import threading
 import urllib.error
 import urllib.parse
@@ -26,6 +27,8 @@ from . import anthropic, responses
 from .anthropic import RequestError
 
 MAX_BODY = 32_000_000
+# Seconds of silence before a keepalive: reading Claude Code's ~20k-token prompt takes minutes on some Macs.
+KEEPALIVE = 10
 PATHS = ('/v1/messages', '/v1/messages/count_tokens', '/v1/responses')
 
 
@@ -145,7 +148,10 @@ class CodingAPIsMixin:
             searches, hosted = wants_search(body, claude)
         except (RequestError, ValueError, UnicodeDecodeError) as e:
             return self._api_reply(fail('invalid_request_error', str(e)), 400)
-        if searches: return self._api_with_search(request, requested, claude, searches, hosted)
+        if searches:
+            try: return self._api_with_search(request, requested, claude, searches, hosted)
+            except (BrokenPipeError, ConnectionResetError): self.close_connection = True; return
+        if request['stream']: return self._api_stream(request, requested, claude)
         upstream = urllib.request.Request(self._api_upstream() + '/v1/chat/completions', data=json.dumps(request).encode(),
                                           headers={'Content-Type': 'application/json'})
         try:
@@ -156,24 +162,72 @@ class CodingAPIsMixin:
         except (urllib.error.URLError, OSError) as e:
             return self._api_reply(fail('api_error', f'The model server could not be reached: {e}'), 502)
         with response:
-            if not request['stream']:
-                result = json.loads(response.read())
-                return self._api_reply(anthropic.from_openai(result, requested) if claude else responses.from_chat(result, requested))
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/event-stream')
-            self.send_header('Cache-Control', 'no-cache')
-            self.send_header('Connection', 'close')  # no length to frame it on a kept-alive HTTP/1.1 connection
-            self.close_connection = True
-            self.end_headers()
-            stream = anthropic.StreamTranslator(requested) if claude else responses.StreamTranslator(requested)
-            for payload in _chunks(response):
-                if payload.get('error'):
-                    message = json.dumps(payload['error'])[:2000]
-                    self.wfile.write(stream.event('error', anthropic.error('api_error', message)) if claude else stream.failed(message))
-                    self.wfile.flush()
-                    return
-                if (out := stream.chunk(payload)): self.wfile.write(out); self.wfile.flush()
-            self.wfile.write(stream.finish() if claude else stream.done()); self.wfile.flush()
+            result = json.loads(response.read())
+        return self._api_reply(anthropic.from_openai(result, requested) if claude else responses.from_chat(result, requested))
+
+    def _api_relay(self, request):
+        """The model server's stream, read on a thread: ('chunk', payload) ... ('end', None), or ('http', (code, detail))
+        or ('error', exception); ('idle', None) after KEEPALIVE seconds without a chunk."""
+        items = queue.Queue()
+        leaving = threading.Event()
+        upstream = urllib.request.Request(self._api_upstream() + '/v1/chat/completions', data=json.dumps(request).encode(),
+                                          headers={'Content-Type': 'application/json'})
+
+        def pump():
+            try:
+                with urllib.request.urlopen(upstream, timeout=3600) as response:
+                    for payload in _chunks(response):
+                        if leaving.is_set(): return  # the client left: closing the connection stops the generation
+                        items.put(('chunk', payload))
+                items.put(('end', None))
+            except urllib.error.HTTPError as e:
+                items.put(('http', (e.code, e.read().decode('utf-8', 'replace')[:2000])))
+            except (urllib.error.URLError, OSError, ValueError) as e:
+                items.put(('error', e))
+
+        threading.Thread(target=pump, daemon=True).start()
+        try:
+            while True:
+                try: kind, value = items.get(timeout=KEEPALIVE)
+                except queue.Empty: yield 'idle', None; continue
+                yield kind, value
+                if kind != 'chunk': return
+        finally:
+            leaving.set()
+
+    def _api_stream(self, request, requested, claude):
+        """Translate the stream; keepalives while the model reads the prompt. Errors before anything was sent keep their
+        HTTP status."""
+        fail = anthropic.error if claude else _openai_error
+        stream = anthropic.StreamTranslator(requested) if claude else responses.StreamTranslator(requested)
+        sent = False
+
+        def write(data):
+            nonlocal sent
+            if not sent: self._api_stream_headers(); sent = True
+            if data: self.wfile.write(data); self.wfile.flush()
+
+        def failed(message):
+            write(stream.event('error', anthropic.error('api_error', message)) if claude else stream.failed(message))
+
+        try:
+            for kind, value in self._api_relay(request):
+                if kind == 'idle': write(stream.keepalive())
+                elif kind == 'http':
+                    code, detail = value
+                    message = f'The model server answered {code}: {detail}'
+                    if sent: return failed(message)
+                    return self._api_reply(fail('api_error', message), 500 if code >= 500 else 400)
+                elif kind == 'error':
+                    message = f'The model server could not be reached: {value}'
+                    if sent: return failed(message)
+                    return self._api_reply(fail('api_error', message), 502)
+                elif kind == 'chunk':
+                    if value.get('error'): return failed(json.dumps(value['error'])[:2000])
+                    if (out := stream.chunk(value)): write(out)
+            write(stream.finish() if claude else stream.done())
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True  # the client gave up; the model server stops when its stream is closed
 
     def _api_stream_headers(self):
         self.send_response(200)
@@ -204,14 +258,16 @@ class CodingAPIsMixin:
             # The last round has no search tool, so the model answers with what it found.
             request['tools'] = tools if round_ < limit else tools[:-1]
             if not request['tools']: request.pop('tools'); request.pop('tool_choice', None)
-            upstream = urllib.request.Request(self._api_upstream() + '/v1/chat/completions', data=json.dumps(request).encode(),
-                                              headers={'Content-Type': 'application/json'})
-            try:
-                with urllib.request.urlopen(upstream, timeout=3600) as response:
-                    for payload in _chunks(response):
-                        if payload.get('error'): raise RuntimeError(json.dumps(payload['error'])[:2000])
-                        send(stream.chunk(payload))
-            except (urllib.error.URLError, OSError, RuntimeError) as error:
+            error = None
+            for kind, value in self._api_relay(request):
+                if kind == 'idle':
+                    if streaming: send(stream.keepalive())
+                elif kind == 'chunk':
+                    if value.get('error'): error = json.dumps(value['error'])[:2000]; break
+                    send(stream.chunk(value))
+                elif kind == 'http': error = f'{value[0]}: {value[1]}'
+                elif kind == 'error': error = str(value)
+            if error:
                 message = f'The model server failed: {error}'
                 if not streaming: return self._api_reply(fail('api_error', message), 502)
                 return send(stream.event('error', anthropic.error('api_error', message)) if claude else stream.failed(message))

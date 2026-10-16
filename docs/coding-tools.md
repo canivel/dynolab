@@ -88,6 +88,7 @@ The model name can be anything the server doesn't list (Claude Code asks for `cl
 
 - **Your model, not Claude or GPT.** The tools work, but a local model makes more mistakes with them, especially on long tasks.
 - **Not translated:** Anthropic's and OpenAI's other hosted tools (code execution, file search), PDFs, and your MCP servers in Codex, which Codex only offers to OpenAI's models. Claude Code's MCP servers work: they're ordinary tools.
+- **The first reply is slow.** Before it answers, the model reads the tool's instructions, about 16,000 to 24,000 tokens. That took 75 seconds on an M5 Max and over 5 minutes on a slower Mac. Later replies read only what's new. Dyno keeps the connection alive meanwhile, and `dyno launch` raises the tools' timeouts to an hour (`API_TIMEOUT_MS` for Claude Code). If you point Claude Code at Dyno yourself, set `API_TIMEOUT_MS=3600000` too. A smaller model reads faster.
 - **Token counts are estimates** (about four characters a token). Claude Code uses them to decide when to compact a conversation.
 - **Only this Mac.** The APIs answer programs on this Mac and refuse web pages, so a site you visit can't use your model through them.
 - A model started in Dyno before 0.6.9 doesn't have these APIs. `dyno launch` then starts another copy of the model and says so; restart the model in **Models** to avoid that.

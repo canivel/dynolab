@@ -179,6 +179,10 @@ class StreamTranslator:
             'id': 'msg_' + uuid.uuid4().hex[:24], 'type': 'message', 'role': 'assistant', 'model': self.model,
             'content': [], 'stop_reason': None, 'stop_sequence': None, 'usage': dict(self.usage)}})
 
+    def keepalive(self):
+        """While the model reads a long prompt: Anthropic's ping event, so the client doesn't give up on a silent stream."""
+        return (b'' if self.started else self.start()) + self.event('ping', {'type': 'ping'})
+
     def _close(self):
         if self.open is None: return b''
         self.open = None
