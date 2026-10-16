@@ -41,8 +41,10 @@ Tick **Web search** under the model menu to let the assistant search the web and
 - The assistant gets two more tools: one searches the web and returns titles, links and short excerpts; the other reads the text of a public page.
 - Each search and each page read shows in the chat, for example *Searched the web: …* and *Read arxiv.org*.
 
+**A paid search API instead.** In **Settings → Web search**, choose Brave, Tavily, Exa or Serper and paste your key. Dyno keeps the key in your macOS Keychain, not in a file, and needs no Docker for these. **Test** runs one search. The same choice answers web searches from [Claude Code and Codex](coding-tools.md) running on your models.
+
 **What leaves your Mac:**
-- **Your search queries.** SearXNG sends them to Google, Bing and other search engines from your internet address.
+- **Your search queries.** SearXNG sends them to Google, Bing and other search engines from your internet address; a paid API receives them directly.
 - **Requests for the pages it reads,** sent to those websites the same way.
 
 The model, your conversations, tests and files stay on your Mac.

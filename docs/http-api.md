@@ -51,6 +51,20 @@ Read the answer from `choices[0].message.content`. Compatible models may return 
 
 For streamed responses set `stream: true` and use `curl -N`. Read SSE `data:` events until `[DONE]`; accumulate text deltas rather than expecting one final JSON document. To request token probabilities, set `logprobs: true` and `top_logprobs: 5` on a supporting direct model endpoint. Log probabilities are in `choices[0].logprobs.content`; convert with `exp(logprob)`.
 
+## Anthropic Messages and OpenAI Responses
+
+Every Dyno model server, and the router, also answers the APIs Claude Code and Codex use, on the same port:
+
+- `POST /v1/messages` and `POST /v1/messages/count_tokens`: Anthropic's Messages API, streamed or not, with tools, tool results, thinking and images.
+- `POST /v1/responses`: OpenAI's Responses API, streamed or not, with function tools and their outputs.
+
+Both are translated to `/v1/chat/completions` on the same server, so Execution shows them like any other request. A `model` the server doesn't list means the model it's serving. When a request includes Anthropic's `web_search_…` tool or the Responses `web_search` tool, Dyno runs the searches with its own web search (Settings → Web search) and returns them as `server_tool_use` / `web_search_tool_result` blocks or `web_search_call` items. These APIs answer only programs on this Mac, and refuse requests with an `Origin` header (web pages), even when the router is shared on your network. See [Claude Code and Codex on your own models](coding-tools.md).
+
+```bash
+curl http://127.0.0.1:8971/v1/messages -H 'Content-Type: application/json' \
+  -d '{"model": "local", "max_tokens": 200, "messages": [{"role": "user", "content": "Say hello."}]}'
+```
+
 ## Isolated research: first request
 
 Start **Lab → Analyze**. A source installation can use `dyno lab --port 8980`. Check health, then submit:

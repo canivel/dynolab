@@ -18,6 +18,7 @@ from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from ..apis import CodingAPIsMixin
 from ..execution import ExecutionHTTPMixin, ExecutionStore, current_execution
 from .backends import Backend, discover
 from .policy import Policy, conversation_key, mean_confidence
@@ -161,7 +162,7 @@ class _RouterDispatch(BaseHTTPRequestHandler):
         return self._route_GET()
 
 
-class RouterHandler(ExecutionHTTPMixin, _RouterDispatch):
+class RouterHandler(CodingAPIsMixin, ExecutionHTTPMixin, _RouterDispatch):
     state: RouterState  # injected
 
     @property

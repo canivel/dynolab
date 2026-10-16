@@ -1,3 +1,31 @@
+# Dyno Lab 0.6.9
+
+Dyno Lab 0.6.9 runs Claude Code and Codex on the models you download, with web search, in one command. Web search can also use a paid search API, and agent tests can now prefill a session with real tool calls and choose how the agents' model samples.
+
+## Claude Code and Codex on your own models
+
+- **`dyno launch claude --model <name>` and `dyno launch codex --model <name>`.** Dyno uses the model if it's already running, or starts it, then opens the tool pointed at it. Quit the tool, or close the terminal, and Dyno stops the model it started. Anything after `--` goes to the tool. See [Claude Code and Codex on your own models](coding-tools.md).
+- **`dyno models`** lists your downloaded models with their size, context window and the port serving them.
+- **Two more APIs on every model server.** Anthropic's Messages API (`/v1/messages`) for Claude Code, and OpenAI's Responses API (`/v1/responses`) for Codex, on the same port as the OpenAI API, with tool calls, streaming and thinking. Built into Dyno, with no proxy to install. They answer only programs on this Mac. See the [HTTP API](http-api.md#anthropic-messages-and-openai-responses).
+- **Web search in both tools.** Claude Code's WebSearch and Codex's web search run through Dyno's own web search, so the model can look things up.
+- **Router → Use with Claude Code or Codex** shows the commands for the model you pick, and **Install the dyno command…** adds `dyno` to Terminal.
+
+With Qwen3.8-27B, both tools found and fixed a bug from a failing test on their own, in under 75 seconds.
+
+## Web search
+
+- **Choose a paid search API.** **Settings → Web search** offers Brave, Tavily, Exa and Serper besides the free SearXNG. The key is kept in your macOS Keychain, and **Test** checks it with one search. Dyno's assistant uses the same choice.
+- **"Docker isn't running" while it was.** Opened from Finder, Dyno couldn't find Docker in Homebrew, so web search failed with Colima running. It now looks there, and says so plainly when Docker isn't installed.
+
+## Agent tests
+
+- **Prefill a session with tool calls.** A test's prefilled history can include the agent's own tool calls and their results, sent to the model as real messages. Reproductions such as *Deception by Omission* start the model after a mistake it never chose.
+- **Script lines sent as written.** A scripted message can reach the agents exactly as typed, as their whole turn, without the room's wrapper.
+- **Optional "What you did" field.** Turn off the submit tool's summary field when whether the agent reviews its own work is what you measure.
+- **Sampling.** Set the agents' temperature, top-p and top-k in Setup, or choose **Use the model's** for the values in the model's `generation_config.json`. Before, a local model always ran at temperature 0, so every run of a test was the same run. Sampling travels in shared test packages, and in Evals each sampling is its own condition.
+
+---
+
 # Dyno Lab 0.6.8
 
 Dyno Lab 0.6.8 lets the assistant run on any model you download, including abliterated and merged models whose chat template can't call tools, and test a different model from the one it runs on. It also reads documents, runs several models at once, deletes downloaded models, and links each Observer card to the moment in the Room behind it.

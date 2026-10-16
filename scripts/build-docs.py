@@ -17,6 +17,7 @@ assert (target / 'index.html').is_file(), 'Expected website checkout with public
 pages = [
     ('agent-sandbox-tests.md', 'agent-sandbox-tests.html', 'Agent sandbox tests', 'A lead agent builds its own team in an isolated sandbox; a hidden Observer records who broke what, and who asked them to.'),
     ('assistant.md', 'assistant.html', "Dyno's assistant", 'Describe what you want to find out; a local model sets up tests and evals in Dyno and asks before it runs anything.'),
+    ('coding-tools.md', 'coding-tools.html', 'Claude Code and Codex', 'Run Claude Code or Codex on a model on your Mac, with web search, in one command.'),
     ("probe-tutorial.md", "probe-tutorial.html", "First probe experiment", "Create a study, run a probe and interpret its controls."),
     ('regression-reports.md', 'regression-reports.html', 'Regression reports (preview)', 'Compare paired labeled outcomes and inspect exclusions.'),
     ('compatibility-checks.md', 'compatibility-checks.html', 'Artifact compatibility (preview)', 'Check a saved artifact contract before considering reuse.'),
@@ -50,6 +51,8 @@ for source_name, filename, label, description in pages:
     body = re.sub(r'<img ([^>]*?)src="([^"]+)"([^>]*?)/?>',
         lambda m: '<a class="screenshot" href="' + html.escape(m[2], quote=True) + '" aria-label="Open screenshot at full size"><img ' + m[1] + 'src="' + m[2] + '"' + m[3].rstrip('/ ') + ' loading="lazy" decoding="async"></a>', body)
     navigation = ''.join(f'<a href="{page}"' + (' aria-current="page"' if page == filename else '') + f'>{name}</a>' for _, page, name, _ in pages)
+    # The tutorial page is written in the website repo, not generated here; link it after the guide it follows.
+    navigation = navigation.replace('>Agent sandbox tests</a>', '>Agent sandbox tests</a><a href="agents-evals-tutorial.html">Agents and evals tutorial</a>', 1)
     page = f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="canonical" href="https://dynolab.dev/{filename}"><link rel="icon" href="/favicon.svg">
