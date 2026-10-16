@@ -13,9 +13,9 @@ Dyno's model server speaks each tool's own API, so there's no proxy to install a
 
 1. **A model.** Download one in **Discover**. A 27B model or larger works best: we tested Qwen3.8-27B (MLX, 4-bit). An 8B model answers simple questions and uses the tools, but it gets lost on multi-step tasks.
 2. **The tool.** Install it if you haven't:
-   - Claude Code: `npm install -g @anthropic-ai/claude-code`
-   - Codex: `npm install -g @openai/codex`
-3. **The `dyno` command.** Open **Router** in Dyno and choose **Install the dyno command…**. macOS asks for your password once, and the command is added as `/usr/local/bin/dyno`. If you installed Dyno's Python package with pip, you already have it.
+    - Claude Code: `npm install -g @anthropic-ai/claude-code`
+    - Codex: `npm install -g @openai/codex`
+3. **The `dyno` command.** Open **Router** in Dyno and choose **Install the dyno command…** macOS asks for your password once, and the command is added as `/usr/local/bin/dyno`. If you installed Dyno's Python package with pip, you already have it.
 
 The **Router** tab shows these commands for the model you pick, with a **Copy** button for each.
 

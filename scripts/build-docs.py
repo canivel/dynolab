@@ -51,6 +51,8 @@ for source_name, filename, label, description in pages:
     body = re.sub(r'<img ([^>]*?)src="([^"]+)"([^>]*?)/?>',
         lambda m: '<a class="screenshot" href="' + html.escape(m[2], quote=True) + '" aria-label="Open screenshot at full size"><img ' + m[1] + 'src="' + m[2] + '"' + m[3].rstrip('/ ') + ' loading="lazy" decoding="async"></a>', body)
     navigation = ''.join(f'<a href="{page}"' + (' aria-current="page"' if page == filename else '') + f'>{name}</a>' for _, page, name, _ in pages)
+    # The tutorial page is written in the website repo, not generated here; link it after the guide it follows.
+    navigation = navigation.replace('>Agent sandbox tests</a>', '>Agent sandbox tests</a><a href="agents-evals-tutorial.html">Agents and evals tutorial</a>', 1)
     page = f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="canonical" href="https://dynolab.dev/{filename}"><link rel="icon" href="/favicon.svg">
