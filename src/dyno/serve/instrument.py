@@ -17,7 +17,7 @@ from mlx_lm.server import APIHandler, ResponseGenerator
 
 from .exporters import PROMETHEUS_CONTENT_TYPE, prometheus_text, stats_json
 from .metrics import MetricsRegistry
-from ..anthropic import AnthropicMessagesMixin
+from ..apis import CodingAPIsMixin
 from ..execution import ExecutionHTTPMixin, ExecutionStore, current_execution
 
 from .activations import CaptureBroker
@@ -121,8 +121,8 @@ def _model_name(generation_args: Any, request: Any) -> str:
     return "unknown"
 
 
-class InstrumentedAPIHandler(AnthropicMessagesMixin, ExecutionHTTPMixin, APIHandler):
-    """Adds /metrics, /stats and the Anthropic Messages API; everything else falls through to mlx_lm."""
+class InstrumentedAPIHandler(CodingAPIsMixin, ExecutionHTTPMixin, APIHandler):
+    """Adds /metrics, /stats and the coding tools' APIs (Anthropic Messages, OpenAI Responses); everything else falls through to mlx_lm."""
 
     execution_store = ExecutionStore()
 

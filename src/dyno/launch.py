@@ -2,9 +2,11 @@
 
     dyno models                         what's downloaded, and what's being served
     dyno launch claude --model qwen3.8  Claude Code on a local model
+    dyno launch codex --model qwen3.8   Codex on a local model
 
 `launch` reuses a Dyno server that already has the model, or starts one for the session and stops it when the
-tool exits. Claude Code reaches it through the server's Anthropic Messages API, on this Mac only.
+tool exits. Claude Code reaches it through the server's Anthropic Messages API, Codex through its Responses API,
+both on this Mac only.
 """
 from __future__ import annotations
 
@@ -137,6 +139,8 @@ def _start_server(model, port, extra):
     logs = Path.home() / '.mlx-dyno' / 'logs'
     logs.mkdir(parents=True, exist_ok=True)
     log = logs / f'launch-{port}.log'
+    # Codex doesn't say how long a reply may be, and mlx_lm's default (512 tokens) cuts off a model that thinks first.
+    if not any(e.split('=')[0] == '--max-tokens' for e in extra): extra = ['--max-tokens', '32768', *extra]
     command = [sys.executable, '-m', 'dyno', 'serve', '--model', model['id'], '--host', '127.0.0.1', '--port', str(port), *extra]
     with open(log, 'w') as out:
         process = subprocess.Popen(command, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
@@ -154,20 +158,35 @@ def _wait(process, port, log, limit=900):
     raise RuntimeError(f'The model server did not answer within {limit // 60} minutes (see {log})')
 
 
+def _name(model):
+    # The short name isn't one the server lists, so the translator uses the model it serves.
+    return model['id'].rsplit('/', 1)[-1]
+
+
 def claude_env(port, model, environ=None):
     """The environment that points Claude Code at a Dyno server, and only there."""
     env = dict(os.environ if environ is None else environ)
     env.pop('ANTHROPIC_API_KEY', None)  # a real key would take precedence and is never needed locally
-    # The short name isn't one the server lists, so the translator uses the model it serves.
-    name = model['id'].rsplit('/', 1)[-1]
+    name = _name(model)
     env.update(ANTHROPIC_BASE_URL=f'http://127.0.0.1:{port}', ANTHROPIC_AUTH_TOKEN='dyno', ANTHROPIC_MODEL=name,
                ANTHROPIC_DEFAULT_OPUS_MODEL=name, ANTHROPIC_DEFAULT_SONNET_MODEL=name, ANTHROPIC_DEFAULT_HAIKU_MODEL=name,
                CLAUDE_CODE_SUBAGENT_MODEL=name, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC='1')
     if model.get('context'): env['CLAUDE_CODE_MAX_CONTEXT_TOKENS'] = str(model['context'])
-    return env
+    return env, []
 
 
-TOOLS = {'claude': ('Claude Code', 'npm install -g @anthropic-ai/claude-code', claude_env)}
+def codex_args(port, model, environ=None):
+    """Codex options for a Dyno provider; its own config and sign-in are left as they are."""
+    options = {'model_provider': '"dyno"', 'model_providers.dyno.name': '"Dyno"',
+               'model_providers.dyno.base_url': f'"http://127.0.0.1:{port}/v1"',
+               'model_providers.dyno.wire_api': '"responses"', 'model_providers.dyno.requires_openai_auth': 'false'}
+    if model.get('context'): options['model_context_window'] = str(model['context'])
+    args = [part for key, value in options.items() for part in ('-c', f'{key}={value}')]
+    return dict(os.environ if environ is None else environ), [*args, '-m', _name(model)]
+
+
+TOOLS = {'claude': ('Claude Code', 'npm install -g @anthropic-ai/claude-code', claude_env),
+         'codex': ('Codex', 'npm install -g @openai/codex', codex_args)}
 
 
 def launch(argv):
@@ -176,7 +195,8 @@ def launch(argv):
     else:
         passthrough = []
     parser = argparse.ArgumentParser(prog='dyno launch', description='Run a coding tool on a local model.',
-                                     epilog='Arguments after -- go to the tool, e.g. dyno launch claude --model qwen3-8b -- -p "fix the tests"')
+                                     epilog='Arguments after -- go to the tool, e.g. dyno launch claude --model qwen3-8b -- -p "fix the tests" '
+                                            'or dyno launch codex --model qwen3-8b -- exec "fix the tests"')
     parser.add_argument('tool', choices=sorted(TOOLS))
     parser.add_argument('--model', required=True, help='a downloaded model: its id or part of its name (see `dyno models`)')
     parser.add_argument('--port', type=int, help='use the Dyno server on this port')
@@ -218,12 +238,13 @@ def launch(argv):
                 process.terminate()
                 print(error if isinstance(error, RuntimeError) else 'Stopped.', file=sys.stderr); return 1
     elif not speaks_anthropic(port):
-        print(f':{port} does not answer the Anthropic Messages API. Update Dyno, or leave out --port.', file=sys.stderr); return 1
+        print(f':{port} is not a Dyno server with the coding tools\' APIs (Dyno 0.6.9 or later). Update Dyno, or leave out --port.', file=sys.stderr); return 1
 
     # The tool owns the terminal: Ctrl-C reaches it, not this wrapper.
     previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
     try:
-        code = subprocess.call([executable, *passthrough], env=environment(port, model))
+        env, options = environment(port, model)
+        code = subprocess.call([executable, *options, *passthrough], env=env)
     finally:
         signal.signal(signal.SIGINT, previous)
         if process and not args.keep:

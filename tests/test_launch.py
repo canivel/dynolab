@@ -53,7 +53,7 @@ class Models(unittest.TestCase):
 
 class ClaudeEnv(unittest.TestCase):
     def test_points_claude_code_at_the_local_server_only(self):
-        env = L.claude_env(8971, {'id': 'lmstudio-community/Qwen3.8-27B-MLX-4bit', 'context': 262144},
+        env, args = L.claude_env(8971, {'id': 'lmstudio-community/Qwen3.8-27B-MLX-4bit', 'context': 262144},
                            {'ANTHROPIC_API_KEY': 'sk-real', 'PATH': '/bin'})
         self.assertNotIn('ANTHROPIC_API_KEY', env)
         self.assertEqual(env['ANTHROPIC_BASE_URL'], 'http://127.0.0.1:8971')
@@ -61,6 +61,16 @@ class ClaudeEnv(unittest.TestCase):
         self.assertEqual(env['ANTHROPIC_DEFAULT_HAIKU_MODEL'], 'Qwen3.8-27B-MLX-4bit')
         self.assertEqual(env['CLAUDE_CODE_MAX_CONTEXT_TOKENS'], '262144')
         self.assertEqual(env['PATH'], '/bin')
+        self.assertEqual(args, [])
+
+    def test_codex_gets_a_dyno_provider_on_the_responses_api(self):
+        env, args = L.codex_args(8971, {'id': 'mlx-community/Qwen3-8B-4bit', 'context': 40960}, {'PATH': '/bin'})
+        options = dict(args[i + 1].split('=', 1) for i in range(0, len(args) - 2, 2))
+        self.assertEqual(options['model_providers.dyno.base_url'], '"http://127.0.0.1:8971/v1"')
+        self.assertEqual(options['model_providers.dyno.wire_api'], '"responses"')
+        self.assertEqual(options['model_providers.dyno.requires_openai_auth'], 'false')
+        self.assertEqual(options['model_context_window'], '40960')
+        self.assertEqual(args[-2:], ['-m', 'Qwen3-8B-4bit'])
 
 
 class Launch(unittest.TestCase):

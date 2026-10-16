@@ -1,22 +1,13 @@
-"""Anthropic Messages API on top of Dyno's OpenAI endpoint, so Claude Code and Anthropic SDKs can use a local model.
+"""Anthropic Messages API on top of Dyno's chat completions, so Claude Code and Anthropic SDKs can use a local model.
 
-POST /v1/messages is translated to /v1/chat/completions on this same server, and the answer (or its stream)
-is translated back. The request then goes through everything chat completions already does: Dyno's tool-call
-parsing, the execution history the Observer reads, metrics. Standard library only.
-
-Only clients on this Mac are answered, and never from a web page (a browser sends Origin), so a site
-can't drive the local model through it.
+A Messages request becomes a chat completions request to this same server, and the answer (or its stream) is
+translated back; `apis.py` serves it. Standard library only.
 """
 from __future__ import annotations
 
-import ipaddress
 import json
-import urllib.error
-import urllib.request
 import uuid
 
-PATHS = ('/v1/messages', '/v1/messages/count_tokens')
-MAX_BODY = 32_000_000
 STOP = {'stop': 'end_turn', 'length': 'max_tokens', 'tool_calls': 'tool_use', 'function_call': 'tool_use'}
 
 
@@ -159,7 +150,7 @@ def from_openai(response, model):
 class StreamTranslator:
     """OpenAI stream chunks in, Anthropic server-sent events out."""
 
-    def __init__(self, model):
+    def __init__(self, model, hidden=()):
         self.model = model
         self.index = -1
         self.open = None          # 'thinking', 'text' or ('tool', openai index)
@@ -167,6 +158,16 @@ class StreamTranslator:
         self.stop = None
         self.tool = False
         self.usage = {'input_tokens': 0, 'output_tokens': 0}
+        self.spent = 0            # output tokens of earlier rounds
+        self.searches = 0
+        # Calls to tools Dyno runs itself (web search) are collected, not shown as the client's tool_use.
+        self.hidden = set(hidden)
+        self.new_round()
+
+    def new_round(self):
+        """Before the model continues after Dyno ran its hidden calls: collect afresh."""
+        self.spent = self.usage['output_tokens']  # usage is cumulative across rounds
+        self.text, self.calls, self.kinds, self.blank = '', {}, {}, ''
 
     @staticmethod
     def event(kind, data):
@@ -196,7 +197,7 @@ class StreamTranslator:
         out = b'' if self.started else self.start()
         usage = payload.get('usage')
         if isinstance(usage, dict):
-            self.usage = {'input_tokens': usage.get('prompt_tokens', 0), 'output_tokens': usage.get('completion_tokens', 0)}
+            self.usage = {'input_tokens': usage.get('prompt_tokens', 0), 'output_tokens': self.spent + usage.get('completion_tokens', 0)}
         for choice in payload.get('choices') or []:
             delta = choice.get('delta') or {}
             reasoning = delta.get('reasoning') or delta.get('reasoning_content')
@@ -204,11 +205,25 @@ class StreamTranslator:
                 if self.open != 'thinking': out += self._begin('thinking', {'type': 'thinking', 'thinking': '', 'signature': ''})
                 out += self._delta({'type': 'thinking_delta', 'thinking': reasoning})
             if delta.get('content'):
-                if self.open != 'text': out += self._begin('text', {'type': 'text', 'text': ''})
-                out += self._delta({'type': 'text_delta', 'text': delta['content']})
+                self.text += delta['content']
+                text = delta['content']
+                if self.open != 'text':
+                    # Blank lines before a tool call would show as an empty text block: hold them until text comes.
+                    self.blank += text
+                    text = ''
+                    if self.blank.strip():
+                        text, self.blank = self.blank.lstrip(), ''
+                        out += self._begin('text', {'type': 'text', 'text': ''})
+                if text: out += self._delta({'type': 'text_delta', 'text': text})
             for i, call in enumerate(delta.get('tool_calls') or []):
                 fn = call.get('function') or {}
                 key = ('tool', call.get('index', i))
+                if key not in self.kinds: self.kinds[key] = 'hidden' if fn.get('name') in self.hidden else 'shown'
+                if self.kinds[key] == 'hidden':
+                    found = self.calls.setdefault(key, {'id': _tool_id(call.get('id')), 'name': fn.get('name', ''), 'arguments': ''})
+                    arguments = fn.get('arguments')
+                    found['arguments'] += json.dumps(arguments) if isinstance(arguments, dict) else (arguments or '')
+                    continue
                 if self.open != key:
                     self.tool = True
                     out += self._begin(key, {'type': 'tool_use', 'id': _tool_id(call.get('id')), 'name': fn.get('name', ''), 'input': {}})
@@ -218,12 +233,51 @@ class StreamTranslator:
             if choice.get('finish_reason'): self.stop = STOP.get(choice['finish_reason'], 'end_turn')
         return out
 
+    def hidden_calls(self):
+        """Dyno's own calls this round, unless the model also called a client tool (then the client goes first)."""
+        return [] if self.tool else list(self.calls.values())
+
+    def searched(self, call, query, results, error=None):
+        """A search Dyno ran, shown as Anthropic's server tool blocks."""
+        self.searches += 1
+        out = (b'' if self.started else self.start())
+        out += self._begin(('server', self.index + 1), {'type': 'server_tool_use', 'id': call['id'], 'name': 'web_search', 'input': {}})
+        out += self._delta({'type': 'input_json_delta', 'partial_json': json.dumps({'query': query}, ensure_ascii=False)})
+        content = ({'type': 'web_search_tool_result_error', 'error_code': 'unavailable'} if error else
+                   [{'type': 'web_search_result', 'title': r['title'], 'url': r['url'], 'encrypted_content': '', 'page_age': None} for r in results])
+        out += self._begin(('result', self.index + 1), {'type': 'web_search_tool_result', 'tool_use_id': call['id'], 'content': content})
+        return out + self._close()
+
     def finish(self):
         out = (b'' if self.started else self.start()) + self._close()
-        stop = 'tool_use' if self.tool else (self.stop or 'end_turn')
+        stop = 'tool_use' if self.tool else (self.stop if self.stop not in (None, 'tool_use') else 'end_turn')
+        usage = dict(self.usage, server_tool_use={'web_search_requests': self.searches}) if self.searches else self.usage
         return out + self.event('message_delta', {'type': 'message_delta', 'delta': {'stop_reason': stop, 'stop_sequence': None},
-                                                  'usage': self.usage}) + \
+                                                  'usage': usage}) + \
             self.event('message_stop', {'type': 'message_stop'})
+
+
+def collect(raw):
+    """The message a stream of these events describes, for a client that didn't ask to stream."""
+    message, blocks = None, []
+    for frame in raw.decode().split('\n\n'):
+        if not frame.strip(): continue
+        data = json.loads(frame.split('data: ', 1)[1])
+        kind = data['type']
+        if kind == 'message_start': message = data['message']
+        elif kind == 'content_block_start': blocks.append(dict(data['content_block'], _json=''))
+        elif kind == 'content_block_delta':
+            delta, block = data['delta'], blocks[-1]
+            if delta['type'] == 'text_delta': block['text'] += delta['text']
+            elif delta['type'] == 'thinking_delta': block['thinking'] += delta['thinking']
+            elif delta['type'] == 'input_json_delta': block['_json'] += delta['partial_json']
+        elif kind == 'message_delta':
+            message.update(stop_reason=data['delta']['stop_reason'], usage=data['usage'])
+    for block in blocks:
+        raw_json = block.pop('_json')
+        if block['type'] in ('tool_use', 'server_tool_use'): block['input'] = _input(raw_json)
+    message['content'] = blocks
+    return message
 
 
 def count_tokens(body):
@@ -235,80 +289,3 @@ def count_tokens(body):
 
 def error(kind, message):
     return {'type': 'error', 'error': {'type': kind, 'message': message}}
-
-
-class AnthropicMessagesMixin:
-    """POST /v1/messages and /v1/messages/count_tokens. Use before the handler that serves /v1/chat/completions."""
-
-    def _anthropic_reply(self, payload, status=200):
-        body = json.dumps(payload, ensure_ascii=False).encode()
-        self.send_response(status)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Content-Length', str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _anthropic_local(self):
-        address = ipaddress.ip_address(self.client_address[0])
-        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped: address = address.ipv4_mapped
-        return address.is_loopback and not self.headers.get('Origin')
-
-    def _anthropic_upstream(self):
-        host, port = self.server.server_address[:2]
-        if host in ('', '0.0.0.0', '::') or not ipaddress.ip_address(host).is_loopback: host = '127.0.0.1'
-        return f"http://{'[%s]' % host if ':' in host else host}:{port}"
-
-    def _anthropic_model(self, requested):
-        """The served model when the client names one this server doesn't list (Claude Code asks for claude-*)."""
-        try:
-            with urllib.request.urlopen(self._anthropic_upstream() + '/v1/models', timeout=10) as r:
-                listed = {m.get('id') for m in json.loads(r.read()).get('data') or []}
-        except (urllib.error.URLError, OSError, ValueError):
-            listed = set()
-        return requested if requested in listed else 'default_model'
-
-    def do_POST(self):
-        path = self.path.split('?', 1)[0].rstrip('/')
-        if path not in PATHS: return super().do_POST()
-        if not self._anthropic_local():
-            return self._anthropic_reply(error('permission_error', 'The Anthropic API is available only to programs on this Mac'), 403)
-        try:
-            size = int(self.headers.get('Content-Length') or 0)
-            if not 0 < size <= MAX_BODY: raise RequestError('The request body is empty or too large')
-            body = json.loads(self.rfile.read(size))
-            if path.endswith('/count_tokens'): return self._anthropic_reply(count_tokens(body))
-            requested = str(body.get('model') or 'default_model')
-            request = to_openai(body, self._anthropic_model(requested))
-        except (RequestError, ValueError, UnicodeDecodeError) as e:
-            return self._anthropic_reply(error('invalid_request_error', str(e)), 400)
-        upstream = urllib.request.Request(self._anthropic_upstream() + '/v1/chat/completions', data=json.dumps(request).encode(),
-                                          headers={'Content-Type': 'application/json'})
-        try:
-            response = urllib.request.urlopen(upstream, timeout=3600)
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode('utf-8', 'replace')[:2000]
-            return self._anthropic_reply(error('api_error', f'The model server answered {e.code}: {detail}'), 500 if e.code >= 500 else 400)
-        except (urllib.error.URLError, OSError) as e:
-            return self._anthropic_reply(error('api_error', f'The model server could not be reached: {e}'), 502)
-        with response:
-            if not request['stream']:
-                return self._anthropic_reply(from_openai(json.loads(response.read()), requested))
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/event-stream')
-            self.send_header('Cache-Control', 'no-cache')
-            self.send_header('Connection', 'close')  # no length to frame it on a kept-alive HTTP/1.1 connection
-            self.close_connection = True
-            self.end_headers()
-            stream = StreamTranslator(requested)
-            for line in response:
-                line = line.strip()
-                if not line.startswith(b'data:'): continue
-                value = line[5:].strip()
-                if value == b'[DONE]': break
-                try: payload = json.loads(value)
-                except ValueError: continue
-                if payload.get('error'):
-                    self.wfile.write(stream.event('error', error('api_error', json.dumps(payload['error'])[:2000]))); self.wfile.flush()
-                    return
-                if (out := stream.chunk(payload)): self.wfile.write(out); self.wfile.flush()
-            self.wfile.write(stream.finish()); self.wfile.flush()

@@ -22,7 +22,8 @@ from .. import __version__
 BANNER = """\
 MLX Dyno {version}  ·  serving with live metrics
   OpenAI API   http://{host}:{port}/v1
-  Anthropic    http://{host}:{port}/v1/messages   (Claude Code: ANTHROPIC_BASE_URL=http://{host}:{port})
+  Anthropic    http://{host}:{port}/v1/messages    (Claude Code: dyno launch claude --model <name>)
+  Responses    http://{host}:{port}/v1/responses   (Codex: dyno launch codex --model <name>)
   Metrics      http://{host}:{port}/metrics   (Prometheus)
   Stats        http://{host}:{port}/stats     (JSON)
 """

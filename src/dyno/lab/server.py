@@ -197,6 +197,7 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
                 parts, q = path.removeprefix('/lab/v1/assistant/').split('/'), self._query()
                 if parts == ['conversations']: self._execution_send(self.server.assistant.list())
                 elif parts == ['web']: self._execution_send(self.server.assistant.web.status())
+                elif parts == ['web', 'providers']: self._execution_send(self.server.assistant.web.providers())
                 elif parts == ['model-context']:
                     from .assistant import model_context
                     self._execution_send(dict(model=q.get('model'), context=model_context(q.get('model'))))
@@ -354,6 +355,10 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
                 if parts == ['conversations']: self._execution_send(a.create(body), 201)
                 elif parts == ['web', 'start']: self._execution_send(a.web.start(), 202)
                 elif parts == ['web', 'stop']: self._execution_send(a.web.stop())
+                elif parts == ['web', 'providers']: self._execution_send(a.web.configure(body))
+                elif parts == ['web', 'test']:
+                    a.web.ready(wait=180)
+                    self._execution_send(a.web.search(body.get('query') or 'Apple silicon', 3))
                 elif len(parts) == 3 and parts[0] == 'conversations' and parts[2] in ('messages', 'decide', 'stop', 'rename', 'settings', 'delete', 'documents'):
                     cid, action = parts[1], parts[2]
                     result = (a.message(cid, body) if action == 'messages' else a.decide(cid, body) if action == 'decide'

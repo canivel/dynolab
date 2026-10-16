@@ -5,7 +5,8 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from dyno.anthropic import AnthropicMessagesMixin, StreamTranslator, count_tokens, from_openai, to_openai
+from dyno.apis import CodingAPIsMixin
+from dyno.anthropic import StreamTranslator, count_tokens, from_openai, to_openai
 
 TOOLS = [{'name': 'Read', 'description': 'Read a file', 'input_schema': {'type': 'object', 'properties': {'path': {'type': 'string'}}}},
          {'type': 'web_search_20250305', 'name': 'web_search'}]
@@ -101,6 +102,11 @@ class FromOpenAI(unittest.TestCase):
         self.assertEqual(ev[-2][1]['delta']['stop_reason'], 'tool_use')
         self.assertEqual(ev[-2][1]['usage'], {'input_tokens': 9, 'output_tokens': 4})
 
+    def test_blank_lines_before_a_tool_call_are_not_a_text_block(self):
+        s = StreamTranslator('m')
+        ev = events(s.chunk({'choices': [{'delta': {'content': '\n\n', 'tool_calls': [{'index': 0, 'id': 'c', 'function': {'name': 'Read', 'arguments': '{}'}}]}}]}) + s.finish())
+        self.assertEqual([d['content_block']['type'] for k, d in ev if k == 'content_block_start'], ['tool_use'])
+
     def test_count_tokens_is_an_estimate(self):
         self.assertGreater(count_tokens({'messages': [{'role': 'user', 'content': 'x' * 400}]})['input_tokens'], 90)
 
@@ -130,7 +136,7 @@ class FakeChat(BaseHTTPRequestHandler):
             self.send_response(200); self.send_header('Content-Length', str(len(body))); self.end_headers(); self.wfile.write(body)
 
 
-class Handler(AnthropicMessagesMixin, FakeChat):
+class Handler(CodingAPIsMixin, FakeChat):
     pass
 
 

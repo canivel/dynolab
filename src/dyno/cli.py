@@ -29,7 +29,7 @@ commands:
   route    one endpoint in front of every running model, choosing between them
   run      one prompt, one answer, with the numbers
   models   downloaded models, and which ones are being served
-  launch   run Claude Code on a local model
+  launch   run Claude Code or Codex on a local model
   ps       model servers that are running
   stop     stop a model server
   pull     download a model from the Hugging Face hub
@@ -47,6 +47,7 @@ examples:
   dyno run "explain B-trees"
   dyno models
   dyno launch claude --model qwen3-8b
+  dyno launch codex --model qwen3-8b
   dyno route --list
   dyno bench --model A --model B --csv results.csv
   dyno inspect "The capital of France is" --port 8971 --port 8972

@@ -15,7 +15,8 @@ from .server import serve
 BANNER = """\
 MLX Dyno router  ·  one endpoint, every local model
   OpenAI API   http://{host}:{port}/v1
-  Anthropic    http://{host}:{port}/v1/messages   (Claude Code: ANTHROPIC_BASE_URL=http://{host}:{port})
+  Anthropic    http://{host}:{port}/v1/messages    (Claude Code: dyno launch claude --model <name>)
+  Responses    http://{host}:{port}/v1/responses   (Codex: dyno launch codex --model <name>)
   Decisions    http://{host}:{port}/routes
   Backends     http://{host}:{port}/backends
   Metrics      http://{host}:{port}/metrics
