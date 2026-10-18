@@ -53,6 +53,8 @@ def run(config, folder):
     selected = config.get('layers', [0])
     limit = config.get('max_input_tokens', 256)
     captured, active, collecting = {}, {}, [True]
+    hook = config.get('hook', 'block_output')
+    hook_info = dict(hook=hook)
     if config.get('backend') == 'pool':
         from .pool_model import PoolModel
         model = PoolModel(config, captured, active, collecting)
@@ -64,11 +66,9 @@ def run(config, folder):
         model, tokenizer, model_config = load(config['model'], tokenizer_config={'trust_remote_code': False}, return_config=True, revision=config.get('revision'))
         model_path = Path(getattr(tokenizer, 'name_or_path', config['model']))
         manifest = [dict(name=p.name, bytes=p.stat().st_size, modified_ns=p.stat().st_mtime_ns) for p in sorted(model_path.glob('*.safetensors'))] if model_path.is_dir() else []
-        layers = model.layers
-        if any(i >= len(layers) for i in selected):
-            raise ValueError(f'Model has {len(layers)} layers; requested {selected}')
-        for index in selected:
-            layers[index] = tap_layer(layers[index], index, captured, active, collecting)
+        from .neurons import hooks
+        hook_info = hooks.install(model, selected, hook, captured, active, collecting, model_config)
+        hook_info['reconstruction_error'] = hooks.check(model, tokenizer, selected, hook)
 
     def encode(text):
         if not isinstance(text, str) or not text.strip():
@@ -132,7 +132,7 @@ def run(config, folder):
                 # A raw logit lens is available only with the matching final norm/head.
                 language_model = getattr(model, 'language_model', model)
                 core = getattr(language_model, 'model', None)
-                if core is not None and hasattr(core, 'norm'):
+                if hook == 'block_output' and core is not None and hasattr(core, 'norm'):
                     normalized = core.norm(states)
                     if hasattr(language_model, 'lm_head'):
                         lens = language_model.lm_head(normalized)
@@ -146,7 +146,8 @@ def run(config, folder):
             mx.savez(str(folder / 'activations.npz'), **{f'layer_{i}': h for i, h in baseline_captures.items()})
             result = dict(tokens=[tokenizer.decode([i]) for i in ids], token_ids=ids,
                           layers=maps, next_tokens=top(baseline[0, -1]),
-                          note='Raw block-output logit lens; an intermediate readout is not a causal explanation.')
+                          note='Raw block-output logit lens; an intermediate readout is not a causal explanation.' if hook == 'block_output'
+                               else f'Norms of the {hook} activations. No logit lens: it applies to block outputs only.')
             if response_boundary is not None:
                 from .response_capture import summarize_response
                 summaries = {}
@@ -253,7 +254,7 @@ def run(config, folder):
         from .compatibility import fingerprint
         model_fingerprint=fingerprint(model_path,model_config,len(artifact['weight']),config.get('backend','mlx'),layer=report['layer'])
         contract=dict(fingerprint=model_fingerprint,model=config['model'],requested_revision=config.get('revision'),model_config=model_config,
-            hook='block output',pooling='last input token',layer=report['layer'],dimension=len(artifact['weight']),normalization='training-only mean and standard deviation, floor 0.01',
+            hook=hook.replace('_',' '),pooling='last input token',layer=report['layer'],dimension=len(artifact['weight']),normalization='training-only mean and standard deviation, floor 0.01',
             artifact_sha256=hashlib.sha256((folder/name).read_bytes()).hexdigest(),dataset_sha256=report['dataset']['sha256'])
         (folder/'probe-contract.json').write_text(json.dumps(contract,indent=2))
         result=dict(reports=[report],validated_probe=True,compatibility=contract,pooling='last input token',note=report['note'])
@@ -350,7 +351,7 @@ def run(config, folder):
                                     features=[dict(feature=int(i), mean=float(f[:,i].mean()), examples=[dict(text=test_examples[j]['text'], activation=float(f[j,i])) for j in np.argsort(f[:,i])[-3:][::-1]]) for i in ranked]))
         result=dict(reports=reports, pooling='last input token', note=('Logistic probe; held-out labels never used for fitting. A score is not evidence of causal use.' if operation=='probe' else 'Small ReLU/L1 or TopK autoencoder experiment on last-token activations. Features have no verified semantic labels; this is not a pretrained Gemma Scope SAE.'))
     provenance=dict(model=config['model'], model_type=getattr(model,'model_type','unknown'), layers=selected,
-                    hook='block output', seed=seed, input_mode='raw text (no implicit chat template)', requested_revision=config.get('revision'),
+                    hook=hook.replace('_', ' '), hook_details=hook_info, seed=seed, input_mode='raw text (no implicit chat template)', requested_revision=config.get('revision'),
                     resolved_model_path=str(model_path), model_config=model_config, weight_file_manifest=manifest,
                     mlx_version=importlib.metadata.version('mlx'), mlx_lm_version=importlib.metadata.version('mlx-lm'),
                     config_sha256=hashlib.sha256(json.dumps(config,sort_keys=True).encode()).hexdigest(),
