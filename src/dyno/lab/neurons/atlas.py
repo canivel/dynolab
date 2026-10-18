@@ -103,6 +103,8 @@ def unit_page(s, unit, label, manifest, decode, per_decile):
         stratified = [dict(decile=d, range=[d / DECILES, (d + 1) / DECILES], examples=sorted(v, key=lambda e: -abs(e['value']))[:per_decile])
                       for d, v in sorted(by_decile.items(), reverse=True)]
         heldout_top = sorted(examples(f'heldout_top_{pole}'), key=lambda e: -abs(e['value']))
+        if maximum <= 1e-9:  # a pole that never fires (an SAE feature's negative side) has no examples
+            top, stratified, heldout_top = [], [], []
         page['poles'][pole] = dict(info, top=top, stratified=stratified, heldout_top=heldout_top)
     maxima = s['maximum'][unit]
     page['random'] = examples_random = []
