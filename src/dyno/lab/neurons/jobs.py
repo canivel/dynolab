@@ -34,7 +34,7 @@ def loader(config):
     def load_model(hook, layers):
         from mlx_lm import load
         from . import hooks
-        model, tokenizer, model_config = load(config['model'], tokenizer_config={'trust_remote_code': False}, return_config=True,
+        model, tokenizer, model_config = load(getattr(load_model, 'config_model', None) or config['model'], tokenizer_config={'trust_remote_code': False}, return_config=True,
                                               revision=config.get('revision'))
         captured, active, collecting = {}, {}, [True]
         if layers == 'all': layers = list(range(len(hooks.layers_of(model)[0])))
@@ -47,9 +47,10 @@ def loader(config):
     return load_model
 
 
-def provenance(config, model_config=None, started=None):
-    model_path = Path(config['model']).expanduser()
-    out = dict(model=config['model'], requested_revision=config.get('revision'), seed=config.get('seed', 0),
+def provenance(config, model_config=None, started=None, model=None):
+    model = model or config.get('model') or ''
+    model_path = Path(model).expanduser()
+    out = dict(model=model, requested_revision=config.get('revision'), seed=config.get('seed', 0),
                config_sha256=hashlib.sha256(json.dumps({k: v for k, v in config.items() if k != 'lab_root'}, sort_keys=True).encode()).hexdigest(),
                mlx_version=_version('mlx'), mlx_lm_version=_version('mlx-lm'), seconds=time.time() - started if started else None)
     if model_config: out['model_config'] = {k: v for k, v in model_config.items() if isinstance(v, (int, float, str, bool))}
@@ -87,12 +88,12 @@ def run(config, folder):
         result = units.run(config, folder, load_model, progress)
     elif operation == 'autointerp':
         from . import autointerp
-        result = autointerp.run(config, folder, progress)
+        result = autointerp.run(config, folder, progress, load_model)
     else:
         raise ValueError(f'Unknown operation {operation}')
     state = getattr(load_model, 'state', {})
-    result['provenance'] = dict(provenance(config, state.get('model_config'), started), **({'hook': result.get('hook')} if result.get('hook') else {}))
-    result['artifacts'] = sorted(p.name for p in folder.iterdir() if p.is_file() and p.suffix in ('.npz', '.npy', '.safetensors', '.json')
+    result['provenance'] = dict(provenance(config, state.get('model_config'), started, getattr(load_model, 'config_model', None)), **({'hook': result.get('hook')} if result.get('hook') else {}))
+    result['artifacts'] = sorted(p.name for p in folder.iterdir() if p.is_file() and p.suffix in ('.npz', '.npy', '.safetensors', '.json', '.jsonl')
                                  and p.name not in ('job.json', 'result.json', 'progress.json'))
     progress('Done', 1.0)
     (folder / 'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2))

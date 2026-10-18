@@ -46,10 +46,13 @@ FUZZ_SYSTEM = (
 
 def validate(config):
     c = dict(poles='both', examples=20, stratified=True, window=32, detection=10, fuzzing=10, shuffled=True, threshold=0.75,
-             units={'neuron': 100, 'random': 20}, concurrency=2, max_tokens=60)
+             units={'neuron': 100, 'random': 20}, concurrency=2, max_tokens=60, explainer_mode='one_shot', agent_steps=16, agent_queries=8)
     c.update({k: v for k, v in config.items() if v is not None})
     if not c.get('atlas'): raise ValueError('atlas: the id of a finished atlas job')
     if c['poles'] not in ('both', 'positive'): raise ValueError('poles: both or positive')
+    if c['explainer_mode'] not in ('one_shot', 'agent'): raise ValueError('explainer_mode: one_shot or agent')
+    for key, high in (('agent_steps', 40), ('agent_queries', 30)):
+        if type(c[key]) is not int or not 1 <= c[key] <= high: raise ValueError(f'{key} must be between 1 and {high}')
     for key in ('explainer', 'scorer'):
         m = c.get(key)
         if not isinstance(m, dict) or type(m.get('port')) is not int or not 1024 <= m['port'] <= 65535 or not isinstance(m.get('model', ''), str):
@@ -83,6 +86,18 @@ def clean_label(reply):
     line = re.sub(r'\[\[(.*?)(\|\d+)?\]\]', r'\1', line)
     line = re.sub(r'^(label|description)\s*:\s*', '', line, flags=re.I).strip().strip('"\'').strip()
     return line[:300]
+
+
+def chat_tools(model, messages, tools):
+    """One turn with tools; returns the assistant message (content, tool_calls)."""
+    payload = dict(model=model['model'], temperature=0, max_tokens=1200, stream=False, chat_template_kwargs={'enable_thinking': False},
+                   messages=messages, **({'tools': tools} if tools else {}))
+    request = urllib.request.Request(f"http://127.0.0.1:{model['port']}/v1/chat/completions", data=json.dumps(payload).encode(),
+                                     headers={'Content-Type': 'application/json'})
+    with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=900) as response:
+        message = json.loads(response.read())['choices'][0]['message']
+    if message.get('content'): message['content'] = re.sub(r'<think>.*?</think>', '', message['content'], flags=re.S).strip()
+    return message
 
 
 def numbers(text, count):
@@ -199,7 +214,7 @@ def paired(a_rows, b_rows, threshold):
                 other_pass_rate=float(np.mean([b[k] >= threshold for k in shared])), p_value=p)
 
 
-def run(config, folder, progress):
+def run(config, folder, progress, load_model=None):
     import numpy as np
     from .atlas import read_page
     c = validate(config)
@@ -217,6 +232,16 @@ def run(config, folder, progress):
     poles = ('positive', 'negative') if c['poles'] == 'both' else ('positive',)
     jobs = [(u, pole) for u in units for pole in poles]
     rows, lock, done = [], threading.Lock(), [0]
+    probe, transcripts = None, []
+    if c['explainer_mode'] == 'agent':
+        from .interpreter import Probe, investigate, leaked
+        capture_folder = root / meta['capture']
+        capture_config = dict(json.loads((capture_folder / 'job.json').read_text())['config'], lab_root=str(root))
+        if load_model is None: raise ValueError('The agent explainer needs the subject model')
+        load_model.config_model = capture_config['model']
+        probe = Probe(load_model, capture_folder, capture_config,
+                      json.loads((capture_folder / 'capture-manifest.json').read_text()), layer)
+        c['concurrency'] = 1  # one model in this process
 
     def work(item):
         unit, pole = item
@@ -227,8 +252,17 @@ def run(config, folder, progress):
             row['skipped'] = 'This pole never fires'
         else:
             try:
-                reply = chat(c['explainer'], EXPLAIN_SYSTEM, explain_prompt(text, pole, page, c), c['max_tokens'])
-                row['label'] = clean_label(reply)
+                if probe is not None:
+                    label, transcript = investigate(c, page, pole, probe, text, chat_tools, c['agent_steps'], c['agent_queries'])
+                    row['label'] = clean_label(label)
+                    if not row['label']: raise ValueError('The agent did not submit a label')
+                    row['agent'] = dict(steps=sum(1 for t in transcript if 'tool_calls' in t),
+                                        measurements=sum(1 for t in transcript if t.get('tool') == 'activation'),
+                                        heldout_leak=leaked(transcript, page, text, pole, c['window']))
+                    transcripts.append(dict(unit=unit, pole=pole, label=row['label'], transcript=transcript))
+                else:
+                    reply = chat(c['explainer'], EXPLAIN_SYSTEM, explain_prompt(text, pole, page, c), c['max_tokens'])
+                    row['label'] = clean_label(reply)
                 row['detection'] = score_pole(c, page, pole, row['label'], text, local, 'detection')
                 if c['fuzzing']: row['fuzzing'] = score_pole(c, page, pole, row['label'], text, local, 'fuzzing')
             except Exception as error:  # noqa: BLE001 - one failed call shouldn't end the run
@@ -263,7 +297,7 @@ def run(config, folder, progress):
         group = [r for r in rows if r['kind'] == kind]
         by_kind[kind] = dict(detection=summary(group), fuzzing=summary(group, 'fuzzing'), shuffled_labels=summary(group, 'shuffled_detection'),
                              by_pole={pole: summary([r for r in group if r['pole'] == pole]) for pole in poles})
-    result = dict(autointerp=dict(atlas=c['atlas'], layer=layer, condition=c.get('condition'), settings={k: c[k] for k in ('poles', 'examples', 'stratified', 'window', 'detection', 'fuzzing', 'threshold')},
+    result = dict(autointerp=dict(atlas=c['atlas'], layer=layer, condition=c.get('condition'), settings={k: c[k] for k in ('poles', 'examples', 'stratified', 'window', 'detection', 'fuzzing', 'threshold', 'explainer_mode')},
                                   explainer=c['explainer'], scorer=c['scorer'], summary=by_kind, poles=len(rows),
                                   errors=sum(1 for r in rows if r.get('error')), seconds=time.time() - started,
                                   templates=dict(version=TEMPLATE_VERSION, explain=EXPLAIN_SYSTEM, detect=DETECT_SYSTEM, fuzz=FUZZ_SYSTEM)),
@@ -282,5 +316,12 @@ def run(config, folder, progress):
         other = json.loads((root / c['compare_to'] / 'autointerp.json').read_text())
         result['autointerp']['paired_with'] = dict(job=c['compare_to'], neuron=paired([r for r in rows if r['kind'] == 'neuron'],
                                                                                       [r for r in other['rows'] if r['kind'] == 'neuron'], c['threshold']))
+    if transcripts:
+        with (Path(folder) / 'agent-transcripts.jsonl').open('w') as out:
+            for t in transcripts: out.write(json.dumps(t, ensure_ascii=False) + '\n')
+        agent_rows = [r for r in rows if r.get('agent')]
+        result['autointerp']['agent'] = dict(investigations=len(agent_rows), heldout_leaks=sum(r['agent']['heldout_leak'] for r in agent_rows),
+                                             mean_measurements=float(np.mean([r['agent']['measurements'] for r in agent_rows])) if agent_rows else None,
+                                             settings=dict(steps=c['agent_steps'], measurements=c['agent_queries']))
     (Path(folder) / 'autointerp.json').write_text(json.dumps(dict(rows=rows, settings=result['autointerp']['settings']), ensure_ascii=False))
     return result
