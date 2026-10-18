@@ -343,6 +343,10 @@ For an upgrade, download the new DMG, replace the application in Applications an
 
 Version 0.2.2 adds **Causal patching**, a **TopK** SAE option and **Research artifacts** for attention, feature examples and attribution graphs. See the [tool evaluation and usage guide](https://github.com/canivel/dynolab/blob/main/docs/research-tools.md) for supported formats, limits, examples and the research roadmap.
 
+### Neurons
+
+The **Neurons** screen in **Lab** has a form for each neuron operation: capture a corpus at a layer, build an atlas, train an SAE, ablate by activation strength, attribute, ablate or steer units, and run auto-interp with two of your running models. A neuron browser shows each unit's two poles side by side: its maximum, how often it fires, and its strongest, sampled and held-out examples with the firing tokens marked. Result views show the auto-interp pass rates next to random directions and shuffled labels, the SAE's alignment with the neurons, and each ablation next to its random controls. Jobs run one at a time, can take hours, and show their progress while they run. The [Neurons tutorial](neurons.md) explains each step and what its numbers mean.
+
 ### Following downloads
 
 Discover shows a Downloads panel above both Search Hub and Downloaded. Transfers remain visible when you change the model format or search query. Each entry shows status, a progress bar, and downloaded/total bytes. Active app-managed transfers offer Pause, Continue and Cancel; completed entries can be dismissed. Cancel stops the transfer but keeps partial files so downloading the same model again can resume.

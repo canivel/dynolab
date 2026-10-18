@@ -43,7 +43,7 @@ def bin_of(values, xp):
 def defaults(config):
     c = dict(hook='mlp_hidden', context=1024, tokens=2_000_000, heldout_fraction=0.2, top_k=40, heldout_top_k=20,
              bucket_samples=6, random_samples=40, heldout_random=40, window_before=32, window_after=8,
-             batch_tokens=16384, store='reservoir', disk_budget_gb=20.0, units={'neurons': 'all'})
+             batch_tokens=16384, store='reservoir', disk_budget_gb=20.0, units={'neurons': 'all'}, checkpoint_seconds=120)
     c.update({k: v for k, v in config.items() if v is not None})
     return c
 
@@ -59,6 +59,7 @@ def validate(config):
         if type(c[key]) is not int or not low <= c[key] <= high: raise ValueError(f'{key} must be an integer between {low} and {high}')
     if type(c['heldout_fraction']) not in (int, float) or not 0 <= c['heldout_fraction'] < 1: raise ValueError('heldout_fraction must be in [0, 1)')
     if c['store'] not in ('reservoir', 'raw', 'both'): raise ValueError('store must be reservoir, raw or both')
+    if type(c['checkpoint_seconds']) not in (int, float) or not 0 <= c['checkpoint_seconds'] <= 86400: raise ValueError('checkpoint_seconds: 0–86400')
     if type(c['disk_budget_gb']) not in (int, float) or not 0.01 <= c['disk_budget_gb'] <= 4000: raise ValueError('disk_budget_gb out of range')
     units = c['units']
     if not isinstance(units, dict): raise ValueError('units: {"neurons": "all" | count | [indices], "random_directions": count, "sae": job id}')
@@ -359,7 +360,7 @@ def run(config, folder, load_model, progress):
         done_tokens += int(valid.sum())
         elapsed = time.time() - started
         progress(f'{done_tokens:,} of {c["tokens"]:,} tokens', min(1.0, done_tokens / c['tokens']))
-        if time.time() - last_save > 120:
+        if time.time() - last_save >= c['checkpoint_seconds']:
             checkpoint(); last_save = time.time()
         if stopped: break
     checkpoint()

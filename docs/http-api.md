@@ -97,10 +97,11 @@ All paths below use `http://127.0.0.1:8980` unless you configured a different La
 | GET | `/lab/v1/openapi.json` | 200 | Research OpenAPI document |
 | POST | `/lab/v1/jobs` | 202 | Submitted job metadata |
 | GET | `/lab/v1/jobs` | 200 | `{ "jobs": [...] }`, newest 100 summaries |
-| GET | `/lab/v1/jobs/{id}` | 200 | Full job with configuration and result/error |
+| GET | `/lab/v1/jobs/{id}` | 200 | Full job with configuration and result/error; `progress` while a neuron job runs |
 | POST | `/lab/v1/jobs/{id}/cancel` | 200 | Job metadata; send JSON `{}` |
 | DELETE | `/lab/v1/jobs/{id}` | 200 | `{ "deleted": true }`; terminal jobs only |
 | GET | `/lab/v1/jobs/{id}/artifacts/{name}` | 200 | Binary file listed by the job |
+| GET | `/lab/v1/jobs/{id}/atlas/{layer}/{page}` | 200 | An atlas job's `index`, `vocab` or one unit's page (gzip-encoded). See [Neurons](#neurons) |
 
 Jobs progress from `queued` to `running` to `completed`, `failed` or `cancelled`. If a service restarts with an unfinished job on disk, that job is marked `interrupted`. Saved jobs persist under `~/.mlx-dyno/lab/<id>`. Native token-analysis history and direct resident captures are separate and do not appear here.
 
@@ -193,10 +194,11 @@ Common fields for `POST /lab/v1/jobs`:
 
 | Field | Default / allowed values | Meaning |
 |---|---|---|
-| `operation` | Required: `inspect`, `compare`, `probe`, `sae` | Experiment type |
+| `operation` | Required: `inspect`, `compare`, `probe`, `sae`, `patch_sweep`; the neuron operations are in [Neurons](#neurons) | Experiment type |
 | `model` | Required nonempty string | Hugging Face ID or local model directory |
 | `revision` | Optional revision string | Pin a model revision |
-| `layers` | `[0]`; 1–8 indices, each 0–255 | Zero-indexed block outputs; indices must exist in the model |
+| `layers` | `[0]`; 1–8 indices, each 0–255 | Zero-indexed layers; indices must exist in the model |
+| `hook` | `block_output` (default), `mlp_hidden`, `mlp_gate_pre`, `mlp_up`, `mlp_output`, `attn_output` | Where in each layer to read and intervene. MLP hooks need a gated MLP; the logit lens is for `block_output` only; pool experiments read block outputs only |
 | `prompt` | Required in practice for inspect/compare | Raw text, without chat template |
 | `response` | Optional, inspect only; development checkout | Teacher-forced replay of prompt plus response. Combined text must fit `max_input_tokens`; ambiguous token boundaries fail. Adds `response_capture` metadata and `response-representations.npz` with `layer_N_prompt_last`, `layer_N_prompt_mean`, `layer_N_response_mean`. Not a live generation trace. |
 | `max_input_tokens` | 256; range 1–1024 | Input token limit |
@@ -204,7 +206,7 @@ Common fields for `POST /lab/v1/jobs`:
 | `seed` | 0; range 0–2147483647 | Experiment seed |
 | `examples` | At most 512 entries | Explicit training/test dataset for probe or SAE |
 
-The request body is limited to 500,000 bytes. Workers have a 30-minute deadline. Compatibility requires supported MLX block layouts; downloading an MLX model does not guarantee that every research operation supports it.
+The request body is limited to 500,000 bytes. Workers have a 30-minute deadline; neuron jobs have longer ones (below). Compatibility requires supported MLX block layouts; downloading an MLX model does not guarantee that every research operation supports it.
 
 ### Interventions (`compare`)
 
@@ -245,6 +247,44 @@ Features are final-token block activations, standardized using training statisti
 Examples need `text` and explicit `split`; labels are not required. Supply training and held-out examples. `features` defaults to 64 (range 8–512); `steps` defaults to 100 (range 1–500). It trains a small ReLU encoder/linear decoder with L1 regularization on final-token activations.
 
 Results include reports with held-out reconstruction MSE, active/dead feature statistics, training losses and top activating examples. Artifacts include weights and normalization. Feature indices are not validated concepts. Importing pretrained SAEs and steering with their decoder features are not implemented.
+
+## Neurons
+
+Six more operations for `POST /lab/v1/jobs` work at the level of single units. The [Neurons tutorial](neurons.md) runs them in order; the OpenAPI document lists every field with its default and range.
+
+| `operation` | Does | Key fields (defaults) | Time limit |
+|---|---|---|---|
+| `capture` | Runs a corpus through the model; keeps per unit and per pole the strongest examples, samples, rates and held-out examples | `model`, `layers` (1–8), `corpus`, `hook` (`mlp_hidden`), `tokens` (2,000,000), `units` (`{"neurons": "all", "random_directions": 0, "sae": <job>}`), `store` (`reservoir`, `raw`, `both`), `resume_from` | 48 h |
+| `atlas` | One page per unit from a finished capture | `model` (the capture's), `capture` | 4 h |
+| `sae_train` | Trains an SAE on streamed activations; held-out evaluation; neuron alignment at `mlp_hidden` | `model`, `layers` (one), `corpus`, `architecture` (`topk`, `batchtopk`, `relu`), `expansion` (4), `k` (32), `tokens` (20,000,000), `seeds` (`[0]`) | 48 h |
+| `ablate` | Zeroes activations by strength; effects on held-out text with bootstrap intervals | `model`, `corpus`, `layers` (`"all"`), `conditions` (weak-75 and strong-7, each with mass- and count-matched random controls) | 12 h |
+| `units` | `mode`: `attribute`, `ablate_set` or `steer` | `prompt` or `prompts`; `target_token` (attribute, ablate_set); `units` as `[[layer, unit]]` and `control_seeds` (10) for ablate_set; `unit`, `strengths`, `atlas` for steer | 4 h |
+| `autointerp` | Labels each pole with an explainer model; scores labels on held-out text with a scorer model | `atlas`, `explainer` and `scorer` (`{"port", "model"}`), `units` (`{"neuron": 100, "random": 20}`), `poles` (`both`), `stratified` (true), `condition`, `compare_to` | 48 h |
+
+`corpus` is a preset (`web-mix`, `fineweb-edu`) or a list of sources, each `{"files": [paths]}` or `{"hf": "<dataset>", "config", "split", "text_field", "share"}`. Documents are split into training and held-out (`heldout_fraction`, 0.2) before anything is computed. `autointerp` has no `model`: it reads the atlas and calls the two model servers.
+
+While a neuron job runs, `GET /lab/v1/jobs/{id}` includes `progress`: `{"message", "fraction", "eta_seconds", "updated"}`. The estimate is the time so far scaled by the fraction left.
+
+```bash
+curl -s "http://127.0.0.1:8980/lab/v1/jobs/$ATLAS_ID/atlas/14/index"           # one summary per unit
+curl -s "http://127.0.0.1:8980/lab/v1/jobs/$ATLAS_ID/atlas/14/vocab"           # token id -> text
+curl -s --compressed "http://127.0.0.1:8980/lab/v1/jobs/$ATLAS_ID/atlas/14/0"  # unit 0's page
+```
+
+A unit page is stored and sent gzip-compressed, with `Content-Encoding: gzip`. It has per pole (`positive`, `negative`, never merged) the maximum, how often it reaches 10%, 25% and 50% of it per 100 tokens, a histogram, `top`, `stratified` and `heldout_top` examples, and `random` samples. An example has token `ids`, the unit's `activations` on each, and `center`, the index of the measured token. A missing layer or unit returns 404.
+
+Results that don't fit in `result` are artifacts: `autointerp.json` (every scored pole), `sae-alignment.json`, `sae.json` and `sae-seed{n}.safetensors`, `capture-manifest.json`, `agent-transcripts.jsonl` (with `explainer_mode: "agent"`).
+
+### Recipes
+
+A recipe chains Lab jobs and ends with one report. `GET /lab/v1/recipes` lists the built-in recipes (`already-clean-fast`, `already-clean-full`) and past runs; `POST /lab/v1/recipes` starts one; `GET /lab/v1/recipes/{id}` reads it (its steps with their job ids and, when it finishes, the report); `POST /lab/v1/recipes/{id}/cancel` stops it. One recipe runs at a time.
+
+```bash
+curl -s -X POST http://127.0.0.1:8980/lab/v1/recipes -H 'Content-Type: application/json' \
+  -d '{"recipe": "already-clean-fast", "model": "Qwen/Qwen3-0.6B", "explainer": {"port": 8083}, "scorer": {"port": 8084}}'
+```
+
+A custom recipe is `{"custom": {"title", "steps": [{"name", "config"}]}}`; a step's config may use `"${step name}"` for an earlier step's job id. See [Recipe](neurons.md#recipe).
 
 ## Resident activation endpoints
 

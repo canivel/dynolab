@@ -3,7 +3,7 @@ import argparse
 import json
 from typing import Literal
 from urllib.parse import quote
-from .sdk import Lab, ServingModel
+from .sdk import DynoError, Lab, ServingModel
 
 
 def create_server(port=8980):
@@ -12,7 +12,7 @@ def create_server(port=8980):
 
     lab = Lab(f'http://127.0.0.1:{port}')
     server = FastMCP('Dyno Research Lab', instructions=(
-        'Inspect local research jobs and submit isolated MLX experiments, and run and read agent sandbox tests. Start Dyno Lab first. '
+        'Inspect local research jobs and submit isolated MLX experiments (including neuron-level capture, atlas, SAEs, ablations and auto-interp), and run and read agent sandbox tests. Start Dyno Lab first. '
         'Experiments load another model copy and share GPU/memory with serving. '
         'The native UI resource gate does not apply to this bridge. Check resources and '
         'obtain the user\'s intent before submitting. Results are measurements, not safety certifications.'))
@@ -186,8 +186,10 @@ def create_server(port=8980):
         model is a downloaded MLX directory or HF ID (may download weights).
         settings contains layers and operation-specific fields: prompt for inspect;
         prompt/intervention/strengths for compare; examples with text/split/label
-        for probes; examples with text/split and features/steps for SAE.
+        for probes; examples with text/split and features/steps for SAE. Optional
+        hook: block_output (default), mlp_hidden, mlp_gate_pre, mlp_up, mlp_output, attn_output.
         This consumes memory/GPU and can slow serving. No server is stopped.
+        Neuron-level jobs use check_neuron_job and start_neuron_job.
         """
         if 'model' in settings or 'operation' in settings:
             raise ValueError('Pass model and operation as top-level arguments, not inside settings')
@@ -204,6 +206,94 @@ def create_server(port=8980):
         job = lab.job(job_id)
         names = job.get('result', {}).get('artifacts', [])
         return {'artifacts': [dict(name=name, url=f'{lab.base_url}/lab/v1/jobs/{quote(job_id, safe="")}/artifacts/{quote(name, safe="")}') for name in names]}
+
+    # --- Neurons: capture, atlas, SAEs, ablations, attribution, steering, auto-interp -----------
+    def neuron_body(operation, model, settings):
+        settings = dict(settings or {})
+        if 'model' in settings or 'operation' in settings:
+            raise ValueError('Pass model and operation as top-level arguments, not inside settings')
+        body = dict(settings, operation=operation)
+        if operation in ('capture', 'sae_train', 'ablate'): body.setdefault('corpus', 'web-mix')
+        if operation == 'atlas' and not model and isinstance(settings.get('capture'), str):
+            model = lab.job(settings['capture']).get('model', '')
+        if operation != 'autointerp': body['model'] = model
+        return body
+
+    @server.tool(annotations=read)
+    def check_neuron_job(operation: Literal['capture', 'atlas', 'sae_train', 'ablate', 'units', 'autointerp'], model: str = '',
+                         settings: dict | None = None) -> dict:
+        """Check a neuron job without running it: errors, or the settings with every default filled in and the
+        hours the Lab allows it. Nothing runs and nothing loads. Show this to the user before start_neuron_job.
+
+        capture: layers (1-8), corpus ("web-mix" when left out, "fineweb-edu" or [{files} | {hf, config, split, text_field, share}]),
+          hook (mlp_hidden), tokens (2,000,000), units ({"neurons": "all", "random_directions": 20}).
+        atlas: capture (job id); model defaults to the capture's.
+        sae_train: layers [n], corpus, architecture (topk | batchtopk | relu), expansion, k, tokens, seeds.
+        ablate: corpus, layers ("all"), conditions (default weak-75 and strong-7 with mass- and count-matched controls).
+        units: mode attribute (prompt, target_token), ablate_set (prompt, target_token, units [[layer, unit]]),
+          or steer (prompt, unit [layer, unit], strengths, atlas for the unit's maximum).
+        autointerp: atlas (job id), explainer {"port"}, scorer {"port"} (two different local models), units
+          ({"neuron": 100, "random": 20}), compare_to (another autointerp job id), condition (a name for this run).
+        """
+        from .lab.server import validate
+        from .lab.neurons import ablation, autointerp, capture, sae, units
+        from .lab.neurons.jobs import LIMITS
+        try:
+            body = validate(neuron_body(operation, model, settings))
+            filled = dict(capture=capture.defaults, sae_train=sae.defaults, ablate=ablation.validate, units=units.validate,
+                          autointerp=autointerp.validate).get(operation, dict)(body)
+        except (ValueError, DynoError) as error:
+            return dict(ok=False, error=str(error))
+        return dict(ok=True, operation=operation, settings=json.loads(json.dumps(filled)), limit_hours=LIMITS[operation])
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True))
+    def start_neuron_job(operation: Literal['capture', 'atlas', 'sae_train', 'ablate', 'units', 'autointerp'], model: str = '',
+                         settings: dict | None = None) -> dict:
+        """Start a neuron job (settings as in check_neuron_job). Returns a job ID at once; lab_job shows progress.
+
+        A capture, SAE or ablation loads another model copy and can run for hours; it may download weights and
+        Hugging Face text. Auto-interp sends many requests to the two local model servers. Only one Lab job runs
+        at a time. Get the user's explicit go-ahead first: say what will run and roughly how long.
+        """
+        return lab._request('/jobs', neuron_body(operation, model, settings))
+
+    @server.tool(annotations=read)
+    def neuron_atlas_index(job_id: str, layer: int, kind: Literal['', 'neuron', 'random', 'sae'] = '',
+                           sort: Literal['unit', 'positive', 'negative'] = 'unit', offset: int = 0, limit: int = 50) -> dict:
+        """Units of an atlas layer: kind, index, and per pole its maximum, how often it reaches 10/25/50% of it per
+        100 tokens, and preview tokens. sort=positive or negative orders by that pole's maximum, largest first."""
+        index = lab.atlas_index(job_id, layer)
+        rows = [u for u in index.get('units', []) if not kind or u.get('kind') == kind]
+        if sort != 'unit': rows.sort(key=lambda u: -(u.get(sort) or {}).get('maximum', 0))
+        limit = max(1, min(int(limit), 500))
+        return dict(layer=index.get('layer'), hook=index.get('hook'), tokens=index.get('tokens'), total=len(rows),
+                    offset=offset, units=rows[offset:offset + limit])
+
+    @server.tool(annotations=read)
+    def neuron_atlas_unit(job_id: str, layer: int, unit: int, examples: int = 8) -> dict:
+        """One unit's atlas page as text: per pole its maximum, rates, strongest examples, held-out examples and
+        samples by decile of its maximum, plus random text. Each example: value, fraction of the pole's maximum,
+        the token where it was measured and its context. The poles are separate; read both."""
+        page = lab.atlas_unit(job_id, layer, unit, text=True)
+        n = max(1, min(int(examples), 40))
+        brief = lambda e: dict(value=e.get('value'), fraction=e.get('fraction'), token=e.get('token'), text=e.get('text'))
+        poles = {name: dict(maximum=p.get('maximum'), per_100_tokens=p.get('per_100_tokens'),
+                            top=[brief(e) for e in p.get('top', [])[:n]], heldout_top=[brief(e) for e in p.get('heldout_top', [])[:n]],
+                            stratified=[dict(range=d.get('range'), examples=[brief(e) for e in d.get('examples', [])[:2]]) for d in p.get('stratified', [])])
+                 for name, p in page.get('poles', {}).items()}
+        return dict(unit=page.get('unit'), kind=page.get('kind'), index=page.get('index'), mean=page.get('mean'), std=page.get('std'),
+                    poles=poles, random=[brief(e) for e in page.get('random', [])[:n]])
+
+    @server.tool(annotations=read)
+    def autointerp_results(job_id: str, kind: Literal['', 'neuron', 'random', 'sae'] = '', pole: Literal['', 'positive', 'negative'] = '',
+                           offset: int = 0, limit: int = 100) -> dict:
+        """A finished auto-interp job: the summary (pass rates for neurons, random directions and shuffled labels,
+        any paired comparison) and its rows (label, detection, fuzzing, shuffled-label scores), filtered."""
+        job = lab.job(job_id)
+        rows = [r for r in lab.autointerp_rows(job_id) if (not kind or r.get('kind') == kind) and (not pole or r.get('pole') == pole)]
+        limit = max(1, min(int(limit), 500))
+        summary = {k: v for k, v in (job.get('result', {}).get('autointerp') or {}).items() if k != 'templates'}
+        return dict(summary=summary, total=len(rows), offset=offset, rows=rows[offset:offset + limit])
 
     @server.tool(annotations=read)
     def serving_capabilities(port: int = 8971) -> dict:

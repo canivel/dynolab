@@ -102,6 +102,7 @@ Version 0.2.2 adds causal patch sweeps, TopK SAE experiments, a Neuronpedia feat
 | **Interventions** | Scale, ablate, patch or steer a block output; compare with an unchanged baseline. |
 | **Probes** | Train labeled linear probes and inspect held-out metrics alongside control baselines. |
 | **SAE sandbox** | Train small sparse autoencoders; inspect training curves and feature examples. |
+| **Neurons** | Capture every neuron of a layer over a corpus, browse both poles in an atlas, label them with local models against random baselines, train SAEs at scale, and ablate or steer units. [Tutorial](docs/neurons.md). |
 | **Token analysis** | Explore token probabilities and alternatives, compare outputs and reopen saved analyses. |
 | **Saved studies** | Reopen experiment results and settings, rerun configurations, and export measurements with provenance. |
 

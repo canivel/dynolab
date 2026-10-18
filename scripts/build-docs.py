@@ -32,6 +32,7 @@ pages = [
     ("pool-lab-capture.md", "pool-lab.html", "Pool research", "Run interventions, probes and SAEs on resident distributed GGUF models."),
     ('pool-guide.md', 'pools.html', 'GPU pools', 'Set up a verified local GPU pool, connect a Windows worker and understand memory and telemetry.'),
     ('pool-api.md', 'pool-api.html', 'Pool API', 'Loopback inference, Python clients, lifecycle CLI and worker telemetry for the GPU pool preview.'),
+    ('neurons.md', 'neurons.html', 'Neurons', "Test whether a model's units are clean: capture, atlas, auto-interp against baselines, SAEs, ablations and steering."),
     ('research-tools.md', 'research-tools.html', 'Research tools', 'Causal patching, TopK SAEs, Neuronpedia and research artifact interoperability.'),
     ('app-guide.md', 'guide.html', 'App handbook', 'Download, install and use every Dyno Lab feature with real app examples.'),
     ('sdk-guide.md', 'sdk.html', 'Python SDK', 'Install the Dyno SDK, capture activations, run experiments and manage saved artifacts.'),

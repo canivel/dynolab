@@ -156,9 +156,10 @@ class Recipes:
         recipe = instantiate(body)
         # Check every step's settings now (references are checked as they resolve).
         from ..server import validate
-        placeholder = '0' * 32
+        earlier = {}
         for step in recipe['steps']:
-            validate(resolve(step['config'], {s['name']: placeholder for s in recipe['steps']}))
+            validate(resolve(step['config'], earlier))  # a step may use only the steps before it
+            earlier[step['name']] = '0' * 32
         with self.lock:
             if self.active: raise RuntimeError('A recipe is already running')
             data = dict(id=uuid.uuid4().hex, created=time.time(), status='running', title=recipe['title'], model=body['model'],
