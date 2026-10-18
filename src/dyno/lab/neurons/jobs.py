@@ -37,9 +37,11 @@ def loader(config):
         model, tokenizer, model_config = load(config['model'], tokenizer_config={'trust_remote_code': False}, return_config=True,
                                               revision=config.get('revision'))
         captured, active, collecting = {}, {}, [True]
+        if layers == 'all': layers = list(range(len(hooks.layers_of(model)[0])))
         info = hooks.install(model, layers, hook, captured, active, collecting, model_config)
         info['reconstruction_error'] = hooks.check(model, tokenizer, layers, hook)
         info['model_layers'] = len(hooks.layers_of(model)[0])
+        info['layers'] = list(layers)
         load_model.state = dict(model=model, tokenizer=tokenizer, model_config=model_config, active=active, captured=captured)
         return model, tokenizer, model_config, captured, collecting, info
     return load_model
