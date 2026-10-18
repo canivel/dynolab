@@ -81,10 +81,11 @@ def chat(model, system, user, max_tokens):
 
 
 def clean_label(reply):
-    """The first line, without marks the explainer copied ([[token|7]] -> token) or quotes around it."""
+    """The first line, without marks the explainer copied ([[token|7]] -> token) or a pair of quotes around it."""
     line = next((l for l in reply.splitlines() if l.strip()), '').strip()
     line = re.sub(r'\[\[(.*?)(\|\d+)?\]\]', r'\1', line)
-    line = re.sub(r'^(label|description)\s*:\s*', '', line, flags=re.I).strip().strip('"\'').strip()
+    line = re.sub(r'^(label|description)\s*:\s*', '', line, flags=re.I).strip()
+    if len(line) > 1 and line[0] == line[-1] and line[0] in '"\'': line = line[1:-1].strip()  # only a quote pair around it all
     return line[:300]
 
 

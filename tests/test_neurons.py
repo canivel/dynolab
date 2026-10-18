@@ -104,6 +104,9 @@ class Numbers(unittest.TestCase):
 
     def test_autointerp_parsing_and_scores(self):
         self.assertEqual(autointerp.clean_label('Label: [[important|7]] words\nmore'), 'important words')
+        self.assertEqual(autointerp.clean_label('"commas in code"'), 'commas in code')
+        self.assertEqual(autointerp.clean_label('"both" in "both X and Y"'), '"both" in "both X and Y"')
+        self.assertEqual(autointerp.clean_label('The word "again"'), 'The word "again"')
         self.assertEqual(autointerp.numbers('I think [1, 4, 9]', 5), {1, 4})
         self.assertEqual(autointerp.numbers('none', 5), set())
         b = autointerp.balanced([True, True, False, False], [True, False, False, False])
