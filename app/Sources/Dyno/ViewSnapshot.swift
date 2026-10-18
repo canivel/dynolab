@@ -293,6 +293,50 @@ enum ViewSnapshot {
                     return view()
                 }, size))
             }
+            // DYNO_NEURON_FORMS="capture:<job id>,autointerp:<job id>,…": the job form for each operation, filled as
+            // DYNO_NEURON_DRAFT (JSON of NeuronDraft field names) says, beside that job's result.
+            let fill = (env["DYNO_NEURON_DRAFT"]?.data(using: .utf8)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: [String: Any]] } ?? [:]
+            for item in (env["DYNO_NEURON_FORMS"] ?? "").split(separator: ",").map(String.init) {
+                let parts = item.split(separator: ":", maxSplits: 1).map(String.init)
+                let operation = parts[0], id = parts.count > 1 ? parts[1] : ""
+                targets.append(("form-\(operation)", {
+                    var draft = NeuronDraft(); draft.operation = operation
+                    for (key, value) in fill[operation] ?? [:] {
+                        switch (key, value) {
+                        case ("model", let v as String): draft.model = v
+                        case ("layers", let v as String): draft.layers = v
+                        case ("tokens", let v as String): draft.tokens = v
+                        case ("context", let v as String): draft.context = v
+                        case ("randomDirections", let v as String): draft.randomDirections = v
+                        case ("capture", let v as String): draft.capture = v
+                        case ("atlas", let v as String): draft.atlas = v
+                        case ("atlasLayer", let v as Int): draft.atlasLayer = v
+                        case ("neuronUnits", let v as String): draft.neuronUnits = v
+                        case ("randomUnits", let v as String): draft.randomUnits = v
+                        case ("explainerPort", let v as Int): draft.explainerPort = v
+                        case ("scorerPort", let v as Int): draft.scorerPort = v
+                        case ("examples", let v as String): draft.examples = v
+                        case ("poles", let v as String): draft.poles = v
+                        case ("stratified", let v as Bool): draft.stratified = v
+                        case ("compareTo", let v as String): draft.compareTo = v
+                        case ("mode", let v as String): draft.mode = v
+                        case ("unitSet", let v as String): draft.unitSet = v
+                        default: break
+                        }
+                    }
+                    neurons.draft = draft
+                    neurons.browser = nil
+                    neurons.selected = id.isEmpty ? nil : id
+                    neurons.job = id.isEmpty ? [:] : (neurons.details[id] ?? [:])
+                    if !id.isEmpty && neurons.job.isEmpty {
+                        var fetched = false
+                        Task { await neurons.refresh(); fetched = true }
+                        spin(10) { fetched }
+                        neurons.job = neurons.details[id] ?? [:]
+                    }
+                    return view()
+                }, size))
+            }
         }
         if arguments.contains("--artifacts-only") {
             guard let path = ProcessInfo.processInfo.environment["DYNO_ARTIFACT_FIXTURE"],
