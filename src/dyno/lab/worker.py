@@ -365,4 +365,10 @@ def run(config, folder):
 
 if __name__ == '__main__':
     folder=Path(sys.argv[1])
-    run(json.loads((folder/'job.json').read_text())['config'],folder)
+    config=json.loads((folder/'job.json').read_text())['config']
+    from .neurons.jobs import OPERATIONS as NEURON_OPERATIONS
+    if config['operation'] in NEURON_OPERATIONS:
+        from .neurons.jobs import run as run_neurons
+        run_neurons(config, folder)
+    else:
+        run(config,folder)
