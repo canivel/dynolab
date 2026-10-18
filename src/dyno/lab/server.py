@@ -299,6 +299,13 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
                 self._execution_send({'error': str(error)}, 400)
         elif path == '/lab/v1/jobs':
             self._execution_send({'jobs': self.server.jobs.list()})
+        elif path == '/lab/v1/recipes':
+            self._execution_send({'builtins': self.server.recipes.builtins(), 'runs': self.server.recipes.list()})
+        elif path.startswith('/lab/v1/recipes/'):
+            try:
+                self._execution_send(self.server.recipes.read(path.rsplit('/', 1)[-1]))
+            except (OSError, ValueError):
+                self._execution_send({'error': 'recipe run not found'}, 404)
         elif path == '/lab/v1/openapi.json':
             self._execution_send(json.loads(Path(__file__).with_name('openapi.json').read_text()))
         elif '/atlas/' in path and path.startswith('/lab/v1/jobs/'):
@@ -585,6 +592,10 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
                 self._execution_send(result)
             elif self.path == '/lab/v1/jobs':
                 self._execution_send(self.server.jobs.submit(body), 202)
+            elif self.path == '/lab/v1/recipes':
+                self._execution_send(self.server.recipes.start(body), 202)
+            elif self.path.startswith('/lab/v1/recipes/') and self.path.endswith('/cancel'):
+                self._execution_send(self.server.recipes.cancel(self.path.split('/')[-2]))
             elif self.path.startswith('/lab/v1/jobs/') and self.path.endswith('/cancel'):
                 self._execution_send(self.server.jobs.cancel(self.path.split('/')[-2]))
             else:
@@ -602,6 +613,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
     server.jobs = Jobs(args.data_dir)
+    from .neurons.recipes import Recipes
+    server.recipes = Recipes(Path(args.data_dir).expanduser(), server.jobs)
     server.studies = Studies(Path(args.data_dir).expanduser() / 'controlled-studies')
     server.agent_tasks = AgentTasks(Path(args.data_dir).expanduser() / 'agent-tasks')
     server.sandbox = SandboxRuns(Path(args.data_dir).expanduser() / 'sandbox-runs')
@@ -620,6 +633,8 @@ def main(argv=None):
     finally:
         if server.assistant.web.status().get('status') in ('running', 'starting'):
             server.assistant.web.stop()  # SearXNG runs only while Dyno does
+        if server.recipes.active:
+            server.recipes.cancel(server.recipes.active)
         if server.sandbox.active:
             server.sandbox.cancel(server.sandbox.active)
         if server.agent_tasks.active:
