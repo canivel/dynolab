@@ -7,6 +7,8 @@ import Observation
 final class ResearchLab {
     let journal = ResearchJournal()
     let runtime = LabRuntimeStatus()
+    /// Neuron capture, atlas, SAE, ablation, unit and auto-interp jobs.
+    @ObservationIgnored lazy var neurons = NeuronLab(lab: self)
     var tokenAnalysis = false
     var servingResult: [String: Any] = [:]
     var capturing = false
