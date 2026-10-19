@@ -1,3 +1,35 @@
+# Dyno Lab 0.6.10
+
+Dyno Lab 0.6.10 adds **Neurons** to the Research Lab: read every neuron of a layer on your own model, label them with one local model, score the labels with another, and test them with ablations and attribution, every number next to its baseline. The `dyno` command now sets itself up when the app opens, and Claude Code and Codex no longer give up while a slower Mac reads their long prompt.
+
+## Neurons in the Research Lab
+
+Built to test claims like Nick Cammarata's [Neural Networks Are Already Clean](https://already-clean.goodfire.com/) on a model on your Mac. See the [Neurons tutorial](neurons.md).
+
+- **Neuron hooks.** `mlp_hidden` (the input to `down_proj`, one coordinate per neuron) and the gate, up, MLP and attention outputs, for gated MLPs (Llama, Qwen, Mistral, Gemma). A check on a real prompt confirms the hooked layer reproduces the model's own output before anything runs. The existing Lab jobs take `hook` too.
+- **Capture** runs a corpus through the model and keeps, for every neuron and both poles, its strongest examples with context, stratified and random samples, a histogram, and held-out documents the explainer never sees. Presets for a web mix and FineWeb-Edu, or your own files and Hugging Face datasets. A stopped capture resumes exactly.
+- **Atlas:** a page per neuron with both poles side by side, firing rates and examples, browsable in the app.
+- **Auto-interp:** an explainer model labels each pole from its examples, and a different scorer model uses only the label to find held-out examples. Random directions and shuffled labels are scored the same way. Switch between the 2023-style and the improved method, and pair two runs to compare them.
+- **Agent interpreter:** the explainer can read examples by decile and measure its own test sentences on the model before it submits a label; transcripts are checked for held-out text.
+- **Ablation** by activation strength (weakest 75%, strongest 7%) at every layer, with random controls matched in mass and in count, and bootstrap intervals.
+- **Units:** attribution to a target token, set ablation against random sets from the same layers, and steering.
+- **SAEs** (TopK, BatchTopK, ReLU-L1) trained on the same layer, and how each feature lines up with the neurons.
+- **Recipes** chain all of it into one run with one report; `already-clean-fast` and `already-clean-full` are built in.
+- SDK methods, [HTTP API](http-api.md#neurons) and [MCP tools](local-mcp.md#neuron-tools) for every step.
+
+Everything runs in the Lab's separate worker process, and nothing leaves the Mac.
+
+## The `dyno` command
+
+- **Set up when the app opens.** Before, `dyno launch claude` failed with "command not found" until you found **Router → Install the dyno command…**. Now Dyno adds it on launch, without a password when a folder on your PATH is yours (Homebrew's `/opt/homebrew/bin`, `~/.local/bin`, `~/bin`); otherwise it asks once. A `dyno` command from a moved copy of the app is pointed at this one, and another program called `dyno` is never replaced.
+
+## Claude Code and Codex
+
+- **No more giving up on a long prompt.** A slower Mac can read Claude Code's ~23k-token prompt for minutes before the first token, and Claude Code timed out and started over. The model server now sends keepalives while it reads, and `dyno launch` gives Claude Code and Codex an hour before they time out.
+- **Faster new sessions.** Claude Code's prompt is rearranged so a loaded model reuses most of it: a new session reads ~3k tokens instead of ~16k, 22–26 s instead of 89 s on Qwen3.8-27B (M5 Max).
+
+---
+
 # Dyno Lab 0.6.9
 
 Dyno Lab 0.6.9 runs Claude Code and Codex on the models you download, with web search, in one command. Web search can also use a paid search API, and agent tests can now prefill a session with real tool calls and choose how the agents' model samples.
