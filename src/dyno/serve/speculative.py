@@ -222,12 +222,14 @@ class DraftPolicy:
     """
 
     PRIOR = {1: 1.21, 2: 1.54, 3: 1.71, 4: 2.07, 5: 2.45, 6: 2.85}
+    # With `nax_matmul` a verify of 5-16 tokens costs about the same as one of 5.
+    NAX_PRIOR = {1: 1.21, 2: 1.54, 3: 1.71, 4: 1.86, 5: 1.92, 6: 1.98, 7: 2.04}
 
     PROBE_EVERY = 8  # rounds; deeper positions are only measured when they are drafted
 
     def __init__(self, alpha: float = 0.1):
         self.alpha = alpha
-        self.accept = [0.75, 0.65, 0.6, 0.55, 0.5, 0.5]
+        self.accept = [0.75, 0.65, 0.6, 0.55, 0.5, 0.5, 0.45]
         self.seconds: dict[int, float] = {}
         self.unit: Optional[float] = None  # seconds of one plain step, inferred
         self.rounds = 0
