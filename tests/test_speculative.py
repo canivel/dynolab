@@ -56,6 +56,16 @@ class DraftLength(unittest.TestCase):
             policy.update(4, 4, 0.06)
         self.assertGreaterEqual(policy.choose(4), 3)
 
+    def test_recovers_after_a_run_of_rejections(self):
+        policy = speculative.DraftPolicy()
+        for _ in range(200):
+            policy.update(1, 0, 0.04)
+        policy = policy.fresh()
+        for _ in range(400):
+            k = policy.choose(4)
+            policy.update(k, k, 0.04 + 0.005 * k)
+        self.assertGreaterEqual(policy.choose(4), 3)
+
     def test_backs_off_when_drafts_are_rejected(self):
         policy = speculative.DraftPolicy()
         for _ in range(200):

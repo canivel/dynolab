@@ -223,13 +223,26 @@ class DraftPolicy:
 
     PRIOR = {1: 1.21, 2: 1.54, 3: 1.71, 4: 2.07, 5: 2.45, 6: 2.85}
 
+    PROBE_EVERY = 8  # rounds; deeper positions are only measured when they are drafted
+
     def __init__(self, alpha: float = 0.1):
         self.alpha = alpha
         self.accept = [0.75, 0.65, 0.6, 0.55, 0.5, 0.5]
         self.seconds: dict[int, float] = {}
         self.unit: Optional[float] = None  # seconds of one plain step, inferred
+        self.rounds = 0
+
+    def fresh(self) -> "DraftPolicy":
+        """A policy for a new request: acceptance starts from the priors (a chat reply says
+        little about the code that follows), round times carry over (they are the machine's)."""
+        policy = DraftPolicy(self.alpha)
+        policy.seconds, policy.unit = dict(self.seconds), self.unit
+        return policy
 
     def choose(self, k_max: int) -> int:
+        self.rounds += 1
+        if self.rounds % self.PROBE_EVERY == 0:
+            return min(k_max, len(self.accept))
         best, best_rate = 1, 0.0
         for k in range(1, min(k_max, len(self.accept)) + 1):
             expected, survive = 1.0, 1.0
@@ -412,9 +425,8 @@ def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, promp
             return
         produced += 1
 
-        policy = getattr(draft_model, "policy", None)
-        if policy is None:
-            policy = draft_model.policy = DraftPolicy()
+        timings = getattr(draft_model, "policy", None) or DraftPolicy()
+        policy = draft_model.policy = timings.fresh()
         while produced < max_tokens:
             started = time.perf_counter()
             stats.setdefault("t_first", started)
