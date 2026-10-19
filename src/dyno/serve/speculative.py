@@ -274,7 +274,6 @@ def mtp_generate_step(
     When the consumer stops, the cache covers exactly the prompt plus every token yielded,
     which is what the server's prompt cache assumes.
     """
-    from mlx_lm.generate import generation_stream
 
     spec = sampler if isinstance(sampler, SamplerSpec) else None
     greedy = spec is None or spec.temperature == 0.0
@@ -314,11 +313,34 @@ def mtp_generate_step(
                 return c.offset
         return 0
 
+    try:
+        yield from _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, prompt_cache,
+                             sample, sample_draft, logprobs_of, target_offset, greedy, spec, k_draft,
+                             max_tokens, prefill_step_size)
+    finally:
+        stats = getattr(draft_model, "stats", None)
+        if stats and stats["rounds"]:
+            _log.info(
+                "MTP: %d tokens in %d rounds (%.2f per round), %d/%d drafts accepted, cache %d%s",
+                stats["tokens"], stats["rounds"], stats["tokens"] / stats["rounds"],
+                stats["accepted"], stats["drafted"], stats["cached"],
+                " (drafter cache reset)" if stats["reset"] else "",
+            )
+
+
+def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, prompt_cache, sample,
+              sample_draft, logprobs_of, target_offset, greedy, spec, k_draft, max_tokens,
+              prefill_step_size):
+    from mlx_lm.generate import generation_stream
+
     with mx.stream(generation_stream):
         # MTP pairs (h_i, x_{i+1}) stay in lockstep with the target: the drafter cache holds
         # one entry per target position except the last, whose hidden waits in `last_hidden`.
         last_hidden = getattr(mtp_cache, "svm_last_hidden", None)
+        stats = draft_model.stats = {"rounds": 0, "drafted": 0, "accepted": 0, "tokens": 0,
+                                     "reset": False, "cached": target_offset()}
         if last_hidden is None or mtp_cache.offset != target_offset() - 1:
+            stats["reset"] = target_offset() > 0
             mtp_cache = prompt_cache[-1] = KVCache()
             last_hidden = None
 
@@ -401,6 +423,10 @@ def mtp_generate_step(
             mx.eval(n_ok, bonus, draft_ids)
             j = int(n_ok.item())
             policy.update(k, j, time.perf_counter() - started)
+            stats["rounds"] += 1
+            stats["drafted"] += k
+            stats["accepted"] += j
+            stats["tokens"] += j + 1
 
             rollback = _Rollback(target_cache, records, k + 1)
             rollback.keep(j + 1)  # cache now covers unfed + the j accepted drafts
