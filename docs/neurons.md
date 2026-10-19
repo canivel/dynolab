@@ -4,7 +4,7 @@ This tutorial tests one claim on a model you run yourself: that many of a langua
 
 Every step reports a baseline from the same pipeline: random directions, shuffled labels, random unit sets, or random ablations with the same mass or count. A number without its baseline means little.
 
-These operations need a Dyno Lab build newer than 0.6.9. They run as ordinary Lab jobs, so the [SDK](sdk-guide.md), the [HTTP API](http-api.md#neurons) and the [local MCP bridge](local-mcp.md#neuron-tools) all reach them.
+These operations need Dyno Lab 0.6.10 or later. They run as ordinary Lab jobs, so the [SDK](sdk-guide.md), the [HTTP API](http-api.md#neurons) and the [local MCP bridge](local-mcp.md#neuron-tools) all reach them.
 
 ## Why test this
 
