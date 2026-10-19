@@ -19,7 +19,7 @@ class SpeculativeFlags(unittest.TestCase):
             ["--model", "m", "--speculative", "off", "--mtp-head=/tmp/head", "--port", "1"]
         )
         self.assertEqual(argv, ["--model", "m", "--port", "1"])
-        self.assertEqual(options, {"mode": "off", "head": "/tmp/head"})
+        self.assertEqual(options, {"mode": "off", "head": "/tmp/head", "dflash": None})
 
     def test_auto_is_the_default(self):
         self.assertEqual(_take_speculative_flags(["--model", "m"])[1]["mode"], "auto")

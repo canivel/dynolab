@@ -562,13 +562,17 @@ def install(generate_module: Any) -> None:
     original = generate_module.speculative_generate_step
 
     def speculative_generate_step(prompt, model, draft_model, **kwargs):
-        if getattr(draft_model, "is_mtp_drafter", False) and not kwargs.get("logits_processors"):
-            sampler = kwargs.get("sampler")
-            if not isinstance(sampler, SamplerSpec) or sampler.exact:
-                return mtp_generate_step(prompt, model, draft_model, **kwargs)
-        if getattr(draft_model, "is_mtp_drafter", False):
+        ours = getattr(draft_model, "is_mtp_drafter", False) or getattr(draft_model, "is_dflash_drafter", False)
+        if not ours:
+            return original(prompt, model, draft_model, **kwargs)
+        sampler = kwargs.get("sampler")
+        if kwargs.get("logits_processors") or (isinstance(sampler, SamplerSpec) and not sampler.exact):
             return _plain(prompt, model, draft_model, generate_module, **kwargs)
-        return original(prompt, model, draft_model, **kwargs)
+        if getattr(draft_model, "is_dflash_drafter", False):
+            from .dflash_spec import dflash_generate_step
+
+            return dflash_generate_step(prompt, model, draft_model, **kwargs)
+        return mtp_generate_step(prompt, model, draft_model, **kwargs)
 
     generate_module.speculative_generate_step = speculative_generate_step
     qwen3_5.GatedDeltaNet.__call__ = _gdn_call
@@ -581,6 +585,6 @@ def _plain(prompt, model, draft_model, generate_module, **kwargs):
     cache = kwargs.get("prompt_cache")
     if cache is not None:
         kwargs["prompt_cache"] = cache[:-1]
-        cache[-1] = KVCache()  # stale from here on; rebuilt on the next speculative request
+        cache[-1] = draft_model.make_cache()[0]  # stale from here on; rebuilt on the next speculative request
     for token, logprobs in generate_module.generate_step(prompt, model, **kwargs):
         yield token, logprobs, False

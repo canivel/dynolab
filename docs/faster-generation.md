@@ -42,6 +42,27 @@ On Macs whose GPU has neural accelerators (M5 and later), Dyno checks drafts wit
 
 Ranges are two runs whose absolute speed differed with the GPU's temperature; within each run the kernel gained 1.2–1.9× on code, reasoning and edits, and made no difference to chat. The kernel is checked against MLX's own result before Dyno uses it. `DYNO_NAX=0` turns it off.
 
+### A faster drafter: DFlash2
+
+[DFlash2](https://inco.ai/blog/dflash2/) is a separate 1.6-billion-parameter drafter trained for Qwen3.8-27B. Instead of guessing one token at a time, it drafts a block of up to 7 tokens in a single pass, reading hidden states from five of the model's layers, and a small selector picks one coherent path through its top candidates. Its drafts are checked with the same exact rule, so the output is unchanged.
+
+Dyno uses it when it's downloaded:
+
+```sh
+dyno pull z-lab/Qwen3.8-27B-DFlash2
+```
+
+The drafter is 3.2 GB to download and about 1.7 GB in memory, since Dyno loads it at 8 bits. With it on disk, `--speculative auto` drafts with DFlash2 instead of the MTP head; `--speculative mtp` keeps the head. Through the server, same setup, temperature 0.6, M5 Max on power:
+
+| Workload | Plain | MTP head | DFlash2 |
+|---|---|---|---|
+| Chat | 22.2 tok/s | 35.4–37.4 tok/s | 32.7–36.9 tok/s |
+| Code | 21.0 tok/s | 64.3–67.8 tok/s | 72.8–74.6 tok/s |
+| Reasoning | 20.2 tok/s | 63.7–65.4 tok/s | 71.9–75.4 tok/s |
+| Code edit | 20.2 tok/s | 78.1–80.0 tok/s | 81.0–89.5 tok/s |
+
+Ranges are two sessions. DFlash2 is 10–15% faster on code and reasoning and about level on chat.
+
 ### The output doesn't change
 
 At temperature 0 every kept token is the model's own top choice: the text is the model's greedy text. With sampling, drafts are accepted with the standard lossless rule (accept with probability min(1, p/q), otherwise resample from the difference), so each token has exactly the probability the model gives it, with your temperature, top-p and top-k. On a 256-token check, every token matched the model's own choice.
@@ -55,7 +76,7 @@ Requests with options the exact rule can't handle (logit biases, repetition pena
 - the model ships an MTP head: Qwen3.5, 3.6 and 3.8 dense models, including fine-tuned and abliterated versions (which use their base model's head, so fewer drafts are accepted, but output stays exact);
 - the server decodes one request at a time, which is how the app starts large models. With `--decode-concurrency` above 1, Dyno batches requests instead.
 
-`--speculative off` turns it off, and `--speculative mtp` stops with an error if no head is available. Mixture-of-experts models (Qwen3.6-35B-A3B) aren't supported yet.
+`--speculative off` turns it off; `--speculative mtp` and `--speculative dflash` choose a drafter and say so when it's missing. Mixture-of-experts models (Qwen3.6-35B-A3B) aren't supported yet.
 
 ## The draft head
 
@@ -67,6 +88,7 @@ The server log has one line per request:
 
 ```
 MTP: 512 tokens in 147 rounds (3.48 per round), 365/437 drafts accepted
+DFlash2: 383 tokens in 74 rounds (5.18 per round), 309/468 drafts accepted
 ```
 
-`/stats` reports `speculative.mode` (`mtp` or null) and the drafted and accepted tokens, and `/metrics` has `mlx:draft_tokens_total` and `mlx:draft_tokens_accepted_total`.
+`/stats` reports `speculative.mode` (`mtp`, `dflash` or null) and the drafted and accepted tokens, and `/metrics` has `mlx:draft_tokens_total` and `mlx:draft_tokens_accepted_total`.
