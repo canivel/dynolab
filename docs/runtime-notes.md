@@ -41,6 +41,25 @@ a model whose template doesn't handle tools, it fixes that:
 A model whose own template handles tools is left alone. `/stats` reports which applies under `model.tool_calls`:
 `own`, `borrowed:<model>`, `built-in`, or `none`. A model that ships no chat template at all also borrows one from its family when it can; with none to borrow it stays on mlx_lm's plain prompt format (`none`).
 
+### Faster generation with the model's own draft head
+
+Qwen3.5, 3.6 and 3.8 models are trained with a small extra layer, a multi-token-prediction (MTP) head, that guesses the token after next. MLX conversions usually drop it. `dyno serve` puts it back and uses it for speculative decoding: the head drafts a few tokens, the model checks them all in one pass, and only the tokens the model would have produced are kept. Sampled tokens are accepted with the standard lossless rule, so the output has exactly the model's own distribution at any temperature, top-p and top-k; at temperature 0 it is the model's own greedy text.
+
+Qwen3.8-27B 4-bit on an M5 Max (40-core GPU), one request at a time, temperature 0.6, top-p 0.94, top-k 20, median of three runs:
+
+| Workload | Without | With the MTP head |
+|---|---|---|
+| Chat | 22.9 tok/s | 33.3 tok/s (1.45×) |
+| Code | 20.4 tok/s | 45.8 tok/s (2.25×) |
+| Reasoning | 19.5 tok/s | 45.3 tok/s (2.3×) |
+| Code edit | 19.8 tok/s | 46.8 tok/s (2.35×) |
+
+It is on by default (`--speculative auto`) when the model ships a head and the server decodes one request at a time, which is how the app starts large models. With `--decode-concurrency` above 1, batching is used instead. `--speculative off` turns it off; `--speculative mtp` requires it.
+
+The head is kept once per base model in `~/.cache/dyno/mtp`. Dyno takes it from a full original checkpoint already in your Hugging Face cache, or else downloads only the head's tensors from the original `Qwen/<model>` repository (about 0.85 GB for Qwen3.8-27B; set `HF_HUB_OFFLINE=1` to prevent it). `--mtp-head` points at a folder of your own. Fine-tuned and abliterated models use their base model's head: output is still exact, only fewer drafts are accepted. Mixture-of-experts heads (Qwen3.6-35B-A3B) are not supported yet.
+
+`/stats` reports `speculative.mode` and the drafted and accepted token counts; Prometheus has `mlx:draft_tokens_total` and `mlx:draft_tokens_accepted_total`.
+
 If a model can't load (for example a download that stopped part-way and is missing a weight file), `dyno serve` exits with one line saying why instead of answering requests it can never complete. The app marks such a model *incomplete download* and won't start it.
 
 ## The metrics

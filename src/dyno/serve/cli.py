@@ -111,8 +111,8 @@ Speculative decoding (Dyno):
   --speculative {auto,mtp,off}  auto (default): draft with the model's own MTP head when it
                                 ships one and decode concurrency is 1. Output is unchanged;
                                 generation is ~1.5-2x faster.
-  --mtp-head PATH               an extracted MTP head folder (default: found or extracted
-                                under ~/.cache/dyno/mtp)
+  --mtp-head PATH               an extracted MTP head folder (default: ~/.cache/dyno/mtp,
+                                taken from a local full checkpoint or downloaded once, ~0.85 GB)
 """
 
 
@@ -187,7 +187,7 @@ def _load_drafter(provider: Any, mtp: Any, options: dict[str, Any]) -> Any:
             if options["mode"] == "mtp" or mtp.ships_mtp_head(model_dir):
                 print(
                     "Speculative decoding off: no MTP head for this model "
-                    "(pass --mtp-head, or keep its full checkpoint in the Hugging Face cache).",
+                    "(pass --mtp-head, or allow Dyno to download it from Hugging Face).",
                     flush=True,
                 )
             return None

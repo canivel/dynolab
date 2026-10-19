@@ -10,8 +10,9 @@ already-loaded target so it can draft tokens for speculative decoding:
 for deeper drafts. Embedding and lm_head are the target's own, so the head adds only
 ~425M parameters (about 0.45 GB at 8 bits).
 
-Most MLX conversions strip the head, so it is extracted once from the original BF16
-checkpoint into a small standalone folder (see `extract_mtp_head`).
+Most MLX conversions strip the head, so it is extracted once into a small standalone folder:
+from a local copy of the original checkpoint (see `extract_mtp_head`), or else by reading only
+the `mtp.*` tensors of the original repository on Hugging Face (see `fetch_mtp_head`).
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ import json
 import logging
 import os
 import re
+import struct
 from pathlib import Path
 from typing import Any, Optional
 
@@ -142,8 +144,56 @@ def extract_mtp_head(source: str | os.PathLike, out_dir: str | os.PathLike, bits
     for path in sorted(glob.glob(str(source / "*.safetensors"))):
         shard = mx.load(path)
         weights.update({k[len("mtp."):]: v for k, v in shard.items() if k.startswith("mtp.")})
+    return _save_head(weights, text_config, out_dir, bits)
+
+
+def fetch_mtp_head(repo_id: str, out_dir: str | os.PathLike, bits: int = 8) -> Path:
+    """Read just the `mtp.*` tensors of a Hugging Face checkpoint with range requests (~0.85 GB
+    for a 27B model, instead of the whole 54 GB) and save the head like `extract_mtp_head`."""
+    from huggingface_hub import HfFileSystem, hf_hub_download
+
+    config = json.loads(Path(hf_hub_download(repo_id, "config.json")).read_text())
+    text_config = config.get("text_config", config)
+    index = json.loads(Path(hf_hub_download(repo_id, "model.safetensors.index.json")).read_text())
+    shards: dict[str, list[str]] = {}
+    for key, shard in index.get("weight_map", {}).items():
+        if key.startswith("mtp."):
+            shards.setdefault(shard, []).append(key)
+    if not shards:
+        raise ValueError(f"{repo_id} has no mtp.* tensors")
+    fs = HfFileSystem()
+    weights: dict[str, mx.array] = {}
+    for shard, keys in shards.items():
+        with fs.open(f"{repo_id}/{shard}", "rb") as handle:
+            weights.update({k[len("mtp."):]: v for k, v in read_safetensors(handle, keys).items()})
+    return _save_head(weights, text_config, out_dir, bits)
+
+
+_DTYPES = {"BF16": (mx.bfloat16, 2), "F16": (mx.float16, 2), "F32": (mx.float32, 4)}
+
+
+def read_safetensors(handle: Any, keys: list[str]) -> dict[str, mx.array]:
+    """Read only `keys` from a seekable safetensors file."""
+    (length,) = struct.unpack("<Q", handle.read(8))
+    header = json.loads(handle.read(length))
+    tensors = {}
+    for key in sorted(keys, key=lambda k: header[k]["data_offsets"][0]):
+        entry = header[key]
+        if entry["dtype"] not in _DTYPES:
+            raise ValueError(f"{key} has unsupported dtype {entry['dtype']}")
+        dtype, size = _DTYPES[entry["dtype"]]
+        begin, end = entry["data_offsets"]
+        handle.seek(8 + length + begin)
+        raw = handle.read(end - begin)
+        words = mx.array(memoryview(raw).cast("H" if size == 2 else "I"))
+        tensors[key] = words.view(dtype).reshape(entry["shape"])
+    return tensors
+
+
+def _save_head(weights: dict[str, mx.array], text_config: dict, out_dir: Path | str, bits: int) -> Path:
+    out_dir = Path(out_dir)
     if not weights:
-        raise ValueError(f"{source} has no mtp.* tensors")
+        raise ValueError("the checkpoint has no mtp.* tensors")
     for key, value in weights.items():
         if key.endswith(_SHIFTED_NORMS) and value.ndim == 1:
             weights[key] = value + 1.0
@@ -154,12 +204,18 @@ def extract_mtp_head(source: str | os.PathLike, out_dir: str | os.PathLike, bits
         nn.quantize(head, group_size=64, bits=bits, class_predicate=lambda _, m: isinstance(m, nn.Linear))
     mx.eval(head.parameters())
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    flat = dict(_flatten(head.parameters()))
-    mx.save_safetensors(str(out_dir / HEAD_FILE), flat)
-    (out_dir / "config.json").write_text(
+    # Write next to the destination and rename, so an interrupted run never leaves a half head.
+    partial = out_dir.with_name(out_dir.name + ".partial")
+    partial.mkdir(parents=True, exist_ok=True)
+    mx.save_safetensors(str(partial / HEAD_FILE), dict(_flatten(head.parameters())))
+    (partial / "config.json").write_text(
         json.dumps({"text_config": text_config, "mtp_quantization": {"bits": bits, "group_size": 64}}, indent=1)
     )
+    if out_dir.exists():
+        import shutil
+
+        shutil.rmtree(out_dir)
+    partial.rename(out_dir)
     return out_dir
 
 
@@ -198,11 +254,14 @@ def ships_mtp_head(model_dir: str | os.PathLike) -> bool:
     return bool(config.get("text_config", config).get("mtp_num_hidden_layers"))
 
 
-def resolve_head(model_ref: str, model_dir: str | os.PathLike, explicit: Optional[str] = None) -> Optional[Path]:
-    """Find an MTP head for this model, extracting one from a local full checkpoint if needed.
+def resolve_head(
+    model_ref: str, model_dir: str | os.PathLike, explicit: Optional[str] = None, download: bool = True
+) -> Optional[Path]:
+    """Find an MTP head for this model, extracting one if needed.
 
     Order: an explicit folder; the per-base-model cache; a local Hugging Face snapshot of
-    the same base model that still carries its `mtp.*` tensors.
+    the same base model that still carries its `mtp.*` tensors; the `mtp.*` tensors of the
+    original `Qwen/<base>` repository, read over the network when `download` is set.
     """
     if explicit:
         return Path(explicit).expanduser()
@@ -214,11 +273,25 @@ def resolve_head(model_ref: str, model_dir: str | os.PathLike, explicit: Optiona
     cached = CACHE_ROOT / name
     if (cached / HEAD_FILE).exists():
         return cached
+    if not _dense(model_dir):
+        return None  # the head of a mixture-of-experts model is not supported yet
     source = _local_full_checkpoint(name)
-    if source is None:
+    if source is not None:
+        logging.info("Extracting the MTP head for %s from %s", name, source)
+        return extract_mtp_head(source, cached)
+    if not download or os.environ.get("HF_HUB_OFFLINE") == "1":
         return None
-    logging.info("Extracting the MTP head for %s from %s", name, source)
-    return extract_mtp_head(source, cached)
+    print(f"Speculative decoding: downloading the MTP head of Qwen/{name} (about 0.85 GB, once)...", flush=True)
+    return fetch_mtp_head(f"Qwen/{name}", cached)
+
+
+def _dense(model_dir: str | os.PathLike) -> bool:
+    try:
+        config = json.loads((Path(model_dir) / "config.json").read_text())
+    except (OSError, ValueError):
+        return False
+    text = config.get("text_config", config)
+    return not any(text.get(key) for key in ("num_experts", "n_routed_experts", "num_local_experts"))
 
 
 def _local_full_checkpoint(name: str) -> Optional[Path]:

@@ -3,16 +3,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from dyno.serve.cli import _explicit_concurrency, _take_speculative_flags
-
 try:
     from dyno.serve import mtp, speculative
+    from dyno.serve.cli import _explicit_concurrency, _take_speculative_flags
     HAS_MLX_LM = True
 except ImportError:
     HAS_MLX_LM = False
 needs_mlx_lm = unittest.skipUnless(HAS_MLX_LM, "needs mlx_lm (Apple Silicon)")
 
 
+@needs_mlx_lm
 class SpeculativeFlags(unittest.TestCase):
     def test_dyno_flags_are_stripped_before_mlx_lm_sees_them(self):
         argv, options = _take_speculative_flags(
@@ -46,6 +46,30 @@ class HeadResolution(unittest.TestCase):
             Path(tmp, "config.json").write_text(json.dumps({"text_config": {"mtp_num_hidden_layers": 0}}))
             self.assertFalse(mtp.ships_mtp_head(tmp))
             self.assertIsNone(mtp.resolve_head("Qwen3.8-27B", tmp))
+
+    def test_mixture_of_experts_heads_are_not_fetched(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = {"text_config": {"mtp_num_hidden_layers": 1, "num_experts": 256}}
+            Path(tmp, "config.json").write_text(json.dumps(config))
+            self.assertIsNone(mtp.resolve_head("Qwen3.6-35B-A3B", tmp, download=True))
+
+    def test_reads_only_the_requested_tensors(self):
+        import mlx.core as mx
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = str(Path(tmp, "shard.safetensors"))
+            tensors = {
+                "model.w": mx.arange(6, dtype=mx.float32).reshape(2, 3),
+                "mtp.fc.weight": (mx.arange(8, dtype=mx.float32) / 3).astype(mx.bfloat16).reshape(4, 2),
+                "mtp.norm.weight": mx.array([0.5, -1.25], dtype=mx.float16),
+            }
+            mx.save_safetensors(path, tensors)
+            with open(path, "rb") as handle:
+                read = mtp.read_safetensors(handle, ["mtp.norm.weight", "mtp.fc.weight"])
+        self.assertEqual(set(read), {"mtp.fc.weight", "mtp.norm.weight"})
+        for key, value in read.items():
+            self.assertEqual(value.dtype, tensors[key].dtype)
+            self.assertTrue(mx.array_equal(value, tensors[key]).item())
 
 
 @needs_mlx_lm

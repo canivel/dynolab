@@ -371,6 +371,9 @@ def mtp_generate_step(
                 1e3 * (stats["wall_s"] - stats["draft_s"] - stats["verify_s"] - stats["rollback_s"]) / stats["rounds"],
             )
         if stats and stats["rounds"]:
+            from .instrument import registry
+
+            registry.note_speculation(stats["rounds"], stats["drafted"], stats["accepted"])
             _log.info(
                 "MTP: %d tokens in %d rounds (%.2f per round), %d/%d drafts accepted, cache %d%s",
                 stats["tokens"], stats["rounds"], stats["tokens"] / stats["rounds"],
