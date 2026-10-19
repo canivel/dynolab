@@ -160,6 +160,7 @@ def _enable_speculative(server_module: Any, options: dict[str, Any], argv: list[
         return
 
     speculative.install(importlib.import_module("mlx_lm.generate"))
+    _enable_nax_verify(speculative, argv)
     server_module._make_sampler = speculative.wrap_sampler_factory(server_module._make_sampler)
 
     provider = server_module.ModelProvider
@@ -220,6 +221,22 @@ def _announce(argv: list[str]) -> None:
         elif argument.startswith("--port="):
             port = argument.split("=", 1)[1]
     print(BANNER.format(version=__version__, host=host, port=port), flush=True)
+
+
+NAX_DRAFT_TOKENS = 7
+
+
+def _enable_nax_verify(speculative: Any, argv: list[str]) -> None:
+    """On GPUs with neural accelerators, checking 8 drafted tokens costs little more than 4:
+    let the draft-length policy go deeper unless --num-draft-tokens was given."""
+    from . import nax_matmul
+
+    if not nax_matmul.install():
+        return
+    speculative.DraftPolicy.PRIOR = speculative.DraftPolicy.NAX_PRIOR
+    if not any(a == "--num-draft-tokens" or a.startswith("--num-draft-tokens=") for a in argv):
+        argv += ["--num-draft-tokens", str(NAX_DRAFT_TOKENS)]
+    print("Speculative decoding: drafts are verified on the GPU's neural accelerators.", flush=True)
 
 
 def main(argv: list[str] | None = None) -> int:
