@@ -177,6 +177,11 @@ class StreamTranslator:
         shell = _response(self.model, [], 'in_progress', None, self.id)
         return self.event('response.created', {'response': shell}) + self.event('response.in_progress', {'response': shell})
 
+    def keepalive(self):
+        """While the model reads a long prompt: another response.in_progress, so the client doesn't give up on a silent stream."""
+        if not self.started: return self._start()
+        return self.event('response.in_progress', {'response': _response(self.model, [], 'in_progress', None, self.id)})
+
     def _close(self):
         if not self.open: return b''
         item, kind, index = self.open['item'], self.open['kind'], self.open['index']

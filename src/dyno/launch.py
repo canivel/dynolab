@@ -163,6 +163,9 @@ def _name(model):
     return model['id'].rsplit('/', 1)[-1]
 
 
+TIMEOUT_MS = 3_600_000
+
+
 def claude_env(port, model, environ=None):
     """The environment that points Claude Code at a Dyno server, and only there."""
     env = dict(os.environ if environ is None else environ)
@@ -172,6 +175,9 @@ def claude_env(port, model, environ=None):
                ANTHROPIC_DEFAULT_OPUS_MODEL=name, ANTHROPIC_DEFAULT_SONNET_MODEL=name, ANTHROPIC_DEFAULT_HAIKU_MODEL=name,
                CLAUDE_CODE_SUBAGENT_MODEL=name, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC='1')
     if model.get('context'): env['CLAUDE_CODE_MAX_CONTEXT_TOKENS'] = str(model['context'])
+    # Claude Code gives up on a request after 10 minutes and sends it again from the start; a slower Mac can take that
+    # long to read a big prompt, and then it never answers.
+    env.setdefault('API_TIMEOUT_MS', str(TIMEOUT_MS))
     return env, []
 
 
@@ -179,7 +185,9 @@ def codex_args(port, model, environ=None):
     """Codex options for a Dyno provider; its own config and sign-in are left as they are."""
     options = {'model_provider': '"dyno"', 'model_providers.dyno.name': '"Dyno"',
                'model_providers.dyno.base_url': f'"http://127.0.0.1:{port}/v1"',
-               'model_providers.dyno.wire_api': '"responses"', 'model_providers.dyno.requires_openai_auth': 'false'}
+               'model_providers.dyno.wire_api': '"responses"', 'model_providers.dyno.requires_openai_auth': 'false',
+               # Codex drops a stream silent for 5 minutes; Dyno sends keepalives, and this covers any gap.
+               'model_providers.dyno.stream_idle_timeout_ms': str(TIMEOUT_MS)}
     if model.get('context'): options['model_context_window'] = str(model['context'])
     args = [part for key, value in options.items() for part in ('-c', f'{key}={value}')]
     return dict(os.environ if environ is None else environ), [*args, '-m', _name(model)]
@@ -245,6 +253,8 @@ def launch(argv):
     def stopped(signum, frame): raise SystemExit(128 + signum)
     previous = {s: signal.signal(s, h) for s, h in ((signal.SIGINT, signal.SIG_IGN), (signal.SIGHUP, stopped), (signal.SIGTERM, stopped))}
     try:
+        print(f'The first reply waits while the model reads {label}\'s instructions (about 20,000 tokens): '
+              'on some Macs that takes several minutes. Later replies only read what\'s new.', file=sys.stderr)
         env, options = environment(port, model)
         code = subprocess.call([executable, *options, *passthrough], env=env)
     finally:

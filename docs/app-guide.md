@@ -301,7 +301,7 @@ LAN inference is unauthenticated: enable it only on a trusted network. Research 
 
 ### Claude Code and Codex
 
-**Use with Claude Code or Codex** on the Router tab shows the command to run either tool on a model you pick, for example `dyno launch claude --model lmstudio-community/Qwen3.8-27B-MLX-4bit`, with **Copy** buttons. **Install the dyno command…** adds `/usr/local/bin/dyno` so the command works in Terminal (macOS asks for your password once). The tools don't need the router: `dyno launch` uses the model's own server. See [Claude Code and Codex on your own models](coding-tools.md).
+**Use with Claude Code or Codex** on the Router tab shows the command to run either tool on a model you pick, for example `dyno launch claude --model lmstudio-community/Qwen3.8-27B-MLX-4bit`, with **Copy** buttons. Dyno adds the `dyno` command when you open the app: with no password into Homebrew's `/opt/homebrew/bin` (or another folder on your PATH that's yours), otherwise into `/usr/local/bin` after asking once for your password. The section shows where it is, or **Install the dyno command…** if it isn't there yet. The tools don't need the router: `dyno launch` uses the model's own server. See [Claude Code and Codex on your own models](coding-tools.md).
 
 ### Routing controls and client integrations
 

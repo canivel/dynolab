@@ -60,6 +60,25 @@ class ToOpenAI(unittest.TestCase):
         self.assertEqual(r['messages'], [{'role': 'system', 'content': 'Top.'}, {'role': 'user', 'content': 'hi\n\n# Environment'}])
         self.assertNotIn('chat_template_kwargs', r)
 
+    def test_the_system_prompt_starts_the_same_in_every_folder(self):
+        def claude_code(folder):
+            return {'max_tokens': 10, 'tools': [{'name': 'Bash', 'input_schema': {'type': 'object'}}], 'system': [
+                {'type': 'text', 'text': f'x-anthropic-billing-header: cc_version=2.1.296; cc_entrypoint={folder}'},
+                {'type': 'text', 'text': 'You are Claude Code.', 'cache_control': {'type': 'ephemeral'}},
+                {'type': 'text', 'text': f'# Harness\nBe careful.\n\n# Memory\n\nMemory is at {folder}.\n\n# Environment\ncwd: {folder}'}],
+                'messages': [{'role': 'user', 'content': [{'type': 'text', 'text': 'hi'}]}]}
+        a, b = to_openai(claude_code('/a')), to_openai(claude_code('/b'))
+        # Same system message (the template puts the tools right after it); the rest goes in the first user turn.
+        self.assertEqual(a['messages'][0], {'role': 'system', 'content': 'You are Claude Code.\n# Harness\nBe careful.'})
+        self.assertEqual(a['messages'][0], b['messages'][0])
+        self.assertEqual(a['messages'][1]['role'], 'user')
+        self.assertEqual(a['messages'][1]['content'],
+                         '<system-reminder>\n# Memory\n\nMemory is at /a.\n\n# Environment\ncwd: /a\n</system-reminder>\n\nhi')
+        self.assertNotIn('billing', json.dumps(a))
+        # A system prompt without those sections is left as it is.
+        plain = to_openai({'system': 'Be brief.', 'messages': [{'role': 'user', 'content': 'hi'}]})
+        self.assertEqual(plain['messages'], [{'role': 'system', 'content': 'Be brief.'}, {'role': 'user', 'content': 'hi'}])
+
     def test_bad_requests_are_refused(self):
         for body in ([], {'messages': []}, {'messages': [{'role': 'tool', 'content': 'x'}]}):
             with self.assertRaises(ValueError): to_openai(body)
