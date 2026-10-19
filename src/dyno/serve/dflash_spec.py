@@ -176,6 +176,24 @@ def dflash_generate_step(
 
     When the consumer stops, the caches cover exactly the prompt plus every token yielded.
     """
+    draft_model.stats = None
+    try:
+        yield from _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampler,
+                                prompt_cache, prefill_step_size)
+    finally:
+        stats = getattr(draft_model, "stats", None)
+        if stats and stats["rounds"]:
+            from .instrument import registry
+
+            registry.note_speculation(stats["rounds"], stats["drafted"], stats["accepted"])
+            _log.info(
+                "DFlash2: %d tokens in %d rounds (%.2f per round), %d/%d drafts accepted%s",
+                stats["tokens"], stats["rounds"], stats["tokens"] / stats["rounds"],
+                stats["accepted"], stats["drafted"], " (drafter context reset)" if stats["reset"] else "",
+            )
+
+
+def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampler, prompt_cache, prefill_step_size):
     global _TAPS
     from mlx_lm.generate import generation_stream
 
