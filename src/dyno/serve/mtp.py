@@ -116,7 +116,7 @@ def _vocab_prefix_head(text: Any, rows: int) -> Optional[nn.Module]:
     if not rows or rows >= text.args.vocab_size:
         return None
     if isinstance(full, (nn.QuantizedLinear, nn.QuantizedEmbedding)):
-        head = nn.QuantizedLinear(1, 1, bias=False, group_size=full.group_size, bits=full.bits)
+        head = nn.QuantizedLinear(full.group_size, 1, bias=False, group_size=full.group_size, bits=full.bits)
         head.weight, head.scales = full.weight[:rows], full.scales[:rows]
         if getattr(full, "biases", None) is not None:
             head.biases = full.biases[:rows]
