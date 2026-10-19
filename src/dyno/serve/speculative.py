@@ -22,6 +22,7 @@ points that global here for MTP drafters.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Generator, List, Optional, Tuple
@@ -34,6 +35,7 @@ from mlx_lm.models.gated_delta import gated_delta_update
 from mlx_lm.sample_utils import apply_min_p, apply_top_k, apply_top_p
 
 _log = logging.getLogger(__name__)
+_PROFILE = os.environ.get("DYNO_MTP_PROFILE") == "1"  # sync between phases and log where a round goes
 
 
 # --- Sampling ------------------------------------------------------------------------
@@ -51,11 +53,21 @@ class SamplerSpec:
     exact: bool = True  # False when the chain has a step we cannot reproduce (XTC)
 
     def __call__(self, logprobs: mx.array) -> mx.array:
-        return self.sampler(logprobs)
+        if self.temperature == 0.0 or not self.exact or not self._prefix_only:
+            return self.sampler(logprobs)
+        return mx.random.categorical(self.filtered(logprobs) * (1 / self.temperature))
+
+    @property
+    def _prefix_only(self) -> bool:
+        """top-p and top-k both keep a prefix of the tokens by probability, so with top-k set
+        their combination is found among the k best: no sort over the whole vocabulary."""
+        return self.top_k > 0 and self.min_p == 0.0
 
     def filtered(self, logits: mx.array) -> mx.array:
         """Logprobs after the same filters mlx_lm's sampler applies, in the same order."""
         logprobs = logits - mx.logsumexp(logits, axis=-1, keepdims=True)
+        if self._prefix_only and self.top_k < logprobs.shape[-1]:
+            return _top_k_then_p(logprobs, self.top_k, self.top_p)
         if 0 < self.top_p < 1.0:
             logprobs = apply_top_p(logprobs, self.top_p)
         if self.min_p != 0.0:
@@ -66,6 +78,25 @@ class SamplerSpec:
 
     def probs(self, logits: mx.array) -> mx.array:
         return mx.softmax(self.filtered(logits.astype(mx.float32)) / self.temperature, axis=-1)
+
+
+def _top_k_then_p(logprobs: mx.array, top_k: int, top_p: float) -> mx.array:
+    """mlx_lm's apply_top_p then apply_top_k, computed from the k best tokens only.
+
+    apply_top_p keeps a token when the mass ranked strictly above it is below top_p;
+    apply_top_k then keeps the k largest survivors. Both are prefixes of the same order.
+    """
+    idx = mx.argpartition(-logprobs, kth=top_k - 1, axis=-1)[..., :top_k]
+    vals = mx.take_along_axis(logprobs, idx, axis=-1)
+    order = mx.argsort(-vals, axis=-1)
+    idx = mx.take_along_axis(idx, order, axis=-1)
+    vals = mx.take_along_axis(vals, order, axis=-1)
+    if 0 < top_p < 1.0:
+        mass = mx.exp(vals)
+        above = mx.cumsum(mass, axis=-1) - mass
+        vals = mx.where(above < top_p, vals, -float("inf"))
+    out = mx.full(logprobs.shape, -float("inf"), dtype=logprobs.dtype)
+    return mx.put_along_axis(out, idx, vals, axis=-1)
 
 
 def wrap_sampler_factory(make_sampler: Callable[..., Any]) -> Callable[..., Any]:
@@ -319,6 +350,13 @@ def mtp_generate_step(
                              max_tokens, prefill_step_size)
     finally:
         stats = getattr(draft_model, "stats", None)
+        if stats and stats["rounds"] and _PROFILE:
+            stats["wall_s"] = time.perf_counter() - stats["t_first"]
+            _log.info(
+                "MTP profile per round: draft %.1f ms, verify %.1f ms, rollback %.1f ms, other %.1f ms",
+                *(1e3 * stats[k] / stats["rounds"] for k in ("draft_s", "verify_s", "rollback_s")),
+                1e3 * (stats["wall_s"] - stats["draft_s"] - stats["verify_s"] - stats["rollback_s"]) / stats["rounds"],
+            )
         if stats and stats["rounds"]:
             _log.info(
                 "MTP: %d tokens in %d rounds (%.2f per round), %d/%d drafts accepted, cache %d%s",
@@ -338,6 +376,7 @@ def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, promp
         # one entry per target position except the last, whose hidden waits in `last_hidden`.
         last_hidden = getattr(mtp_cache, "svm_last_hidden", None)
         stats = draft_model.stats = {"rounds": 0, "drafted": 0, "accepted": 0, "tokens": 0,
+                                     "draft_s": 0.0, "verify_s": 0.0, "rollback_s": 0.0, "host_s": 0.0,
                                      "reset": False, "cached": target_offset()}
         if last_hidden is None or mtp_cache.offset != target_offset() - 1:
             stats["reset"] = target_offset() > 0
@@ -378,6 +417,7 @@ def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, promp
             policy = draft_model.policy = DraftPolicy()
         while produced < max_tokens:
             started = time.perf_counter()
+            stats.setdefault("t_first", started)
             k = min(policy.choose(k_draft), max_tokens - produced)
 
             # Draft: commit the pending pairs, then chain k-1 provisional steps.
@@ -391,6 +431,10 @@ def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, promp
                 if i + 1 < k:
                     g = draft_model(g, drafts[-1], mtp_cache)
             mtp_cache.trim(mtp_cache.offset - committed)
+            if _PROFILE:
+                mx.eval(drafts, [q for q in qs if q is not None])
+                drafted_at = time.perf_counter()
+                stats["draft_s"] += drafted_at - started
 
             # Verify all drafts in one target forward.
             global _capture
@@ -422,6 +466,9 @@ def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, promp
                 bonus = mx.random.categorical(mx.log(dist))
             mx.eval(n_ok, bonus, draft_ids)
             j = int(n_ok.item())
+            if _PROFILE:
+                verified_at = time.perf_counter()
+                stats["verify_s"] += verified_at - drafted_at
             policy.update(k, j, time.perf_counter() - started)
             stats["rounds"] += 1
             stats["drafted"] += k
@@ -430,6 +477,9 @@ def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, promp
 
             rollback = _Rollback(target_cache, records, k + 1)
             rollback.keep(j + 1)  # cache now covers unfed + the j accepted drafts
+            if _PROFILE:
+                mx.eval(_cache_arrays(target_cache))
+                stats["rollback_s"] += time.perf_counter() - verified_at
             out = draft_ids[:j].tolist() + [int(bonus[j].item())]
             z = mx.array([[out[-1]]], dtype=mx.uint32)
 
