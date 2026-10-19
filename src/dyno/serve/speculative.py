@@ -22,6 +22,7 @@ points that global here for MTP drafters.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Generator, List, Optional, Tuple
 
@@ -177,6 +178,50 @@ def _replay(record: _GDNRecord, keep: int) -> None:
     cache[1] = state
 
 
+# --- Draft length -------------------------------------------------------------------
+
+
+class DraftPolicy:
+    """Picks how many tokens to draft from measured acceptance and measured round time.
+
+    Expected tokens from k drafts are 1 + a1 + a1*a2 + ... (a_i: chance draft i survives
+    given i-1 did). Round time comes from timing real rounds, so the policy re-tunes itself
+    when verification gets cheaper. Priors are this M5 Max's verify costs relative to a
+    one-token step (k+1 tokens verified), plus ~8% per drafted token.
+    """
+
+    PRIOR = {1: 1.21, 2: 1.54, 3: 1.71, 4: 2.07, 5: 2.45, 6: 2.85}
+
+    def __init__(self, alpha: float = 0.1):
+        self.alpha = alpha
+        self.accept = [0.75, 0.65, 0.6, 0.55, 0.5, 0.5]
+        self.seconds: dict[int, float] = {}
+        self.unit: Optional[float] = None  # seconds of one plain step, inferred
+
+    def choose(self, k_max: int) -> int:
+        best, best_rate = 1, 0.0
+        for k in range(1, min(k_max, len(self.accept)) + 1):
+            expected, survive = 1.0, 1.0
+            for i in range(k):
+                survive *= self.accept[i]
+                expected += survive
+            cost = self.seconds.get(k)
+            if cost is None:
+                cost = self.PRIOR.get(k, 3.0) * (self.unit or 1.0)
+            rate = expected / cost
+            if rate > best_rate:
+                best, best_rate = k, rate
+        return best
+
+    def update(self, k: int, accepted: int, seconds: float) -> None:
+        a = self.alpha
+        for i in range(min(accepted + 1, k)):
+            self.accept[i] += a * ((1.0 if i < accepted else 0.0) - self.accept[i])
+        previous = self.seconds.get(k)
+        self.seconds[k] = seconds if previous is None else previous + a * (seconds - previous)
+        self.unit = self.seconds[k] / self.PRIOR.get(k, 2.0) if self.unit is None else self.unit
+
+
 # --- The speculative loop -----------------------------------------------------------
 
 
@@ -248,6 +293,18 @@ def mtp_generate_step(
         probs = spec.probs(logits)
         return mx.random.categorical(mx.log(probs)), probs
 
+    def sample_draft(hidden: mx.array) -> Tuple[mx.array, Optional[mx.array]]:
+        """Draft from the drafter's reduced vocabulary; q is zero past it, so p/q stays exact."""
+        logits = draft_model.draft_logits(hidden)[0, -1]
+        if greedy:
+            return mx.argmax(logits, axis=-1), None
+        probs = spec.probs(logits)
+        token = mx.random.categorical(mx.log(probs))
+        missing = draft_model.vocab_size - probs.shape[-1]
+        if missing > 0:
+            probs = mx.concatenate([probs, mx.zeros((missing,), dtype=probs.dtype)])
+        return token, probs
+
     def logprobs_of(logits: mx.array) -> mx.array:
         return logits - mx.logsumexp(logits, axis=-1, keepdims=True)
 
@@ -294,15 +351,19 @@ def mtp_generate_step(
             return
         produced += 1
 
+        policy = getattr(draft_model, "policy", None)
+        if policy is None:
+            policy = draft_model.policy = DraftPolicy()
         while produced < max_tokens:
-            k = min(k_draft, max_tokens - produced)
+            started = time.perf_counter()
+            k = min(policy.choose(k_draft), max_tokens - produced)
 
             # Draft: commit the pending pairs, then chain k-1 provisional steps.
             g = draft_model(pending_hidden, pending_tokens, mtp_cache)[:, -1:]
             committed = mtp_cache.offset
             drafts, qs = [], []
             for i in range(k):
-                d, q = sample(target.logits(g)[0, -1])
+                d, q = sample_draft(g)
                 drafts.append(d.reshape(1, 1))
                 qs.append(q)
                 if i + 1 < k:
@@ -339,6 +400,7 @@ def mtp_generate_step(
                 bonus = mx.random.categorical(mx.log(dist))
             mx.eval(n_ok, bonus, draft_ids)
             j = int(n_ok.item())
+            policy.update(k, j, time.perf_counter() - started)
 
             rollback = _Rollback(target_cache, records, k + 1)
             rollback.keep(j + 1)  # cache now covers unfed + the j accepted drafts

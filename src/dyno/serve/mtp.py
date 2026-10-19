@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import glob
 import json
+import logging
 import os
+import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -28,6 +30,7 @@ from mlx_lm.models.cache import KVCache
 from mlx_lm.models.qwen3_5 import DecoderLayer, TextModelArgs
 
 HEAD_FILE = "mtp_head.safetensors"
+DRAFT_VOCAB = int(os.environ.get("DYNO_MTP_DRAFT_VOCAB", 65536))
 # HF stores these RMSNorm weights as offsets from one (the model computes x * (1 + w)).
 _SHIFTED_NORMS = (
     "pre_fc_norm_embedding.weight",
@@ -67,11 +70,24 @@ class MTPDrafter(nn.Module):
 
     is_mtp_drafter = True
 
-    def __init__(self, head: MTPHead, target: Any):
+    def __init__(self, head: MTPHead, target: Any, draft_vocab: int = DRAFT_VOCAB):
         super().__init__()
         self.head = head
         # Plain attributes, not submodules: the target owns these weights.
         self._text = _text_model(target)
+        self._draft_head = _vocab_prefix_head(self._text, draft_vocab)
+        self.vocab_size = self._text.args.vocab_size
+
+    def draft_logits(self, hidden: mx.array) -> mx.array:
+        """Logits over the first `draft_vocab` ids only.
+
+        Qwen's ids follow BPE merge order, so the prefix holds the frequent tokens; the full
+        248k-row lm_head would cost a 0.64 GB read per drafted token. Tokens past the prefix
+        are never drafted, which keeps sampling lossless (their q is zero).
+        """
+        if self._draft_head is None:
+            return self.logits(hidden)
+        return self._draft_head(hidden)
 
     def make_cache(self) -> list[Any]:
         return [KVCache()]
@@ -92,6 +108,26 @@ class MTPDrafter(nn.Module):
 
 def _text_model(model: Any) -> Any:
     return getattr(model, "language_model", model)
+
+
+def _vocab_prefix_head(text: Any, rows: int) -> Optional[nn.Module]:
+    """A view of the target's lm_head restricted to its first `rows` output ids."""
+    full = text.model.embed_tokens if text.args.tie_word_embeddings else text.lm_head
+    if not rows or rows >= text.args.vocab_size:
+        return None
+    if isinstance(full, (nn.QuantizedLinear, nn.QuantizedEmbedding)):
+        head = nn.QuantizedLinear(1, 1, bias=False, group_size=full.group_size, bits=full.bits)
+        head.weight, head.scales = full.weight[:rows], full.scales[:rows]
+        if getattr(full, "biases", None) is not None:
+            head.biases = full.biases[:rows]
+        else:
+            head.biases = None
+        mx.eval(head.parameters())
+        return head
+    head = nn.Linear(1, 1, bias=False)
+    head.weight = full.weight[:rows]
+    mx.eval(head.parameters())
+    return head
 
 
 def extract_mtp_head(source: str | os.PathLike, out_dir: str | os.PathLike, bits: int = 8) -> Path:
@@ -142,6 +178,62 @@ def load_mtp_drafter(head_dir: str | os.PathLike, target: Any) -> MTPDrafter:
     head.load_weights(str(head_dir / HEAD_FILE), strict=True)
     mx.eval(head.parameters())
     return MTPDrafter(head, target)
+
+
+CACHE_ROOT = Path(os.environ.get("DYNO_MTP_CACHE", Path.home() / ".cache" / "dyno" / "mtp"))
+_BASE_NAME = re.compile(r"(Qwen3\.\d+-\d+B(?:-A\d+B)?)", re.IGNORECASE)
+
+
+def base_name(model_ref: str) -> Optional[str]:
+    """`lmstudio-community/Qwen3.8-27B-MLX-4bit` -> `Qwen3.8-27B`: heads are per base model."""
+    match = _BASE_NAME.search(str(model_ref))
+    return match.group(1) if match else None
+
+
+def ships_mtp_head(model_dir: str | os.PathLike) -> bool:
+    try:
+        config = json.loads((Path(model_dir) / "config.json").read_text())
+    except (OSError, ValueError):
+        return False
+    return bool(config.get("text_config", config).get("mtp_num_hidden_layers"))
+
+
+def resolve_head(model_ref: str, model_dir: str | os.PathLike, explicit: Optional[str] = None) -> Optional[Path]:
+    """Find an MTP head for this model, extracting one from a local full checkpoint if needed.
+
+    Order: an explicit folder; the per-base-model cache; a local Hugging Face snapshot of
+    the same base model that still carries its `mtp.*` tensors.
+    """
+    if explicit:
+        return Path(explicit).expanduser()
+    if not ships_mtp_head(model_dir):
+        return None
+    name = base_name(model_ref) or base_name(str(model_dir))
+    if not name:
+        return None
+    cached = CACHE_ROOT / name
+    if (cached / HEAD_FILE).exists():
+        return cached
+    source = _local_full_checkpoint(name)
+    if source is None:
+        return None
+    logging.info("Extracting the MTP head for %s from %s", name, source)
+    return extract_mtp_head(source, cached)
+
+
+def _local_full_checkpoint(name: str) -> Optional[Path]:
+    hub = Path(os.environ.get("HF_HUB_CACHE", Path.home() / ".cache" / "huggingface" / "hub"))
+    for snapshot in sorted(hub.glob(f"models--*--{name}*/snapshots/*")):
+        index = snapshot / "model.safetensors.index.json"
+        try:
+            weight_map = json.loads(index.read_text()).get("weight_map", {})
+        except (OSError, ValueError):
+            continue
+        if any(key.startswith("mtp.") for key in weight_map) and all(
+            (snapshot / shard).exists() for shard in {v for k, v in weight_map.items() if k.startswith("mtp.")}
+        ):
+            return snapshot
+    return None
 
 
 def _flatten(tree: Any, prefix: str = ""):
