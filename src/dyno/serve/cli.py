@@ -108,28 +108,31 @@ def _patch(server_module: Any) -> None:
 
 SPECULATIVE_HELP = """\
 Speculative decoding (Dyno):
-  --speculative {auto,mtp,off}  auto (default): draft with the model's own MTP head when it
-                                ships one and decode concurrency is 1. Output is unchanged;
-                                generation is ~1.5-2x faster.
+  --speculative {auto,mtp,dflash,off}
+                                auto (default): draft with a downloaded DFlash2 drafter for the
+                                model, else its own MTP head, when decode concurrency is 1.
+                                Output is unchanged; generation is ~2-3.5x faster.
   --mtp-head PATH               an extracted MTP head folder (default: ~/.cache/dyno/mtp,
                                 taken from a local full checkpoint or downloaded once, ~0.85 GB)
+  --dflash-drafter PATH         a DFlash2 drafter folder (default: z-lab/<model>-DFlash2 in the
+                                Hugging Face cache; get it with `dyno pull z-lab/Qwen3.8-27B-DFlash2`)
 """
 
 
 def _take_speculative_flags(argv: list[str]) -> tuple[list[str], dict[str, Any]]:
     """Strip Dyno's own flags before mlx_lm's parser sees them."""
-    options: dict[str, Any] = {"mode": "auto", "head": None}
+    options: dict[str, Any] = {"mode": "auto", "head": None, "dflash": None}
     rest: list[str] = []
     values = iter(argv)
     for argument in values:
         name, _, inline = argument.partition("=")
-        if name in ("--speculative", "--mtp-head"):
+        if name in ("--speculative", "--mtp-head", "--dflash-drafter"):
             value = inline or next(values, "")
-            options["mode" if name == "--speculative" else "head"] = value
+            options[{"--speculative": "mode", "--mtp-head": "head", "--dflash-drafter": "dflash"}[name]] = value
         else:
             rest.append(argument)
-    if options["mode"] not in ("auto", "mtp", "off"):
-        raise SystemExit(f"--speculative must be auto, mtp or off, not {options['mode']!r}")
+    if options["mode"] not in ("auto", "mtp", "dflash", "off"):
+        raise SystemExit(f"--speculative must be auto, mtp, dflash or off, not {options['mode']!r}")
     return rest, options
 
 
@@ -181,6 +184,10 @@ def _enable_speculative(server_module: Any, options: dict[str, Any], argv: list[
 
 def _load_drafter(provider: Any, mtp: Any, options: dict[str, Any]) -> Any:
     model_ref = str(provider.model_key[0]) if provider.model_key else ""
+    if options["mode"] in ("auto", "dflash"):
+        drafter = _load_dflash(provider, mtp, model_ref, options)
+        if drafter is not None or options["mode"] == "dflash":
+            return drafter
     try:
         model_dir = tool_calls.resolve_model_dir(model_ref)
         head = mtp.resolve_head(model_ref, model_dir, options["head"])
@@ -198,6 +205,26 @@ def _load_drafter(provider: Any, mtp: Any, options: dict[str, Any]) -> Any:
         return None
     registry.speculative = "mtp"
     print(f"Speculative decoding: MTP head from {head}", flush=True)
+    return drafter
+
+
+def _load_dflash(provider: Any, mtp: Any, model_ref: str, options: dict[str, Any]) -> Any:
+    from . import dflash_spec
+
+    try:
+        model_dir = tool_calls.resolve_model_dir(model_ref)
+        base = mtp.base_name(model_ref) or mtp.base_name(str(model_dir))
+        path = options["dflash"] or (base and dflash_spec.find_drafter(base))
+        if not path:
+            if options["mode"] == "dflash":
+                print("Speculative decoding: no DFlash2 drafter for this model (pass --dflash-drafter).", flush=True)
+            return None
+        drafter = dflash_spec.load_dflash_drafter(path, provider.model)
+    except Exception as error:  # noqa: BLE001 - a broken drafter must never stop serving
+        print(f"Speculative decoding: DFlash2 drafter unusable ({_first_line(error)}).", flush=True)
+        return None
+    registry.speculative = "dflash"
+    print(f"Speculative decoding: DFlash2 drafter from {path}", flush=True)
     return drafter
 
 
