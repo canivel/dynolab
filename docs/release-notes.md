@@ -1,3 +1,16 @@
+# Dyno Lab 0.6.11
+
+Dyno Lab 0.6.11 makes Qwen3.5, 3.6 and 3.8 models generate about twice as fast, with exactly the same output. Nothing to set up.
+
+## Faster generation
+
+- **Up to 2.35× faster on Qwen.** These models ship a small extra layer that guesses the next few tokens. Dyno now uses it: the model checks every guess in one pass and keeps only the tokens it would have written itself. Qwen3.8-27B 4-bit on an M5 Max, with the model's recommended sampling: code 20.4 → 45.8 tok/s, reasoning 19.5 → 45.3, code edits 19.8 → 46.8, chat 22.9 → 33.3. See [Faster generation](faster-generation.md).
+- **Same output.** At temperature 0 the text is the model's own greedy text. With sampling, guesses are accepted with the standard lossless rule, so every token keeps exactly the model's probability at your temperature, top-p and top-k.
+- **On by default** for dense Qwen3.5, 3.6 and 3.8 models, fine-tunes included, when a model serves one request at a time, as the app starts large models. The first start downloads the model's draft head once (about 0.85 GB for Qwen3.8-27B), not the whole checkpoint. `dyno serve --speculative off` turns it off.
+- **Measured.** `/stats` reports how many guesses were drafted and accepted, and the server log shows it per request.
+
+---
+
 # Dyno Lab 0.6.10
 
 Dyno Lab 0.6.10 adds **Neurons** to the Research Lab: read every neuron of a layer on your own model, label them with one local model, score the labels with another, and test them with ablations and attribution, every number next to its baseline. The `dyno` command now sets itself up when the app opens, and Claude Code and Codex no longer give up while a slower Mac reads their long prompt.
