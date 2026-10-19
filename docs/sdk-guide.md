@@ -152,7 +152,9 @@ print(completed["result"]["artifacts"])
 
 Probes report held-out accuracy, AUROC, Brier score and controls. Their weights and normalization are fitted only to training data. A probe shows decodability, not causal use of a concept.
 
-SAEs train a small ReLU/L1 autoencoder on final-token states. Examine held-out reconstruction error together with active/dead feature statistics. Numbered features have no validated semantic labels. Pretrained SAE import and steering with learned SAE features are not supported in this release.
+SAEs train a small ReLU/L1 autoencoder on final-token states. Examine held-out reconstruction error together with active/dead feature statistics. Numbered features have no validated semantic labels. Pretrained SAE import and steering with learned SAE features are not supported in this release. For an SAE trained on millions of tokens from a corpus, use `sae_train` ([Neurons](#neurons)).
+
+`inspect`, `compare`, `probe` and `sae` take `hook=`: `block_output` (the default), `mlp_hidden`, `mlp_gate_pre`, `mlp_up`, `mlp_output` or `attn_output`. For example, `lab.probe(model, examples, layers=[8], hook="mlp_hidden")` fits the probe on the MLP's neurons instead of the residual stream.
 
 ## Method reference
 
@@ -161,20 +163,60 @@ SAEs train a small ReLU/L1 autoencoder on final-token states. Examine held-out r
 | `Lab.health()` | None | Service capabilities |
 | `Lab.schema()` | None | OpenAPI dictionary |
 | `Lab.jobs()` | None | List of up to 100 recent job summaries, newest first |
-| `Lab.submit(operation, model, **settings)` | `inspect`, `compare`, `probe` or `sae`; model ID/path; configuration | Submitted job dictionary including `id` |
-| `Lab.inspect(model, prompt, **settings)` | Raw prompt and inspect settings | Shortcut for `submit("inspect", ...)` |
+| `Lab.submit(operation, model, **settings)` | `inspect`, `compare`, `probe`, `sae`, `patch_sweep` or a neuron operation; model ID/path; configuration | Submitted job dictionary including `id` |
+| `Lab.inspect(model, prompt, hook=None, **settings)` | Raw prompt and inspect settings | Shortcut for `submit("inspect", ...)` |
 | `Lab.capture_response(model, prompt, response, **settings)` | Serialized prompt and response; combined token limit | Inspect job with separate prompt/response representations; development checkout only |
-| `Lab.compare(model, prompt, **settings)` | Raw prompt and intervention settings | Shortcut for `submit("compare", ...)` |
-| `Lab.probe(model, examples, **settings)` | Labeled train/test examples | Shortcut for `submit("probe", ...)` |
-| `Lab.sae(model, examples, **settings)` | Train/test texts and training settings | Shortcut for `submit("sae", ...)` |
+| `Lab.compare(model, prompt, hook=None, **settings)` | Raw prompt and intervention settings | Shortcut for `submit("compare", ...)` |
+| `Lab.probe(model, examples, hook=None, **settings)` | Labeled train/test examples | Shortcut for `submit("probe", ...)` |
+| `Lab.sae(model, examples, hook=None, **settings)` | Train/test texts and training settings | Shortcut for `submit("sae", ...)` |
 | `Lab.job(identifier)` | Job ID | Full configuration, status, error/result |
-| `Lab.wait(identifier, timeout=1800, interval=0.5)` | Overall deadline and polling interval in seconds | Completed job, or exception |
+| `Lab.wait(identifier, timeout=1800, interval=0.5, progress=None)` | Overall deadline and polling interval in seconds; `progress(p)` gets each new `job["progress"]` | Completed job, or exception |
 | `Lab.cancel(identifier)` | Job ID | Job metadata; stops that isolated worker only |
 | `Lab.artifact(identifier, name, destination)` | Name listed in `result.artifacts`; local output path | Downloaded `pathlib.Path`; overwrites that destination |
 | `ServingModel.capabilities()` | None | Resident model identity, capture support and limits |
 | `ServingModel.inspect(prompt, layers=None, max_input_tokens=128)` | Raw text and valid layer indices | Direct measurements, not a job |
 
 There is no SDK delete method; use HTTP `DELETE /lab/v1/jobs/{id}` for a terminal job. `Lab.jobs()` does not list native saved token analyses or direct resident captures.
+
+## Neurons
+
+`Lab` runs the neuron operations: capture a corpus at a hook, build an atlas of every unit's two poles, label them with local models, train SAEs at scale, and ablate or steer units. The [Neurons tutorial](neurons.md) explains each step and what its numbers mean.
+
+```python
+from dyno.sdk import Lab
+
+lab = Lab()
+model = "Qwen/Qwen3-0.6B"
+capture = lab.capture(model, layers=[14], tokens=2_000_000, units={"neurons": "all", "random_directions": 20})
+lab.wait(capture["id"], timeout=6 * 3600, progress=lambda p: print(p["message"]))
+atlas = lab.atlas(capture["id"])
+lab.wait(atlas["id"], timeout=3600)
+page = lab.atlas_unit(atlas["id"], 14, 0, text=True)
+print(page["poles"]["negative"]["top"][0]["text"])
+
+interp = lab.autointerp(atlas["id"], explainer=8083, scorer=8084, units={"neuron": 100, "random": 20})
+done = lab.wait(interp["id"], timeout=12 * 3600)
+print(done["result"]["autointerp"]["summary"]["neuron"]["detection"])
+```
+
+Neuron jobs can run for hours. Pass `wait()` a timeout to match; a wait timeout never cancels the job.
+
+| Method | Return / behavior |
+|---|---|
+| `capture(model, layers, corpus="web-mix", **settings)` | Token-level capture at a hook (default `mlp_hidden`), 1–8 layers |
+| `atlas(capture, model=None, **settings)` | Atlas of a finished capture; `model` defaults to the capture's |
+| `atlas_index(job, layer)`, `atlas_vocab(job, layer)` | One summary per unit; the text of every token id the examples use |
+| `atlas_unit(job, layer, unit, text=False)` | One unit's page, decompressed; `text=True` adds `text` and the center `token` to each example |
+| `sae_train(model, layers, corpus="web-mix", **settings)` | An SAE on one layer (`14` or `[14]`), evaluated on held-out text |
+| `sae_alignment(job)` | A finished SAE's feature-to-neuron alignment |
+| `ablate(model, corpus="web-mix", **settings)` | Ablation by strength with random controls |
+| `attribute(model, prompt, target_token, **settings)` | Units ranked by activation × gradient for one answer |
+| `ablate_units(model, prompt, target_token, units, **settings)` | Zero `[layer, unit]` pairs; P(target) against random sets of the same size |
+| `steer(model, prompt, unit, strengths=None, **settings)` | Text at each strength added to one unit |
+| `autointerp(atlas, explainer, scorer, **settings)` | Labels and scores; `explainer`/`scorer` are a port or `{"port", "model"}` |
+| `autointerp_rows(job)` | Every scored pole: label, detection, fuzzing, shuffled-label scores |
+
+Atlas and artifact reads raise `DynoError` for a missing job, layer or unit.
 
 ## Agent sandbox tests
 

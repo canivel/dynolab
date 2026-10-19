@@ -34,177 +34,43 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "required": [
-                  "operation",
-                  "model"
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ExperimentJob"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CaptureJob"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AtlasJob"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SaeTrainJob"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AblateJob"
+                  },
+                  {
+                    "$ref": "#/components/schemas/UnitsJob"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AutointerpJob"
+                  }
                 ],
-                "properties": {
-                  "operation": {
-                    "type": "string",
-                    "enum": [
-                      "inspect",
-                      "compare",
-                      "probe",
-                      "sae",
-                      "patch_sweep"
-                    ]
-                  },
-                  "model": {
-                    "type": "string"
-                  },
-                  "revision": {
-                    "type": "string"
-                  },
-                  "prompt": {
-                    "type": "string"
-                  },
-                  "response": {
-                    "type": "string",
-                    "minLength": 1,
-                    "description": "Inspect only. Replay serialized prompt plus response, validate token boundary, and export prompt-last, prompt-mean and response-mean block representations. The combined text counts toward max_input_tokens. Not a live generation trace."
-                  },
-                  "layers": {
-                    "type": "array",
-                    "minItems": 1,
-                    "maxItems": 8,
-                    "items": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 255
-                    }
-                  },
-                  "seed": {
-                    "type": "integer",
-                    "default": 0
-                  },
-                  "max_input_tokens": {
-                    "type": "integer",
-                    "default": 256,
-                    "maximum": 1024
-                  },
-                  "max_tokens": {
-                    "type": "integer",
-                    "default": 32,
-                    "maximum": 128
-                  },
-                  "intervention": {
-                    "type": "string",
-                    "enum": [
-                      "scale",
-                      "ablate",
-                      "patch",
-                      "steer"
-                    ]
-                  },
-                  "strengths": {
-                    "type": "array",
-                    "items": {
-                      "type": "number",
-                      "minimum": -5,
-                      "maximum": 5
-                    }
-                  },
-                  "positive": {
-                    "type": "string"
-                  },
-                  "negative": {
-                    "type": "string"
-                  },
-                  "donor_prompt": {
-                    "type": "string"
-                  },
-                  "target_token": {
-                    "type": "string"
-                  },
-                  "prompts": {
-                    "type": "array",
-                    "maxItems": 32,
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "features": {
-                    "type": "integer",
-                    "minimum": 8,
-                    "maximum": 512
-                  },
-                  "steps": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 500
-                  },
-                  "examples": {
-                    "type": "array",
-                    "maxItems": 512,
-                    "items": {
-                      "type": "object",
-                      "required": [
-                        "text",
-                        "split"
-                      ],
-                      "properties": {
-                        "text": {
-                          "type": "string"
-                        },
-                        "split": {
-                          "enum": [
-                            "train",
-                            "test"
-                          ]
-                        },
-                        "label": {
-                          "type": "integer",
-                          "enum": [
-                            0,
-                            1
-                          ]
-                        }
-                      }
-                    }
-                  },
-                  "clean_prompt": {
-                    "type": "string"
-                  },
-                  "foil_token": {
-                    "type": "string"
-                  },
-                  "positions": {
-                    "type": "array",
-                    "maxItems": 128,
-                    "uniqueItems": true,
-                    "items": {
-                      "type": "integer",
-                      "minimum": 0
-                    }
-                  },
-                  "sae_architecture": {
-                    "type": "string",
-                    "enum": [
-                      "relu",
-                      "topk"
-                    ],
-                    "default": "relu"
-                  },
-                  "top_k": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 512
-                  },
-                  "backend": {
-                    "type": "string",
-                    "enum": [
-                      "mlx",
-                      "pool"
-                    ],
-                    "default": "mlx",
-                    "description": "Pool reuses resident GGUF weights; probe/SAE fitting runs on coordinator."
-                  },
-                  "pool_port": {
-                    "type": "integer",
-                    "minimum": 1024,
-                    "maximum": 65535,
-                    "description": "Required with backend=pool. Loopback pool with research runtime v2."
+                "discriminator": {
+                  "propertyName": "operation",
+                  "mapping": {
+                    "inspect": "#/components/schemas/ExperimentJob",
+                    "compare": "#/components/schemas/ExperimentJob",
+                    "probe": "#/components/schemas/ExperimentJob",
+                    "sae": "#/components/schemas/ExperimentJob",
+                    "patch_sweep": "#/components/schemas/ExperimentJob",
+                    "capture": "#/components/schemas/CaptureJob",
+                    "atlas": "#/components/schemas/AtlasJob",
+                    "sae_train": "#/components/schemas/SaeTrainJob",
+                    "ablate": "#/components/schemas/AblateJob",
+                    "units": "#/components/schemas/UnitsJob",
+                    "autointerp": "#/components/schemas/AutointerpJob"
                   }
                 }
               }
@@ -238,7 +104,14 @@
       "get": {
         "responses": {
           "200": {
-            "description": "Configuration, state and result"
+            "description": "Configuration, state and result; progress while a neuron job runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
           },
           "404": {
             "description": "Not found"
@@ -3315,6 +3188,197 @@
           }
         }
       }
+    },
+    "/jobs/{id}/atlas/{layer}/{page}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A finished atlas job"
+        },
+        {
+          "in": "path",
+          "name": "layer",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "in": "path",
+          "name": "page",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "index (one summary per unit), vocab (the text of every token id the layer's examples use) or a unit number"
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "index, vocab, or one unit's page. A unit page is sent gzip-compressed with Content-Encoding: gzip (curl --compressed decodes it).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AtlasIndex"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AtlasUnitPage"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not an atlas job, or no such layer or unit"
+          }
+        }
+      }
+    },
+    "/recipes": {
+      "get": {
+        "summary": "Built-in recipes and past recipe runs",
+        "responses": {
+          "200": {
+            "description": "{\"builtins\": {name: recipe}, \"runs\": [run]}"
+          }
+        }
+      },
+      "post": {
+        "summary": "Start a recipe: a chain of Lab jobs ending in one report",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "model"
+                ],
+                "properties": {
+                  "recipe": {
+                    "type": "string",
+                    "enum": [
+                      "already-clean-fast",
+                      "already-clean-full"
+                    ]
+                  },
+                  "custom": {
+                    "type": "object",
+                    "description": "{\"title\", \"steps\": [{\"name\", \"config\"}]}; a config may use \"${step name}\" for an earlier step's job id"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "revision": {
+                    "type": "string"
+                  },
+                  "seed": {
+                    "type": "integer"
+                  },
+                  "explainer": {
+                    "type": "object",
+                    "properties": {
+                      "port": {
+                        "type": "integer"
+                      },
+                      "model": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "scorer": {
+                    "type": "object",
+                    "properties": {
+                      "port": {
+                        "type": "integer"
+                      },
+                      "model": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "only": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "run only these steps"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The run, with its steps"
+          },
+          "400": {
+            "description": "Invalid recipe or step settings"
+          },
+          "409": {
+            "description": "A recipe is already running"
+          }
+        }
+      }
+    },
+    "/recipes/{id}": {
+      "get": {
+        "summary": "A recipe run: steps with job ids and status; the report (format dynolab-neurons) when it finishes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/recipes/{id}/cancel": {
+      "post": {
+        "summary": "Stop a running recipe (and its current job)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3669,6 +3733,1529 @@
                 "content": {
                   "type": "string",
                   "maxLength": 8000
+                }
+              }
+            }
+          }
+        }
+      },
+      "ExperimentJob": {
+        "type": "object",
+        "required": [
+          "operation",
+          "model"
+        ],
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "inspect",
+              "compare",
+              "probe",
+              "sae",
+              "patch_sweep"
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "response": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Inspect only. Replay serialized prompt plus response, validate token boundary, and export prompt-last, prompt-mean and response-mean block representations. The combined text counts toward max_input_tokens. Not a live generation trace."
+          },
+          "layers": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            }
+          },
+          "seed": {
+            "type": "integer",
+            "default": 0
+          },
+          "max_input_tokens": {
+            "type": "integer",
+            "default": 256,
+            "maximum": 1024
+          },
+          "max_tokens": {
+            "type": "integer",
+            "default": 32,
+            "maximum": 128
+          },
+          "intervention": {
+            "type": "string",
+            "enum": [
+              "scale",
+              "ablate",
+              "patch",
+              "steer"
+            ]
+          },
+          "strengths": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": -5,
+              "maximum": 5
+            }
+          },
+          "positive": {
+            "type": "string"
+          },
+          "negative": {
+            "type": "string"
+          },
+          "donor_prompt": {
+            "type": "string"
+          },
+          "target_token": {
+            "type": "string"
+          },
+          "prompts": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "string"
+            }
+          },
+          "features": {
+            "type": "integer",
+            "minimum": 8,
+            "maximum": 512
+          },
+          "steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500
+          },
+          "examples": {
+            "type": "array",
+            "maxItems": 512,
+            "items": {
+              "type": "object",
+              "required": [
+                "text",
+                "split"
+              ],
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "split": {
+                  "enum": [
+                    "train",
+                    "test"
+                  ]
+                },
+                "label": {
+                  "type": "integer",
+                  "enum": [
+                    0,
+                    1
+                  ]
+                }
+              }
+            }
+          },
+          "clean_prompt": {
+            "type": "string"
+          },
+          "foil_token": {
+            "type": "string"
+          },
+          "positions": {
+            "type": "array",
+            "maxItems": 128,
+            "uniqueItems": true,
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "sae_architecture": {
+            "type": "string",
+            "enum": [
+              "relu",
+              "topk"
+            ],
+            "default": "relu"
+          },
+          "top_k": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 512
+          },
+          "backend": {
+            "type": "string",
+            "enum": [
+              "mlx",
+              "pool"
+            ],
+            "default": "mlx",
+            "description": "Pool reuses resident GGUF weights; probe/SAE fitting runs on coordinator."
+          },
+          "pool_port": {
+            "type": "integer",
+            "minimum": 1024,
+            "maximum": 65535,
+            "description": "Required with backend=pool. Loopback pool with research runtime v2."
+          },
+          "hook": {
+            "type": "string",
+            "enum": [
+              "block_output",
+              "mlp_hidden",
+              "mlp_gate_pre",
+              "mlp_up",
+              "mlp_output",
+              "attn_output"
+            ],
+            "default": "block_output",
+            "description": "Where in each layer to read and intervene. block_output is the residual stream after the layer; mlp_hidden is the input to down_proj (one coordinate is one neuron); mlp_gate_pre and mlp_up are the two MLP projections; mlp_output and attn_output are the sublayer outputs. MLP hooks need a gated MLP (Llama, Qwen, Mistral, Gemma). The logit lens applies to block_output only; pool experiments read block outputs only."
+          }
+        }
+      },
+      "CorpusSource": {
+        "type": "object",
+        "description": "One source of text. Either files (local .txt or .jsonl paths) or hf (a Hugging Face dataset, fetched through the datasets-server rows API and cached under the Lab folder with its commit recorded). Documents are split into train and held-out by document, fixed by the seed.",
+        "properties": {
+          "files": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "split_on": {
+            "type": "string",
+            "enum": [
+              "blank_lines"
+            ],
+            "description": "For .txt files: one document per paragraph"
+          },
+          "hf": {
+            "type": "string",
+            "description": "Dataset id, for example HuggingFaceFW/fineweb-edu"
+          },
+          "config": {
+            "type": "string",
+            "default": "default"
+          },
+          "split": {
+            "type": "string",
+            "default": "train"
+          },
+          "text_field": {
+            "type": "string",
+            "default": "text"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "share": {
+            "type": "number",
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "maximum": 1,
+            "default": 1,
+            "description": "Fraction of the token budget from this source. A source that cannot be fetched is skipped and recorded; the others share its part."
+          }
+        }
+      },
+      "Corpus": {
+        "description": "A preset (web-mix: 70% FineWeb-Edu, 15% code, 5% each Spanish, Chinese and Russian web text; fineweb-edu) or a list of sources.",
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "web-mix",
+              "fineweb-edu"
+            ]
+          },
+          {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/CorpusSource"
+            }
+          }
+        ]
+      },
+      "CaptureJob": {
+        "type": "object",
+        "required": [
+          "operation",
+          "model",
+          "layers",
+          "corpus"
+        ],
+        "description": "Run a corpus through the model and record token-level activations at a hook. The reservoir store keeps, per unit and per pole (positive, negative), the strongest examples with a window of tokens, samples by activation level, random samples, a histogram and rates; held-out documents get their own examples. The raw store writes every activation (fp16 shards) up to a disk budget. A capture checkpoints every two minutes; resume_from continues an interrupted one with identical settings. Limit: 48 hours.",
+        "properties": {
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Hugging Face ID or local MLX model directory"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "seed": {
+            "type": "integer",
+            "default": 0
+          },
+          "heldout_fraction": {
+            "type": "number",
+            "minimum": 0,
+            "exclusiveMaximum": true,
+            "maximum": 1,
+            "default": 0.2,
+            "description": "Share of documents held out for evaluation and scoring"
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "capture"
+            ]
+          },
+          "layers": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "uniqueItems": true,
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            }
+          },
+          "corpus": {
+            "$ref": "#/components/schemas/Corpus"
+          },
+          "hook": {
+            "type": "string",
+            "enum": [
+              "block_output",
+              "mlp_hidden",
+              "mlp_gate_pre",
+              "mlp_up",
+              "mlp_output",
+              "attn_output"
+            ],
+            "default": "mlp_hidden"
+          },
+          "tokens": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 500000000,
+            "default": 2000000
+          },
+          "context": {
+            "type": "integer",
+            "minimum": 16,
+            "maximum": 32768,
+            "default": 1024,
+            "description": "Tokens per window; a long document becomes several windows"
+          },
+          "stride": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Tokens between window starts (default: context)"
+          },
+          "units": {
+            "type": "object",
+            "default": {
+              "neurons": "all"
+            },
+            "properties": {
+              "neurons": {
+                "description": "\"all\", a count to sample, or a list of indices",
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "all"
+                    ]
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                ]
+              },
+              "random_directions": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000,
+                "default": 0,
+                "description": "Random unit directions in the same space: the auto-interp baseline"
+              },
+              "sae": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{32}$",
+                "description": "A finished sae_train job whose features are captured as units"
+              }
+            }
+          },
+          "store": {
+            "type": "string",
+            "enum": [
+              "reservoir",
+              "raw",
+              "both"
+            ],
+            "default": "reservoir"
+          },
+          "disk_budget_gb": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 4000,
+            "default": 20
+          },
+          "top_k": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 40
+          },
+          "heldout_top_k": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 200,
+            "default": 20
+          },
+          "bucket_samples": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 32,
+            "default": 6
+          },
+          "random_samples": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 400,
+            "default": 40
+          },
+          "heldout_random": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 400,
+            "default": 40
+          },
+          "window_before": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1024,
+            "default": 32
+          },
+          "window_after": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 256,
+            "default": 8
+          },
+          "batch_tokens": {
+            "type": "integer",
+            "minimum": 256,
+            "maximum": 262144,
+            "default": 16384
+          },
+          "resume_from": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "description": "An interrupted capture with the same settings"
+          }
+        }
+      },
+      "AtlasJob": {
+        "type": "object",
+        "required": [
+          "operation",
+          "model",
+          "capture"
+        ],
+        "description": "Build per-unit pages from a finished capture: for each pole its maximum, how often it reaches 10%, 25% and 50% of it per 100 tokens, strongest examples, samples by decile of the maximum and held-out examples. Read the pages with GET /jobs/{id}/atlas/{layer}/{page}. Limit: 4 hours.",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "atlas"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The capture's model (its tokenizer decodes the examples)"
+          },
+          "capture": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "description": "A finished capture job"
+          },
+          "layers": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "description": "Default: every captured layer"
+          },
+          "units": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Default: every unit"
+          },
+          "samples_per_decile": {
+            "type": "integer",
+            "default": 4,
+            "description": "Examples per decile of the maximum"
+          }
+        }
+      },
+      "SaeTrainJob": {
+        "type": "object",
+        "required": [
+          "operation",
+          "model",
+          "layers",
+          "corpus"
+        ],
+        "description": "Train a sparse autoencoder on activations streamed from the model, then evaluate it on held-out documents: fraction of variance unexplained, L0, dead features and next-token loss recovered when its reconstruction replaces the hook (0 = as bad as zeroing, 1 = as good as the original). At mlp_hidden it also aligns each feature with the neurons (sae-alignment.json). Limit: 48 hours.",
+        "properties": {
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Hugging Face ID or local MLX model directory"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "seed": {
+            "type": "integer",
+            "default": 0
+          },
+          "heldout_fraction": {
+            "type": "number",
+            "minimum": 0,
+            "exclusiveMaximum": true,
+            "maximum": 1,
+            "default": 0.2,
+            "description": "Share of documents held out for evaluation and scoring"
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "sae_train"
+            ]
+          },
+          "layers": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            }
+          },
+          "corpus": {
+            "$ref": "#/components/schemas/Corpus"
+          },
+          "hook": {
+            "type": "string",
+            "enum": [
+              "block_output",
+              "mlp_hidden",
+              "mlp_gate_pre",
+              "mlp_up",
+              "mlp_output",
+              "attn_output"
+            ],
+            "default": "mlp_hidden"
+          },
+          "architecture": {
+            "type": "string",
+            "enum": [
+              "topk",
+              "batchtopk",
+              "relu"
+            ],
+            "default": "topk"
+          },
+          "expansion": {
+            "type": "integer",
+            "default": 4,
+            "description": "Width as a multiple of the hook width, unless width is set"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 16,
+            "maximum": 131072
+          },
+          "k": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096,
+            "default": 32
+          },
+          "l1": {
+            "type": "number",
+            "default": 5.0,
+            "description": "relu only"
+          },
+          "learning_rate": {
+            "type": "number",
+            "description": "Default: scaled to the width"
+          },
+          "tokens": {
+            "type": "integer",
+            "minimum": 10000,
+            "maximum": 2000000000,
+            "default": 20000000
+          },
+          "context": {
+            "type": "integer",
+            "minimum": 16,
+            "maximum": 32768,
+            "default": 1024
+          },
+          "batch": {
+            "type": "integer",
+            "minimum": 64,
+            "maximum": 65536,
+            "default": 4096
+          },
+          "buffer_tokens": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 4000000,
+            "default": 262144
+          },
+          "warmup_steps": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000,
+            "default": 1000
+          },
+          "decay_fraction": {
+            "type": "number",
+            "default": 0.2
+          },
+          "aux_k": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65536,
+            "default": 512
+          },
+          "aux_coefficient": {
+            "type": "number",
+            "default": 0.03125
+          },
+          "dead_tokens": {
+            "type": "integer",
+            "default": 5000000
+          },
+          "eval_tokens": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 10000000,
+            "default": 100000
+          },
+          "seeds": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": {
+              "type": "integer"
+            },
+            "default": [
+              0
+            ],
+            "description": "One SAE per seed; the result reports the spread"
+          },
+          "alignment": {
+            "type": "boolean",
+            "default": true
+          },
+          "corr_threshold": {
+            "type": "number",
+            "default": 0.5
+          },
+          "r2_threshold": {
+            "type": "number",
+            "default": 0.5
+          }
+        }
+      },
+      "AblationCondition": {
+        "type": "object",
+        "required": [
+          "name",
+          "kind"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "below",
+              "above",
+              "random_mass",
+              "random_count",
+              "sae_splice"
+            ],
+            "description": "below/above: zero each unit's activations whose |value| is below/above its percentile. random_mass: a random set removing the same expected |value| mass as the condition named in of. random_count: as many activations. sae_splice: replace the hook's value with an SAE's reconstruction."
+          },
+          "percentile": {
+            "type": "number",
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "exclusiveMaximum": true,
+            "maximum": 100
+          },
+          "of": {
+            "type": "string",
+            "description": "An earlier below/above condition"
+          },
+          "sae": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "description": "A sae_train job, for sae_splice"
+          }
+        }
+      },
+      "AblateJob": {
+        "type": "object",
+        "required": [
+          "operation",
+          "model",
+          "corpus"
+        ],
+        "description": "Ablation by activation strength. Percentiles and removed mass are calibrated on training documents; effects are measured on held-out documents: share of tokens whose top prediction changes, KL divergence from the unablated model and change in next-token loss, each with a 95% bootstrap interval over contexts. Limit: 12 hours.",
+        "properties": {
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Hugging Face ID or local MLX model directory"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "seed": {
+            "type": "integer",
+            "default": 0
+          },
+          "heldout_fraction": {
+            "type": "number",
+            "minimum": 0,
+            "exclusiveMaximum": true,
+            "maximum": 1,
+            "default": 0.2,
+            "description": "Share of documents held out for evaluation and scoring"
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "ablate"
+            ]
+          },
+          "corpus": {
+            "$ref": "#/components/schemas/Corpus"
+          },
+          "hook": {
+            "type": "string",
+            "enum": [
+              "block_output",
+              "mlp_hidden",
+              "mlp_gate_pre",
+              "mlp_up",
+              "mlp_output",
+              "attn_output"
+            ],
+            "default": "mlp_hidden"
+          },
+          "layers": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "all"
+                ]
+              },
+              {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 128,
+                "uniqueItems": true,
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 255
+                }
+              }
+            ],
+            "default": "all"
+          },
+          "conditions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 16,
+            "items": {
+              "$ref": "#/components/schemas/AblationCondition"
+            },
+            "description": "Default: weak-75 (below 75), strong-7 (above 93), each with mass- and count-matched random controls"
+          },
+          "context": {
+            "type": "integer",
+            "minimum": 16,
+            "maximum": 8192,
+            "default": 512
+          },
+          "calibration_tokens": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 10000000,
+            "default": 50000
+          },
+          "calibration_samples": {
+            "type": "integer",
+            "default": 4096
+          },
+          "eval_tokens": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 10000000,
+            "default": 100000
+          },
+          "bootstrap": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000,
+            "default": 1000
+          }
+        }
+      },
+      "UnitsJob": {
+        "type": "object",
+        "required": [
+          "operation",
+          "model",
+          "mode"
+        ],
+        "description": "attribute: rank units by activation x gradient of log P(target_token), summed over positions and prompts (signed; a first-order estimate). ablate_set: zero a list of units at every position and report P(target) and the top answers before and after, against random sets of the same size from the same layers. steer: add to one unit at every position while generating, at each strength. Limit: 4 hours.",
+        "properties": {
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Hugging Face ID or local MLX model directory"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "seed": {
+            "type": "integer",
+            "default": 0
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "units"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "attribute",
+              "ablate_set",
+              "steer"
+            ]
+          },
+          "hook": {
+            "type": "string",
+            "enum": [
+              "block_output",
+              "mlp_hidden",
+              "mlp_gate_pre",
+              "mlp_up",
+              "mlp_output",
+              "attn_output"
+            ],
+            "default": "mlp_hidden"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "prompts": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "items": {
+              "type": "string"
+            }
+          },
+          "target_token": {
+            "type": "string",
+            "description": "attribute, ablate_set: text that encodes to exactly one token (include a leading space if needed)"
+          },
+          "layers": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "all"
+                ]
+              },
+              {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 128,
+                "uniqueItems": true,
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 255
+                }
+              }
+            ],
+            "default": "all",
+            "description": "attribute"
+          },
+          "top": {
+            "type": "integer",
+            "default": 40,
+            "description": "attribute: units to return"
+          },
+          "units": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 4096,
+            "items": {
+              "description": "[layer, unit] or {\"layer\", \"unit\"}",
+              "oneOf": [
+                {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "layer",
+                    "unit"
+                  ],
+                  "properties": {
+                    "layer": {
+                      "type": "integer"
+                    },
+                    "unit": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              ]
+            },
+            "description": "ablate_set"
+          },
+          "control_seeds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 10,
+            "description": "ablate_set: random sets"
+          },
+          "unit": {
+            "description": "steer: [layer, unit]",
+            "oneOf": [
+              {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "layer",
+                  "unit"
+                ],
+                "properties": {
+                  "layer": {
+                    "type": "integer"
+                  },
+                  "unit": {
+                    "type": "integer"
+                  }
+                }
+              }
+            ]
+          },
+          "strengths": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 12,
+            "items": {
+              "type": "number"
+            },
+            "default": [
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              4
+            ]
+          },
+          "scale": {
+            "type": "string",
+            "enum": [
+              "maximum",
+              "absolute"
+            ],
+            "default": "maximum",
+            "description": "steer: strengths are multiples of the unit's maximum (from maximum, atlas, or the prompts), or absolute values"
+          },
+          "maximum": {
+            "type": "number"
+          },
+          "atlas": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "description": "steer: read the unit's positive maximum from this atlas"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "default": 48
+          }
+        }
+      },
+      "AutointerpJob": {
+        "type": "object",
+        "required": [
+          "operation",
+          "atlas",
+          "explainer",
+          "scorer"
+        ],
+        "description": "The explainer model labels each unit's pole from its atlas page; the scorer sees only the label and held-out text. Detection: which of the texts (half the pole's strongest held-out examples, half random held-out text) contain a strong activation; balanced accuracy. Fuzzing: which highlighted tokens fit the label. Baselines: random directions (units of kind random) and shuffled labels. Rows are in the autointerp.json artifact. Limit: 48 hours.",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "autointerp"
+            ]
+          },
+          "atlas": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "description": "A finished atlas job"
+          },
+          "layer": {
+            "type": "integer",
+            "description": "Default: the atlas's first layer"
+          },
+          "explainer": {
+            "type": "object",
+            "required": [
+              "port"
+            ],
+            "properties": {
+              "port": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 65535
+              },
+              "model": {
+                "type": "string",
+                "description": "Default: the model the server runs"
+              }
+            }
+          },
+          "scorer": {
+            "type": "object",
+            "required": [
+              "port"
+            ],
+            "properties": {
+              "port": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 65535
+              },
+              "model": {
+                "type": "string",
+                "description": "Default: the model the server runs"
+              }
+            },
+            "description": "Use a different model from the explainer"
+          },
+          "units": {
+            "description": "Units to label, by kind ({\"neuron\": 100, \"random\": 20}; a count or \"all\") or a list of unit numbers",
+            "default": {
+              "neuron": 100,
+              "random": 20
+            },
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "oneOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "string",
+                      "enum": [
+                        "all"
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            ]
+          },
+          "poles": {
+            "type": "string",
+            "enum": [
+              "both",
+              "positive"
+            ],
+            "default": "both",
+            "description": "positive is the 2023-style setting"
+          },
+          "examples": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 20,
+            "description": "Strongest examples shown to the explainer"
+          },
+          "stratified": {
+            "type": "boolean",
+            "default": true,
+            "description": "Also show samples across the activation range"
+          },
+          "window": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1024,
+            "default": 32,
+            "description": "Tokens of context before each example (at most the capture's window_before)"
+          },
+          "detection": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100,
+            "default": 10
+          },
+          "fuzzing": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 10
+          },
+          "shuffled": {
+            "type": "boolean",
+            "default": true
+          },
+          "threshold": {
+            "type": "number",
+            "default": 0.75,
+            "description": "A pole passes at this detection balanced accuracy"
+          },
+          "concurrency": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8,
+            "default": 2
+          },
+          "max_tokens": {
+            "type": "integer",
+            "default": 60
+          },
+          "condition": {
+            "type": "string",
+            "description": "A name for this run, such as 2023-style or improved"
+          },
+          "compare_to": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "description": "Another autointerp job: pairs the two runs neuron pole by neuron pole (mean difference, pass rates, sign-flip permutation p-value)"
+          },
+          "seed": {
+            "type": "integer",
+            "default": 0
+          },
+          "explainer_mode": {
+            "type": "string",
+            "enum": [
+              "one_shot",
+              "agent"
+            ],
+            "default": "one_shot",
+            "description": "agent: the explainer investigates each pole with tools (training examples by decile, live activation measurements on text it writes) before labeling; it needs a model that calls tools, and loads the subject model. Labels are scored the same way."
+          },
+          "agent_steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 40,
+            "description": "agent: tool-calling steps per pole"
+          },
+          "agent_queries": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30,
+            "description": "agent: live activation measurements per pole"
+          }
+        }
+      },
+      "JobProgress": {
+        "type": "object",
+        "description": "Present while a neuron job is running: what it is doing and how far along it is.",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "1,200,000 of 2,000,000 tokens"
+          },
+          "fraction": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "nullable": true
+          },
+          "eta_seconds": {
+            "type": "number",
+            "nullable": true,
+            "description": "Estimated from the time so far"
+          },
+          "updated": {
+            "type": "number",
+            "description": "Unix time of the last update"
+          }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "created": {
+            "type": "number"
+          },
+          "ended": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "cancelled",
+              "interrupted"
+            ]
+          },
+          "operation": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/JobProgress"
+          },
+          "result": {
+            "type": "object",
+            "description": "When completed: measurements, provenance (with the hook) and artifacts (file names)"
+          },
+          "error": {
+            "type": "string",
+            "description": "When failed"
+          }
+        }
+      },
+      "AtlasExample": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "number",
+            "description": "The unit's activation at the center token"
+          },
+          "fraction": {
+            "type": "number",
+            "description": "|value| as a fraction of the pole's maximum"
+          },
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Token ids of the window (text in the vocab page)"
+          },
+          "activations": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "The unit's activation on each token"
+          },
+          "center": {
+            "type": "integer",
+            "description": "Index in ids of the measured token"
+          },
+          "context": {
+            "type": "integer"
+          },
+          "position": {
+            "type": "integer"
+          }
+        }
+      },
+      "AtlasIndex": {
+        "type": "object",
+        "properties": {
+          "layer": {
+            "type": "integer"
+          },
+          "hook": {
+            "type": "string"
+          },
+          "tokens": {
+            "type": "integer"
+          },
+          "units": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "unit": {
+                  "type": "integer",
+                  "description": "Number of the page"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "neuron",
+                    "random",
+                    "sae"
+                  ]
+                },
+                "index": {
+                  "type": "integer",
+                  "description": "Neuron index, random direction or SAE feature"
+                },
+                "positive": {
+                  "type": "object",
+                  "properties": {
+                    "maximum": {
+                      "type": "number",
+                      "description": "The pole's largest |activation|"
+                    },
+                    "per_100_tokens": {
+                      "type": "object",
+                      "description": "How often it reaches 10%, 25% and 50% of its maximum, per 100 tokens",
+                      "properties": {
+                        "10%": {
+                          "type": "number"
+                        },
+                        "25%": {
+                          "type": "number"
+                        },
+                        "50%": {
+                          "type": "number"
+                        }
+                      }
+                    },
+                    "preview": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "negative": {
+                  "type": "object",
+                  "properties": {
+                    "maximum": {
+                      "type": "number",
+                      "description": "The pole's largest |activation|"
+                    },
+                    "per_100_tokens": {
+                      "type": "object",
+                      "description": "How often it reaches 10%, 25% and 50% of its maximum, per 100 tokens",
+                      "properties": {
+                        "10%": {
+                          "type": "number"
+                        },
+                        "25%": {
+                          "type": "number"
+                        },
+                        "50%": {
+                          "type": "number"
+                        }
+                      }
+                    },
+                    "preview": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "AtlasUnitPage": {
+        "type": "object",
+        "properties": {
+          "unit": {
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "index": {
+            "type": "integer"
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "mean": {
+            "type": "number"
+          },
+          "std": {
+            "type": "number"
+          },
+          "random": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AtlasExample"
+            }
+          },
+          "heldout_random": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AtlasExample"
+            }
+          },
+          "poles": {
+            "type": "object",
+            "description": "positive and negative, never merged",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "maximum": {
+                  "type": "number",
+                  "description": "The pole's largest |activation|"
+                },
+                "per_100_tokens": {
+                  "type": "object",
+                  "description": "How often it reaches 10%, 25% and 50% of its maximum, per 100 tokens",
+                  "properties": {
+                    "10%": {
+                      "type": "number"
+                    },
+                    "25%": {
+                      "type": "number"
+                    },
+                    "50%": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "histogram": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "top": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AtlasExample"
+                  }
+                },
+                "heldout_top": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AtlasExample"
+                  }
+                },
+                "stratified": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "decile": {
+                        "type": "integer"
+                      },
+                      "range": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "examples": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/AtlasExample"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }

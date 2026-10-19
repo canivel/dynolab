@@ -7,14 +7,15 @@ struct ResearchLabView: View {
     var model: MonitorModel
     @State private var checkingConnection = false
     private enum Workspace: String, CaseIterable {
-        case studies = "Studies", analyze = "Analyze", evidence = "Evidence"
+        case studies = "Studies", analyze = "Analyze", neurons = "Neurons", evidence = "Evidence"
         var symbol: String {
-            switch self { case .studies: return "book.closed"; case .analyze: return "waveform.path.ecg"; case .evidence: return "doc.text.magnifyingglass" }
+            switch self { case .studies: return "book.closed"; case .analyze: return "waveform.path.ecg"; case .neurons: return "circle.hexagongrid"; case .evidence: return "doc.text.magnifyingglass" }
         }
         var explanation: String {
             switch self {
             case .studies: return "Start a question, try prompts, and keep a journal of your observations and next steps."
             case .analyze: return "Run a focused analysis, inspect its result, then save useful evidence to a study."
+            case .neurons: return "Capture what single neurons respond to across a corpus, browse them, and test them against controls."
             case .evidence: return "Open saved or imported artifacts to inspect thinking, activations, attention and research graphs."
             }
         }
@@ -54,6 +55,7 @@ struct ResearchLabView: View {
             Divider()
             switch workspace {
             case .studies: ResearchJournalView(model: model)
+            case .neurons: NeuronsView(model: model)
             case .evidence: LabArtifactView()
             case .analyze:
                 if model.researchLab.tokenAnalysis { TokenAnalysisView(model: model) }

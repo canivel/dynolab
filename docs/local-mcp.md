@@ -52,7 +52,7 @@ The current Mac DMG contains this launcher. Upgrade older installations from
 | `lab_health` | Check service availability | Read only |
 | `lab_jobs` | List recent experiment metadata | Read only |
 | `lab_job` | Read configuration, status, results or errors | Read only |
-| `lab_submit` | Submit `inspect`, `compare`, `probe` or `sae` | Loads a separate model and runs an experiment |
+| `lab_submit` | Submit `inspect`, `compare`, `probe`, `sae` or `patch_sweep`, with an optional `hook` | Loads a separate model and runs an experiment |
 | `lab_cancel` | Cancel the selected experiment worker | Stops that worker only |
 | `lab_artifacts` | List HTTP download links for saved artifacts | Read only |
 
@@ -77,6 +77,18 @@ The current Mac DMG contains this launcher. Upgrade older installations from
 | `observer_alerts`, `save_observer_alert` | Read or define alerts that run in new tests | Saving changes future tests |
 
 Ask your assistant, for example: “List my agent tests, then summarize the Observer's verdict and the rule events of the newest one.” The Observer is hidden from the agents: an assistant shouldn't paste it into a running test's chat unless you ask.
+
+### Neuron tools
+
+| Tool | Purpose | Effect |
+|---|---|---|
+| `check_neuron_job` | Check a `capture`, `atlas`, `sae_train`, `ablate`, `units` or `autointerp` job: errors, or its settings with every default and its time limit | Read only; nothing runs |
+| `start_neuron_job` | Start one of those jobs; poll `lab_job` for `progress` | Loads a model copy, may download weights and text, can run for hours; get the user's go-ahead |
+| `neuron_atlas_index` | An atlas layer's units, filtered by kind and sorted by a pole's maximum, a page at a time | Read only |
+| `neuron_atlas_unit` | One unit's page as text: both poles' maxima, rates and examples | Read only |
+| `autointerp_results` | An auto-interp job's summary and its rows (label and scores), filtered by kind and pole | Read only |
+
+The bridge follows the app's pattern for work that runs: check first, show the user what will run, then start it only after they agree. `check_neuron_job` fills in the defaults (a capture of 2,000,000 tokens of `web-mix` at `mlp_hidden`, for example), so the user sees the whole job. Ask your assistant, for example: “Check a capture of layer 14 of Qwen/Qwen3-0.6B with 20 random directions, and tell me what it will do before starting it.” See the [Neurons tutorial](neurons.md).
 
 ### Tool arguments
 

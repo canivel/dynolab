@@ -65,7 +65,8 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                             'agent_evals','agent_eval_cell','compare_agent_configs','eval_batches','start_eval_batch','cancel_eval_batch',
                             'agent_prompts','save_agent_prompt','observer_alerts','save_observer_alert',
                             'environments','environment','environment_from_compose','save_environment',
-                            'export_test_package','export_run_result','export_eval_result','preview_test_package','import_test_package'})
+                            'export_test_package','export_run_result','export_eval_result','preview_test_package','import_test_package',
+                            'check_neuron_job','start_neuron_job','neuron_atlas_index','neuron_atlas_unit','autointerp_results'})
                         def content(result):
                             self.assertFalse(result.isError)
                             return json.loads(result.content[0].text)

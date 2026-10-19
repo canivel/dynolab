@@ -19,12 +19,61 @@ from .regressions import ResearchReports
 from .agent_tasks import AgentTasks
 from .sandbox import SandboxRuns
 
-OPERATIONS = ('inspect', 'compare', 'probe', 'sae', 'patch_sweep')
+from .neurons.jobs import OPERATIONS as NEURON_OPERATIONS, LIMITS as NEURON_LIMITS
+
+OPERATIONS = ('inspect', 'compare', 'probe', 'sae', 'patch_sweep') + NEURON_OPERATIONS
+
+
+def validate_neurons(body):
+    """Neuron operations: each module checks its own settings, so a bad job fails here and not hours in."""
+    from .neurons import corpus
+    operation = body['operation']
+    layers = body.get('layers')
+    if layers is not None and layers != 'all':
+        if not isinstance(layers, list) or not 1 <= len(layers) <= 128 or any(type(i) is not int or not 0 <= i < 256 for i in layers) or len(set(layers)) != len(layers):
+            raise ValueError('layers: "all" or a list of unique layer indices')
+    if layers == 'all' and operation not in ('ablate', 'units'):
+        raise ValueError('layers: "all" is for ablate and units; capture and SAEs name their layers')
+    if operation in ('capture', 'sae_train', 'ablate'):
+        corpus.sources(body.get('corpus'))
+    if operation == 'capture':
+        from .neurons import capture
+        if not layers or len(layers) > 8: raise ValueError('A capture records 1–8 layers')
+        capture.validate(body)
+    elif operation == 'sae_train':
+        from .neurons import sae
+        sae.validate(body)
+    elif operation == 'ablate':
+        from .neurons import ablation
+        ablation.validate(body)
+    elif operation == 'units':
+        from .neurons import units
+        units.validate(body)
+    elif operation == 'atlas':
+        if not isinstance(body.get('capture'), str) or len(body['capture']) != 32: raise ValueError('capture: the id of a finished capture job')
+    elif operation == 'autointerp':
+        from .neurons import autointerp
+        autointerp.validate(body)
+    for key in ('capture', 'atlas', 'resume_from', 'compare_to'):
+        if key in body and (not isinstance(body[key], str) or any(ch not in '0123456789abcdef' for ch in body[key]) or len(body[key]) != 32):
+            raise ValueError(f'{key}: a Lab job id')
+    if len(json.dumps(body)) > 500_000:
+        raise ValueError('Experiment configuration is too large')
+    return body
 
 
 def validate(body):
     if not isinstance(body, dict) or body.get('operation') not in OPERATIONS:
-        raise ValueError('operation must be inspect, compare, probe, sae or patch_sweep')
+        raise ValueError('operation must be one of ' + ', '.join(OPERATIONS))
+    if body['operation'] in NEURON_OPERATIONS:
+        if body['operation'] != 'autointerp' and (not isinstance(body.get('model'), str) or not body['model'].strip()):
+            raise ValueError('Choose a local model directory or Hugging Face model ID')
+        return validate_neurons(body)
+    from .neurons.hooks import HOOKS
+    if body.get('hook', 'block_output') not in HOOKS:
+        raise ValueError('hook must be one of ' + ', '.join(HOOKS))
+    if body.get('backend') == 'pool' and body.get('hook', 'block_output') != 'block_output':
+        raise ValueError('Pool experiments read block outputs only')
     if not isinstance(body.get('model'), str) or not body['model'].strip():
         raise ValueError('Choose a local model directory or Hugging Face model ID')
     if 'response' in body and (body['operation'] != 'inspect' or not isinstance(body['response'], str) or not body['response'].strip()):
@@ -108,7 +157,11 @@ class Jobs:
     def read(self, identifier):
         if len(identifier) != 32 or any(c not in '0123456789abcdef' for c in identifier):
             raise FileNotFoundError(identifier)
-        return json.loads((self.root / identifier / 'job.json').read_text())
+        data = json.loads((self.root / identifier / 'job.json').read_text())
+        if data.get('status') == 'running':
+            try: data['progress'] = json.loads((self.root / identifier / 'progress.json').read_text())
+            except (OSError, ValueError): pass
+        return data
 
     def list(self):
         results = []
@@ -128,7 +181,7 @@ class Jobs:
             identifier = uuid.uuid4().hex
             folder = self.root / identifier
             folder.mkdir(mode=0o700)
-            data = dict(id=identifier, created=time.time(), status='queued', operation=config['operation'], model=config['model'], config=config)
+            data = dict(id=identifier, created=time.time(), status='queued', operation=config['operation'], model=config.get('model', ''), config=config)
             self.write(folder / 'job.json', data)
             self.active = identifier
             threading.Thread(target=self.run, args=(data, folder), daemon=True).start()
@@ -145,7 +198,7 @@ class Jobs:
                 with (folder / 'worker.log').open('w') as log:
                     self.process = subprocess.Popen([sys.executable, '-m', 'dyno.lab.worker', str(folder)], env=env, stdout=log, stderr=log)
                 process = self.process
-            process.wait(timeout=1800)
+            process.wait(timeout=3600 * NEURON_LIMITS.get(data['operation'], 0.5))
             with self.lock:
                 if self.active != data['id']:
                     return
@@ -246,8 +299,36 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
                 self._execution_send({'error': str(error)}, 400)
         elif path == '/lab/v1/jobs':
             self._execution_send({'jobs': self.server.jobs.list()})
+        elif path == '/lab/v1/recipes':
+            self._execution_send({'builtins': self.server.recipes.builtins(), 'runs': self.server.recipes.list()})
+        elif path.startswith('/lab/v1/recipes/'):
+            try:
+                self._execution_send(self.server.recipes.read(path.rsplit('/', 1)[-1]))
+            except (OSError, ValueError):
+                self._execution_send({'error': 'recipe run not found'}, 404)
         elif path == '/lab/v1/openapi.json':
             self._execution_send(json.loads(Path(__file__).with_name('openapi.json').read_text()))
+        elif '/atlas/' in path and path.startswith('/lab/v1/jobs/'):
+            # /lab/v1/jobs/{id}/atlas/{layer}/{index|vocab|<unit>}
+            try:
+                pieces = path.split('/')
+                if len(pieces) != 8: raise FileNotFoundError()
+                job = self.server.jobs.read(pieces[4])
+                layer, name = int(pieces[6]), pieces[7]
+                folder = self.server.jobs.root / job['id'] / 'atlas'
+                if name in ('index', 'vocab'):
+                    content, encoding = (folder / f'{name}-L{layer}.json').read_bytes(), None
+                else:
+                    content, encoding = (folder / f'L{layer}' / f'{int(name)}.json.gz').read_bytes(), 'gzip'
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                if encoding: self.send_header('Content-Encoding', encoding)
+                self.send_header('Content-Length', str(len(content)))
+                self.send_header('Cache-Control', 'no-store')
+                self.end_headers()
+                self.wfile.write(content)
+            except (OSError, ValueError):
+                self._execution_send({'error': 'atlas page not found'}, 404)
         elif '/artifacts/' in path and path.startswith('/lab/v1/jobs/'):
             try:
                 pieces = path.split('/')
@@ -511,6 +592,10 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
                 self._execution_send(result)
             elif self.path == '/lab/v1/jobs':
                 self._execution_send(self.server.jobs.submit(body), 202)
+            elif self.path == '/lab/v1/recipes':
+                self._execution_send(self.server.recipes.start(body), 202)
+            elif self.path.startswith('/lab/v1/recipes/') and self.path.endswith('/cancel'):
+                self._execution_send(self.server.recipes.cancel(self.path.split('/')[-2]))
             elif self.path.startswith('/lab/v1/jobs/') and self.path.endswith('/cancel'):
                 self._execution_send(self.server.jobs.cancel(self.path.split('/')[-2]))
             else:
@@ -528,6 +613,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
     server.jobs = Jobs(args.data_dir)
+    from .neurons.recipes import Recipes
+    server.recipes = Recipes(Path(args.data_dir).expanduser(), server.jobs)
     server.studies = Studies(Path(args.data_dir).expanduser() / 'controlled-studies')
     server.agent_tasks = AgentTasks(Path(args.data_dir).expanduser() / 'agent-tasks')
     server.sandbox = SandboxRuns(Path(args.data_dir).expanduser() / 'sandbox-runs')
@@ -546,6 +633,8 @@ def main(argv=None):
     finally:
         if server.assistant.web.status().get('status') in ('running', 'starting'):
             server.assistant.web.stop()  # SearXNG runs only while Dyno does
+        if server.recipes.active:
+            server.recipes.cancel(server.recipes.active)
         if server.sandbox.active:
             server.sandbox.cancel(server.sandbox.active)
         if server.agent_tasks.active:
