@@ -12,7 +12,7 @@ import logging
 import os
 import sys
 import time
-from typing import Any
+from typing import Any, Optional
 
 from . import tool_calls
 from .instrument import InstrumentedAPIHandler, InstrumentedResponseGenerator, registry
@@ -106,6 +106,100 @@ def _patch(server_module: Any) -> None:
     provider.load = load
 
 
+SPECULATIVE_HELP = """\
+Speculative decoding (Dyno):
+  --speculative {auto,mtp,off}  auto (default): draft with the model's own MTP head when it
+                                ships one and decode concurrency is 1. Output is unchanged;
+                                generation is ~1.5-2x faster.
+  --mtp-head PATH               an extracted MTP head folder (default: ~/.cache/dyno/mtp,
+                                taken from a local full checkpoint or downloaded once, ~0.85 GB)
+"""
+
+
+def _take_speculative_flags(argv: list[str]) -> tuple[list[str], dict[str, Any]]:
+    """Strip Dyno's own flags before mlx_lm's parser sees them."""
+    options: dict[str, Any] = {"mode": "auto", "head": None}
+    rest: list[str] = []
+    values = iter(argv)
+    for argument in values:
+        name, _, inline = argument.partition("=")
+        if name in ("--speculative", "--mtp-head"):
+            value = inline or next(values, "")
+            options["mode" if name == "--speculative" else "head"] = value
+        else:
+            rest.append(argument)
+    if options["mode"] not in ("auto", "mtp", "off"):
+        raise SystemExit(f"--speculative must be auto, mtp or off, not {options['mode']!r}")
+    return rest, options
+
+
+def _explicit_concurrency(argv: list[str]) -> Optional[int]:
+    for index, argument in enumerate(argv):
+        if argument == "--decode-concurrency" and index + 1 < len(argv):
+            return int(argv[index + 1])
+        if argument.startswith("--decode-concurrency="):
+            return int(argument.split("=", 1)[1])
+    return None
+
+
+def _enable_speculative(server_module: Any, options: dict[str, Any], argv: list[str]) -> None:
+    """Attach an MTP drafter to every loaded model that ships a head.
+
+    mlx_lm routes requests with a draft model through its single-stream path and calls
+    `speculative_generate_step`, which `speculative.install` points at the MTP loop.
+    """
+    import importlib
+
+    from . import mtp, speculative
+
+    concurrency = _explicit_concurrency(argv)
+    if options["mode"] == "off":
+        return
+    if options["mode"] == "auto" and concurrency is not None and concurrency > 1:
+        print("Speculative decoding off: --decode-concurrency > 1 batches requests instead.", flush=True)
+        return
+
+    speculative.install(importlib.import_module("mlx_lm.generate"))
+    server_module._make_sampler = speculative.wrap_sampler_factory(server_module._make_sampler)
+
+    provider = server_module.ModelProvider
+    loaded = provider.load
+
+    def load(self, model_path, adapter_path=None, draft_model_path=None):
+        result = loaded(self, model_path, adapter_path, draft_model_path)
+        if self.draft_model is None and getattr(self, "_dyno_mtp_for", None) is not self.model:
+            self._dyno_mtp_for = self.model
+            self._dyno_mtp = _load_drafter(self, mtp, options)
+        if self.draft_model is None and getattr(self, "_dyno_mtp", None) is not None:
+            self.draft_model = self._dyno_mtp
+            self.is_batchable = False
+        return result
+
+    provider.load = load
+
+
+def _load_drafter(provider: Any, mtp: Any, options: dict[str, Any]) -> Any:
+    model_ref = str(provider.model_key[0]) if provider.model_key else ""
+    try:
+        model_dir = tool_calls.resolve_model_dir(model_ref)
+        head = mtp.resolve_head(model_ref, model_dir, options["head"])
+        if head is None:
+            if options["mode"] == "mtp" or mtp.ships_mtp_head(model_dir):
+                print(
+                    "Speculative decoding off: no MTP head for this model "
+                    "(pass --mtp-head, or allow Dyno to download it from Hugging Face).",
+                    flush=True,
+                )
+            return None
+        drafter = mtp.load_mtp_drafter(head, provider.model)
+    except Exception as error:  # noqa: BLE001 - a missing head must never stop serving
+        print(f"Speculative decoding off: {_first_line(error)}", flush=True)
+        return None
+    registry.speculative = "mtp"
+    print(f"Speculative decoding: MTP head from {head}", flush=True)
+    return drafter
+
+
 def _first_line(error: Exception) -> str:
     text = " ".join(str(error).split()) or type(error).__name__
     if text.startswith("Missing") and "parameters" in text:
@@ -137,14 +231,19 @@ def main(argv: list[str] | None = None) -> int:
         print(MLX_MISSING, file=sys.stderr, end="")
         return 1
 
+    argv, speculative_options = _take_speculative_flags(argv)
+
     try:
         _patch(server_module)
     except UnsupportedMLXLM as error:
         print(str(error), file=sys.stderr)
         return 1
 
-    if "--help" not in argv and "-h" not in argv:
+    if "--help" in argv or "-h" in argv:
+        print(SPECULATIVE_HELP)
+    else:
         _announce(argv)
+        _enable_speculative(server_module, speculative_options, argv)
 
     # mlx_lm's main() reads sys.argv directly.
     sys.argv = [sys.argv[0] + " serve"] + argv

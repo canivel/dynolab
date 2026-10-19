@@ -41,6 +41,10 @@ a model whose template doesn't handle tools, it fixes that:
 A model whose own template handles tools is left alone. `/stats` reports which applies under `model.tool_calls`:
 `own`, `borrowed:<model>`, `built-in`, or `none`. A model that ships no chat template at all also borrows one from its family when it can; with none to borrow it stays on mlx_lm's plain prompt format (`none`).
 
+### Faster generation
+
+Qwen3.5, 3.6 and 3.8 models decode about twice as fast with the model's own draft head, with unchanged output. See [Faster generation](faster-generation.md).
+
 If a model can't load (for example a download that stopped part-way and is missing a weight file), `dyno serve` exits with one line saying why instead of answering requests it can never complete. The app marks such a model *incomplete download* and won't start it.
 
 ## The metrics

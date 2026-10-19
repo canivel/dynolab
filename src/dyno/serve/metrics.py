@@ -112,6 +112,11 @@ class MetricsRegistry:
         self.model_load_seconds: float | None = None
         # How tool calls work for the loaded model: "own", "own+parser", "borrowed:<model>", "built-in" or "none".
         self.tool_calls: str | None = None
+        # "mtp" while drafting with the model's own MTP head, else None.
+        self.speculative: str | None = None
+        self.draft_rounds_total = 0
+        self.draft_tokens_total = 0
+        self.draft_tokens_accepted_total = 0
 
         self._active: dict[int, RequestRecord] = {}
         self._history: deque[RequestRecord] = deque(maxlen=history)
@@ -131,6 +136,12 @@ class MetricsRegistry:
             self.model_loaded_at = time.time()
             if load_seconds is not None:
                 self.model_load_seconds = load_seconds
+
+    def note_speculation(self, rounds: int, drafted: int, accepted: int) -> None:
+        with self._lock:
+            self.draft_rounds_total += rounds
+            self.draft_tokens_total += drafted
+            self.draft_tokens_accepted_total += accepted
 
     def begin_request(self, model: str) -> RequestRecord:
         with self._lock:

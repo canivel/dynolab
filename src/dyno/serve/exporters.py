@@ -64,6 +64,10 @@ def prometheus_text(registry: MetricsRegistry) -> str:
                    "Tokens generated.", "counter")
     lines += _line("mlx:decode_seconds_total", round(registry.decode_seconds_total, 4),
                    "Wall seconds spent in the decode phase.", "counter")
+    lines += _line("mlx:draft_tokens_total", registry.draft_tokens_total,
+                   "Tokens drafted by speculative decoding.", "counter")
+    lines += _line("mlx:draft_tokens_accepted_total", registry.draft_tokens_accepted_total,
+                   "Drafted tokens the model accepted.", "counter")
     lines += _line("mlx:decode_tokens_per_second", _round(rolling),
                    "Decode throughput: in-flight requests if any, else recent history.",
                    "gauge")
@@ -103,6 +107,14 @@ def stats_json(registry: MetricsRegistry, model_path: str | None = None) -> str:
             "loaded_at": registry.model_loaded_at,
             "load_seconds": _round(registry.model_load_seconds),
             "tool_calls": registry.tool_calls,
+        },
+        "speculative": {
+            "mode": registry.speculative,
+            "rounds": registry.draft_rounds_total,
+            "drafted_tokens": registry.draft_tokens_total,
+            "accepted_tokens": registry.draft_tokens_accepted_total,
+            "acceptance": _round(registry.draft_tokens_accepted_total / registry.draft_tokens_total)
+            if registry.draft_tokens_total else None,
         },
         "live": {
             "requests_active": registry.active_requests,
