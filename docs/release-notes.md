@@ -1,3 +1,21 @@
+# Dyno Lab 0.6.12
+
+Dyno Lab 0.6.12 sets up the agent sandbox the first time you open it, asking before it installs anything, and makes Qwen generation faster again on M5 Macs: up to 3.8× plain decoding on code, reasoning and edits.
+
+## The sandbox sets itself up
+
+- **On first launch** Dyno looks at your Mac and lists what agent tests still need: Docker, the gVisor runtime, the sandbox image and an internal-only network. Each says why it's needed and what setup will do, with a time estimate. Nothing is installed until you click **Install and set up**; Dyno then installs what's missing with Homebrew, starts the Colima VM, builds the image and runs the isolation checks. If Homebrew itself is missing, it shows the install command to run in Terminal. Reopen it from **Agents › Advanced › Readiness › Guided setup…** or **Set up the sandbox…** next to **Start test**. See [Agent sandbox tests](agent-sandbox-tests.md).
+- **Start test says why it's off** instead of just being grey.
+- **No more stuck checks.** A test container that won't start or hangs is reported with Docker's own error, a failed image build shows why, and setup and the checks are stopped with an explanation if they run too long.
+
+## Faster generation on M5
+
+- **Drafts checked on the neural accelerators.** On Macs whose GPU has them (M5 and later), Dyno checks a model's guesses with its own kernel, so checking 16 tokens costs about the same as 5. Qwen models now draft up to 7 tokens instead of 3: 1.2–1.9× faster than 0.6.11 on code, reasoning and edits, with no change on chat. `DYNO_NAX=0` turns it off. See [Faster generation](faster-generation.md).
+- **DFlash2 block drafter, optional.** For Qwen3.8-27B, `dyno pull z-lab/Qwen3.8-27B-DFlash2` (3.2 GB) adds a drafter that proposes a block of up to 7 tokens in one pass; with it on disk Dyno uses it automatically, 10–15% faster again on code and reasoning. It uses about 1.7 GB more memory and is never downloaded on its own. `--speculative mtp` keeps the built-in head.
+- **Same output.** Every guess is accepted with the same exact rule as 0.6.11, so each token keeps the model's probability at your sampling settings.
+
+---
+
 # Dyno Lab 0.6.11
 
 Dyno Lab 0.6.11 makes Qwen3.5, 3.6 and 3.8 models generate about twice as fast, with exactly the same output. Nothing to set up.
