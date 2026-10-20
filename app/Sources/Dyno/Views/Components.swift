@@ -131,3 +131,28 @@ struct SectionLabel: View {
         }
     }
 }
+
+/// Marks a model that `dyno serve` speeds up with speculative decoding.
+/// `compact` shows only the bolt, for narrow lists.
+struct BoostBadge: View {
+    var compact = false
+
+    var body: some View {
+        Group {
+            if compact {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 9, weight: .semibold))
+            } else {
+                Label("Dyno Boost", systemImage: "bolt.fill")
+                    .font(.system(size: 9, weight: .semibold))
+                    .labelStyle(.titleAndIcon)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(DynoBrand.accent.opacity(0.18), in: Capsule())
+            }
+        }
+        .foregroundStyle(DynoBrand.accent)
+        .help("Dyno Boost: Dyno drafts several tokens ahead and checks them in one pass, "
+              + "so this model generates about 2–3× faster on code and edits, and less on open-ended chat. "
+              + "Output is the same as without it. Fastest on M5 Macs.")
+    }
+}
