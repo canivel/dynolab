@@ -20,9 +20,14 @@ struct MainWindow: View {
     @State private var dragStart: Double?
     @State private var poolSession = PoolSession()
     @State private var modelFormat = "MLX"
+    /// The first time the app opens, it sets up the agent sandbox: it lists what this Mac needs and asks first.
+    @AppStorage("sandboxSetupOffered") private var setupOffered = false
+    @State private var showingSetup = false
+    private let firstRun: Bool
 
-    init(model: MonitorModel, initialTab: Tab = .agents, chat: Bool = false, modelFormat: String = "MLX") {
+    init(model: MonitorModel, initialTab: Tab = .agents, chat: Bool = false, modelFormat: String = "MLX", firstRun: Bool = false) {
         self.model = model
+        self.firstRun = firstRun
         _tab = State(initialValue: initialTab)
         _modelFormat = State(initialValue: modelFormat)
         _showingChat = State(initialValue: chat)
@@ -132,6 +137,15 @@ struct MainWindow: View {
             model.currentTab = tab
             // Actions the assistant takes in Dyno (open a screen, fill Agents → Setup) work even while it's minimized.
             model.assistant.onAction = { [model] e in AssistantActions.apply(e, model: model) }
+            if firstRun && !setupOffered { showingSetup = true }
+        }
+        .onChange(of: model.wantsSandboxSetup) { _, wanted in
+            if wanted { showingSetup = true; model.wantsSandboxSetup = false }
+        }
+        .sheet(isPresented: $showingSetup) {
+            SandboxSetupView(lab: model.researchLab) { _ in
+                setupOffered = true; showingSetup = false; model.sandboxSetupVersion += 1
+            }
         }
         .onChange(of: tab) { _, t in model.currentTab = t }
         // One view asking to show another — Chat sending you to Models when

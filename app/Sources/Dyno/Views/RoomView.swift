@@ -835,7 +835,8 @@ struct TestSetupView: View {
             ForEach(errors, id: \.self) { Text($0).font(.caption).foregroundStyle(.orange) }
             Button(action: start) {
                 Text(working ? "Starting…" : "Start test →").font(.title3.bold()).frame(maxWidth: .infinity).padding(.vertical, 6)
-            }.buttonStyle(.dynoPrimary).disabled(working || !errors.isEmpty || planned.isEmpty || !sandboxOK)
+            }.buttonStyle(.dynoPrimary).disabled(working || startBlocker != nil)
+            if let startBlocker, !working { Text(startBlocker).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
         }
     }
 
@@ -971,6 +972,13 @@ struct TestSetupView: View {
     }
 
     private var sandboxOK: Bool { readiness["ok"] as? Bool == true }
+    /// Why Start test is off, in one line, so a greyed-out button never leaves anyone guessing.
+    private var startBlocker: String? {
+        if !sandboxOK { return "The sandbox isn't set up on this Mac yet: Set up the sandbox… above." }
+        if !errors.isEmpty { return errors.count == 1 ? "Fix the item in orange above to start." : "Fix the \(errors.count) items in orange above to start." }
+        if planned.isEmpty { return issue == nil ? "Checking the test…" : "The test couldn't be checked: see the message above." }
+        return nil
+    }
     private var modelsOK: Bool { draft.agents.first.map { a in servers.contains { $0.port == a.port } } ?? false }
     private var controlsOK: Bool { (readiness["controls"] as? [String: Any])?["passed"] as? Bool == true }
 
@@ -982,8 +990,10 @@ struct TestSetupView: View {
                 check("Model running for the lead agent", modelsOK)
                 check("Rule detectors tested", controlsOK)
             }.font(.callout)
-            if !sandboxOK || !controlsOK {
-                Button(sandboxOK ? "Test the rule detectors in Advanced › Readiness" : "Fix in Advanced › Readiness") { onAdvanced("Readiness") }.buttonStyle(.link).font(.caption)
+            if !sandboxOK {
+                Button("Set up the sandbox…") { model.wantsSandboxSetup = true }.buttonStyle(.link).font(.caption)
+            } else if !controlsOK {
+                Button("Test the rule detectors in Advanced › Readiness") { onAdvanced("Readiness") }.buttonStyle(.link).font(.caption)
             }
         }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12).fill(DynoBrand.surface)).overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))

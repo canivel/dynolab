@@ -102,6 +102,10 @@ final class MonitorModel {
     }
     /// Set to ask the window to show chat; the window clears it once handled.
     var wantsChat = false
+    /// Set to open the sandbox setup sheet; the window clears it once handled.
+    var wantsSandboxSetup = false
+    /// Bumped when the setup sheet closes, so views showing readiness load it again.
+    var sandboxSetupVersion = 0
     /// Set to ask the window to switch tabs; the window clears it once handled.
     /// Chat needs to send you to Run when nothing is loaded.
     var requestedTab: MainWindow.Tab?

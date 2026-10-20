@@ -368,6 +368,7 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
         if parts == ['evaluators']: return runs.evaluators()
         if parts == ['environments']: return runs.environments(query.get('harness_dir'))
         if parts == ['engine']: return runs.engine(query.get('harness_dir'))
+        if parts == ['engine', 'doctor']: return runs.doctor(query.get('harness_dir'))
         if len(parts) == 2 and parts[0] == 'environment-templates': return runs.environment_detail(query.get('harness_dir'), parts[1])
         if len(parts) == 3 and parts[0] == 'environments' and parts[2] == 'events': return runs.environment_events(query.get('harness_dir'), parts[1])
         if len(parts) == 3 and parts[0] == 'episodes' and parts[2] == 'evaluations': return runs.episode_evaluations(parts[1])

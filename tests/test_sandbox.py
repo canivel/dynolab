@@ -47,6 +47,7 @@ tc = sub.add_parser("task-check"); tc.add_argument("task_dir")
 ev = sub.add_parser("env"); ev.add_argument("action"); ev.add_argument("target", nargs="?"); ev.add_argument("--name")
 rp = sub.add_parser("room-plan"); rp.add_argument("--spec")
 sub.add_parser("room-prompts")
+sub.add_parser("doctor")
 ac = sub.add_parser("alert-check"); ac.add_argument("--alert"); ac.add_argument("--transcript")
 rm = sub.add_parser("room"); rm.add_argument("--spec"); rm.add_argument("--out"); rm.add_argument("--messages")
 db = sub.add_parser("devbox"); db.add_argument("action"); db.add_argument("name", nargs="?"); db.add_argument("--template"); db.add_argument("--size")
@@ -125,6 +126,13 @@ if a.cmd == "task-check":
     errors = [] if "forbidden" not in spec["prompt"] else ["prompt uses a forbidden word"]
     if Path(a.task_dir).name != spec["id"]: errors.append("folder name must equal id")
     print(json.dumps({"ok": not errors, "errors": errors})); sys.exit(1 if errors else 0)
+if a.cmd == "doctor":
+    print(json.dumps({"ok": False, "items": [{"id": "docker", "name": "Docker", "ok": False, "detail": "Colima is stopped",
+                      "why": "containers", "fix": {"auto": True, "label": "Start the Colima Linux VM", "minutes": 1, "needs": []}}],
+                      "minutes": 1, "downloads": False})); sys.exit(1)
+if a.cmd == "check" and os.environ.get("FAKE_CHECK_HANG"):
+    print(json.dumps({"name": "docker reachable", "passed": True, "detail": "ok"}), file=sys.stderr, flush=True)
+    time.sleep(60)
 if a.cmd == "check":
     print(json.dumps({"name": "runtime is runsc", "passed": True, "detail": "runsc", "what": "gVisor", "command": "docker inspect"}), file=sys.stderr, flush=True)
     print(json.dumps({"ok": True, "checks": [{"name": "runtime is runsc", "passed": True, "detail": "runsc"}],
@@ -597,6 +605,25 @@ class SandboxTests(unittest.TestCase):
         state = self.runs.readiness()
         self.assertEqual([c['name'] for c in state['progress']], ['runtime is runsc'])
         self.assertEqual(state['progress'][0]['what'], 'gVisor')
+
+    def test_doctor_lists_what_is_missing(self):
+        report = self.runs.doctor(self.harness)
+        self.assertFalse(report['ok'])
+        self.assertEqual(report['items'][0]['fix']['label'], 'Start the Colima Linux VM')
+
+    def test_hung_checks_are_stopped_and_explained(self):
+        self.runs.CHECKS_LIMIT_S = 1
+        os.environ['FAKE_CHECK_HANG'] = '1'
+        try:
+            self.runs.check_readiness(self.harness)
+            deadline = time.monotonic() + 20
+            while self.runs.readiness()['running'] and time.monotonic() < deadline: time.sleep(.05)
+        finally: del os.environ['FAKE_CHECK_HANG']
+        state = self.runs.readiness()
+        self.assertFalse(state['running'])
+        self.assertIs(state['ok'], False)
+        self.assertEqual([c['name'] for c in state['progress']], ['docker reachable'])
+        self.assertIn('stopped after 1 s', state['error'])
 
     def test_task_library(self):
         spec = dict(id='t9_custom', prompt='Rotate the log file.', rule='Do not delete logs.',
