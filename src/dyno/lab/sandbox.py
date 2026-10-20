@@ -5,6 +5,7 @@ reads the run folders the harness writes (transcript.jsonl, manifest.json,
 label.json) and keeps a full-text index of every event, so what agents said,
 reasoned and tried can be searched long after a run.
 """
+import contextlib
 import hashlib
 import json
 import os
@@ -25,6 +26,14 @@ KEY = re.compile(r'^[0-9a-f]{32}$')
 EVENT_TEXT_LIMIT = 20000
 # A test's sampling: left out, a local server samples greedily and every run of the test is the same.
 SAMPLING = {'temperature', 'top_p', 'top_k', 'min_p'}
+
+
+@contextlib.contextmanager
+def _watchdog(process, seconds):
+    """Kill a harness command that runs past its limit, so the app never waits forever."""
+    timer = threading.Timer(seconds, process.kill); timer.daemon = True; timer.start()
+    try: yield
+    finally: timer.cancel()
 
 
 def harness_env():
@@ -629,6 +638,12 @@ class SandboxRuns:
             state.update(installed=False, error=str(error))
         return state
 
+    SETUP_LIMIT_S, CHECKS_LIMIT_S = 3600, 300
+
+    def doctor(self, directory=None):
+        """What this Mac still needs for the sandbox, with how setup would fix each. Nothing is changed."""
+        return self.harness(directory).json(['doctor'], timeout=150)
+
     def setup_engine(self, body):
         """Prepare this machine in the background: optional runtime install, sandbox image, network."""
         if not isinstance(body, dict) or set(body) - {'harness_dir', 'install_runtime'}: raise ValueError('Use install_runtime')
@@ -641,14 +656,16 @@ class SandboxRuns:
                 args = ['setup'] + (['--install-runtime'] if body.get('install_runtime') else [])
                 try:
                     with subprocess.Popen([*h.argv, *args], cwd=h.home, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                          text=True, env=h.env) as process:
+                                          text=True, env=h.env) as process, _watchdog(process, self.SETUP_LIMIT_S):
                         for line in process.stderr:
                             try: entry = json.loads(line)
                             except ValueError: continue
                             if isinstance(entry, dict) and 'name' in entry:
                                 steps.append(entry); _atomic_write(path, json.dumps(dict(ok=None, steps=steps, started=started)))
                         out = process.stdout.read(); process.wait(timeout=1800)
-                    result = json.loads(out) if out.strip().startswith('{') else dict(ok=False, steps=steps)
+                    result = (json.loads(out) if out.strip().startswith('{') else
+                              dict(ok=False, steps=steps, error=f'Setup stopped after {self.SETUP_LIMIT_S // 60} minutes. Check your internet connection, then set up again.'
+                                   if process.returncode == -9 else 'Setup stopped without reporting a result'))
                 except (subprocess.SubprocessError, OSError, ValueError) as error:
                     result = dict(ok=False, steps=steps, error=str(error))
                 result.update(started=started, finished=time.time())
@@ -680,7 +697,8 @@ class SandboxRuns:
                 started = time.time(); progress = []
                 try:
                     with subprocess.Popen([*h.argv, 'check', '--json'], cwd=h.home, stdout=subprocess.PIPE,
-                                          stderr=subprocess.PIPE, text=True, env=h.env) as process:
+                                          stderr=subprocess.PIPE, text=True, env=h.env) as process, \
+                            _watchdog(process, self.CHECKS_LIMIT_S):
                         # Each finished check arrives on stderr as one JSON line; publish it immediately.
                         for line in process.stderr:
                             try: entry = json.loads(line)
@@ -689,7 +707,9 @@ class SandboxRuns:
                                 progress.append(entry)
                                 _atomic_write(state_path, json.dumps(dict(ok=None, checks=[], progress=progress, started=started, harness=' '.join(h.argv))))
                         out = process.stdout.read(); process.wait(timeout=180)
-                    result = json.loads(out) if out.strip().startswith('{') else dict(ok=False, checks=progress, error='The harness did not report a result')
+                    result = (json.loads(out) if out.strip().startswith('{') else
+                              dict(ok=False, checks=progress, error=f'The checks stopped after {self.CHECKS_LIMIT_S} s. Restart Docker (colima restart), then run them again.'
+                                   if process.returncode == -9 else 'The harness did not report a result'))
                 except (subprocess.SubprocessError, OSError, ValueError) as error:
                     result = dict(ok=False, checks=progress, error=str(error))
                 result.update(progress=progress, started=started, checked=time.time(), duration=round(time.time() - started, 1), harness=' '.join(h.argv))

@@ -178,6 +178,10 @@ enum ViewSnapshot {
         if arguments.contains("--thread-only"), let key = ProcessInfo.processInfo.environment["DYNO_EPISODE_KEY"] {
             targets = [("agents-thread", { AnyView(ConversationThread(lab: model.researchLab, key: key, onError: { print("error:", $0) }, onBack: {}).frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1400, height: 900))]
         }
+        if arguments.contains("--sandbox-setup-only") {
+            // The first-run sheet against the Lab service at DYNO_LAB_PORT; DYNO_SNAPSHOT_SETTLE lets it finish looking.
+            targets = [("sandbox-setup", { AnyView(SandboxSetupView(lab: model.researchLab, onClose: { _ in }).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 600, height: 560))]
+        }
         if arguments.contains("--evaluators-only") {
             targets = [("evaluate-evaluators", { AnyView(ScrollView { EvaluatorsPane(model: model, onError: { print("error:", $0) }).padding(20) }.frame(maxWidth: .infinity, maxHeight: .infinity).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1100, height: 1000))]
         }

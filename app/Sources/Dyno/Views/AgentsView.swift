@@ -95,6 +95,7 @@ struct AgentsView: View {
             case .readiness: ScrollView { readinessPanel.padding(.vertical) }
             }
         }.padding(20).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
+        .onChange(of:model.sandboxSetupVersion) { _,_ in Task { try? await loadEngine();try? await loadReadiness() } }
         .task {
             await model.researchLab.start()
             if let initialEpisode { workspace=Workspace.runs.rawValue;episodeKey=initialEpisode }
@@ -317,6 +318,7 @@ struct AgentsView: View {
             step(1,"Sandbox engine",done:engine["installed"] as? Bool == true && readiness["ok"] as? Bool == true,
                  detail:engine["installed"] as? Bool == true ? "Harness \(paths["version"] as? String ?? "") \(engine["bundled"] as? Bool == true ? "bundled with Dyno" : "from a checkout") · \(tasks.count) tasks · your tasks, environments and runs are kept in \(paths["home"] as? String ?? "")" : (engine["error"] as? String ?? "Checking…")) {
                 HStack {
+                    Button("Guided setup…") { model.wantsSandboxSetup = true }.disabled(setupRunning)
                     Button(setupRunning ? "Setting up…" : "Set up") { perform { engine=try await model.researchLab.request("/sandbox/engine/setup",body:["harness_dir":harnessDir],timeout:15) } }.disabled(setupRunning || engine["installed"] as? Bool != true)
                     if let home=paths["home"] as? String { Button("Show data") { NSWorkspace.shared.open(URL(fileURLWithPath:home)) } }
                 }

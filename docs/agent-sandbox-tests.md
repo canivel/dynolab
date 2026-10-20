@@ -11,7 +11,7 @@ The sandbox harness is a separate open-source project, [dynolab-harness](https:/
 ## Requirements
 
 - Apple Silicon Mac with macOS 14 or later.
-- Docker in a Colima VM with the gVisor (`runsc`) runtime. **Agents → Advanced → Readiness** checks this. If anything is missing, it shows the exact steps; the harness's `setup --install-runtime` installs it.
+- Docker in a Colima VM with the gVisor (`runsc`) runtime. The first time Dyno opens, it looks at your Mac and lists what's missing: Docker, gVisor, the sandbox image and an internal-only network, each with why it's needed and how long setting it up takes. Nothing is installed until you click **Install and set up**; Dyno then installs what's missing with Homebrew, starts the Colima VM, builds the image and runs the isolation checks. If Homebrew itself is missing, Dyno shows its install command for you to run in Terminal, since it asks for your Mac password. Open the same steps later from **Agents → Advanced → Readiness → Guided setup…**, or **Set up the sandbox…** next to **Start test**.
 - A model served through Dyno or any OpenAI-compatible endpoint that supports tool calls.
 
 ## 1 · Setup

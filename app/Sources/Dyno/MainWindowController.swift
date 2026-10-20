@@ -31,7 +31,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     private func build() {
-        let hosting = NSHostingView(rootView: MainWindow(model: model))
+        let hosting = NSHostingView(rootView: MainWindow(model: model, firstRun: true))
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 940, height: 600),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
