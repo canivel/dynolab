@@ -162,7 +162,7 @@ struct DiscoverView: View {
             LazyVStack(alignment: .leading, spacing: 12) {
                 if model.catalogFormat == .mlx {
                     ForEach(model.localModels.filter { matches($0.name) }) { item in
-                        libraryRow(item.shortName, detail: "MLX · " + Format.bytes(item.sizeBytes), action: "Use in Models",
+                        libraryRow(item.shortName, detail: "MLX · " + Format.bytes(item.sizeBytes), boost: DynoBoost.supports(item.name), action: "Use in Models",
                                    delete: { deleting = ModelToDelete(path: item.path, name: item.name) }) { useMLX(item.name) }
                     }
                 } else {
@@ -177,10 +177,13 @@ struct DiscoverView: View {
         }
         .confirmsModelDeletion(model, item: $deleting)
     }
-    private func libraryRow(_ name: String, detail: String, action: String, delete: @escaping () -> Void, perform: @escaping () -> Void) -> some View {
+    private func libraryRow(_ name: String, detail: String, boost: Bool = false, action: String, delete: @escaping () -> Void, perform: @escaping () -> Void) -> some View {
         HStack {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-            VStack(alignment: .leading, spacing: 4) { Text(name).font(.headline); Text(detail).font(.caption).foregroundStyle(.secondary) }
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) { Text(name).font(.headline); if boost { BoostBadge() } }
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
             Spacer()
             Button(action, action: perform).buttonStyle(.dynoPrimary)
             Button(action: delete) { Image(systemName: "trash") }.buttonStyle(.borderless).foregroundStyle(.secondary)
@@ -219,6 +222,9 @@ private struct CatalogRow: View {
                             .font(.system(size: 9, weight: .medium))
                             .padding(.horizontal, 5).padding(.vertical, 1)
                             .background(Color.accentColor.opacity(0.15), in: Capsule())
+                    }
+                    if model.catalogFormat == .mlx && DynoBoost.supports(candidate.id) {
+                        BoostBadge()
                     }
                     if candidate.isMultimodal {
                         Text("vision")
