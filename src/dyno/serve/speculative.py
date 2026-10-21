@@ -528,7 +528,10 @@ def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, promp
                 residual = mx.where(mass > 0, residual / mx.maximum(mass, 1e-20), p[:k])
                 dist = mx.concatenate([residual, p[k:]], axis=0)
                 bonus = mx.random.categorical(mx.log(dist))
-            mx.eval(n_ok, bonus, draft_ids, _cache_arrays([mtp_cache]))  # copies and plain steps leave the commit lazy
+            # The server reads every token's logprob; one batched pass per round, evaluated with the
+            # acceptance, instead of a softmax and a GPU sync for each token handed out.
+            logprobs = logprobs_of(logits)
+            mx.eval(n_ok, bonus, draft_ids, logprobs, _cache_arrays([mtp_cache]))  # copies and plain steps leave the commit lazy
             j = int(n_ok.item())
             if _PROFILE:
                 verified_at = time.perf_counter()
@@ -569,7 +572,7 @@ def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, promp
 
             for i, t in enumerate(out):
                 try:
-                    yield t, logprobs_of(logits[i]), i < j
+                    yield t, logprobs[i], i < j
                 except GeneratorExit:
                     settle(i)
                     return

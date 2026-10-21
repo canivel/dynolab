@@ -329,7 +329,8 @@ def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampl
                 mass = residual.sum(-1, keepdims=True)
                 residual = mx.where(mass > 0, residual / mx.maximum(mass, 1e-20), p[:k])
                 bonus = mx.random.categorical(mx.log(mx.concatenate([residual, p[k:]], axis=0)))
-            mx.eval(n_ok, bonus, draft_ids)
+            logprobs = logprobs_of(logits)  # all rows at once, like the MTP loop
+            mx.eval(n_ok, bonus, draft_ids, logprobs)
             j = int(n_ok.item())
             if copy:
                 copier.feedback(copy, j, time.perf_counter() - started)
@@ -359,7 +360,7 @@ def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampl
 
             for i, t in enumerate(out):
                 try:
-                    yield t, logprobs_of(logits[i]), i < j
+                    yield t, logprobs[i], i < j
                 except GeneratorExit:
                     settle(i)
                     return
