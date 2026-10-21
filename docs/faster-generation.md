@@ -74,6 +74,19 @@ The drafter is 3.2 GB to download and about 1.7 GB in memory, since Dyno loads i
 
 Ranges are two sessions. DFlash2 is 10–15% faster on code and reasoning and about level on chat.
 
+### Copying from the context
+
+When the model rewrites a file, quotes a path or repeats part of the question, the next tokens are often already written in the prompt or earlier in the answer. Each round Dyno first looks for the newest tokens in the context; when they match earlier text and checking the copy is expected to beat the drafter, the round checks the copied tokens (up to 15) instead of drafting. A copy that agrees with a long stretch of the context is trusted for longer, and Dyno learns per request how often copies survive. Copied tokens go through the same exact rule, so the output is unchanged. The whole prompt is searched, including the part the server's prompt cache already holds, so agent turns can copy from earlier tool results.
+
+Same setup, through the server, median of four runs (two at temperature 0, two at 0.6 per cell):
+
+| Workload | MTP head | MTP head + copying | DFlash2 | DFlash2 + copying | MTPLX 2.12 |
+|---|---|---|---|---|---|
+| Code edit, temperature 0 | 109.6 tok/s | 203.5 tok/s | 105.3 tok/s | 218.0 tok/s | 113.7 tok/s |
+| Code edit, temperature 0.6 | 102.8 tok/s | 174.0 tok/s | 107.1 tok/s | 177.4 tok/s | 130.9 tok/s |
+
+Code, chat and reasoning stay within run-to-run noise, since fresh text rarely matches the context. `DYNO_COPY_DRAFTS=0` turns it off.
+
 ### The output doesn't change
 
 At temperature 0 every kept token is the model's own top choice: the text is the model's greedy text. With sampling, drafts are accepted with the standard lossless rule (accept with probability min(1, p/q), otherwise resample from the difference), so each token has exactly the probability the model gives it, with your temperature, top-p and top-k. On a 256-token check, every token matched the model's own choice.
@@ -103,6 +116,7 @@ The server log has one line per request:
 
 ```
 MTP: 512 tokens in 147 rounds (3.48 per round), 365/437 drafts accepted
+MTP: 384 tokens in 37 rounds (10.38 per round), 340/366 drafts accepted, cache 0; 29 rounds copied from the context, 337/350 kept
 DFlash2: 383 tokens in 74 rounds (5.18 per round), 309/468 drafts accepted
 ```
 

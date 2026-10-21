@@ -187,9 +187,10 @@ def dflash_generate_step(
 
             registry.note_speculation(stats["rounds"], stats["drafted"], stats["accepted"])
             _log.info(
-                "DFlash2: %d tokens in %d rounds (%.2f per round), %d/%d drafts accepted%s",
+                "DFlash2: %d tokens in %d rounds (%.2f per round), %d/%d drafts accepted%s%s",
                 stats["tokens"], stats["rounds"], stats["tokens"] / stats["rounds"],
                 stats["accepted"], stats["drafted"], " (drafter context reset)" if stats["reset"] else "",
+                S.copy_summary(draft_model),
             )
 
 
@@ -268,11 +269,15 @@ def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampl
 
         timings = getattr(draft_model, "policy", None) or S.DraftPolicy()
         policy = draft_model.policy = timings.fresh()
+        copier = S.copier_for(draft_model, prompt, int(z.item()))
         while produced < max_tokens:
             started = time.perf_counter()
-            k = min(policy.choose(k_max), max_tokens - produced)
+            copy = copier and copier.propose(policy.rate(k_max), policy.unit, max_tokens - produced)
+            k = len(copy.tokens) if copy else min(policy.choose(k_max), max_tokens - produced)
 
-            if k == 0:  # a plain step; its features still reach the drafter through state.add
+            if copy:  # tokens copied from the context
+                draft_ids = mx.array(copy.tokens, dtype=mx.uint32)
+            elif k == 0:  # a plain step; its features still reach the drafter through state.add
                 draft_ids = mx.zeros((0,), dtype=mx.uint32)
             else:
                 proposal = draft_model.propose(state, z, k, 0.0 if greedy else spec.temperature, not greedy)
@@ -296,8 +301,11 @@ def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampl
                 bonus = choice
             else:
                 p = spec.probs(logits)
-                q = mx.zeros((k, p.shape[-1]), dtype=p.dtype)
-                q = mx.put_along_axis(q, q_ids.astype(mx.int32), q_probs.astype(p.dtype), axis=-1)
+                if copy:
+                    q = S.one_hot(draft_ids, p)
+                else:
+                    q = mx.zeros((k, p.shape[-1]), dtype=p.dtype)
+                    q = mx.put_along_axis(q, q_ids.astype(mx.int32), q_probs.astype(p.dtype), axis=-1)
                 rows = mx.arange(k)
                 ratio = p[rows, draft_ids] / mx.maximum(q[rows, draft_ids], 1e-20)
                 n_ok = mx.sum(mx.cumprod((mx.random.uniform(shape=(k,)) < ratio).astype(mx.int32)))
@@ -307,7 +315,10 @@ def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampl
                 bonus = mx.random.categorical(mx.log(mx.concatenate([residual, p[k:]], axis=0)))
             mx.eval(n_ok, bonus, draft_ids)
             j = int(n_ok.item())
-            policy.update(k, j, time.perf_counter() - started)
+            if copy:
+                copier.feedback(copy, j, time.perf_counter() - started)
+            else:
+                policy.update(k, j, time.perf_counter() - started)
             stats["rounds"] += 1
             stats["drafted"] += k
             stats["accepted"] += j
@@ -316,6 +327,8 @@ def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampl
             rollback = S._Rollback(target_cache, records, k + 1)
             rollback.keep(j + 1)
             out = draft_ids[:j].tolist() + [int(bonus[j].item())]
+            if copier:
+                copier.observe(out)
             state.add(feats[:, : j + 1])
             z = mx.array([[out[-1]]], dtype=mx.uint32)
 

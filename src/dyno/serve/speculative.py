@@ -34,8 +34,11 @@ from mlx_lm.models.cache import KVCache, make_prompt_cache
 from mlx_lm.models.gated_delta import gated_delta_update
 from mlx_lm.sample_utils import apply_min_p, apply_top_k, apply_top_p
 
+from . import copy_draft
+
 _log = logging.getLogger(__name__)
 _PROFILE = os.environ.get("DYNO_MTP_PROFILE") == "1"  # sync between phases and log where a round goes
+COPY_DRAFTS = os.environ.get("DYNO_COPY_DRAFTS", "1") != "0"
 
 
 # --- Sampling ------------------------------------------------------------------------
@@ -262,6 +265,17 @@ class DraftPolicy:
     def _best(self, k_max: int) -> int:
         """The fastest draft length; plain (0) only when it beats drafting by PLAIN_MARGIN, so a
         noisy acceptance estimate doesn't flip a small drafting gain into plain decoding."""
+        best, best_rate = self._fastest(k_max)
+        plain = self.seconds.get(0, self.PRIOR[0] * (self.unit or 1.0))
+        return 0 if 1.0 / plain > self.PLAIN_MARGIN * best_rate else best
+
+    def rate(self, k_max: int) -> float:
+        """Expected tokens per plain step at the best choice, what a copy draft has to beat."""
+        plain = self.seconds.get(0, self.PRIOR[0] * (self.unit or 1.0))
+        return max(self._fastest(k_max)[1], 1.0 / plain) * plain
+
+    def _fastest(self, k_max: int) -> Tuple[int, float]:
+        """(draft length >= 1, expected tokens per second) with the best rate."""
         best, best_rate = 1, 0.0
         for k in range(1, min(k_max, len(self.accept)) + 1):
             expected, survive = 1.0, 1.0
@@ -274,8 +288,7 @@ class DraftPolicy:
             rate = expected / cost
             if rate > best_rate:
                 best, best_rate = k, rate
-        plain = self.seconds.get(0, self.PRIOR[0] * (self.unit or 1.0))
-        return 0 if 1.0 / plain > self.PLAIN_MARGIN * best_rate else best
+        return best, best_rate
 
     def update(self, k: int, accepted: int, seconds: float) -> None:
         a = self.alpha
@@ -398,10 +411,10 @@ def mtp_generate_step(
 
             registry.note_speculation(stats["rounds"], stats["drafted"], stats["accepted"])
             _log.info(
-                "MTP: %d tokens in %d rounds (%.2f per round), %d/%d drafts accepted, cache %d%s",
+                "MTP: %d tokens in %d rounds (%.2f per round), %d/%d drafts accepted, cache %d%s%s",
                 stats["tokens"], stats["rounds"], stats["tokens"] / stats["rounds"],
                 stats["accepted"], stats["drafted"], stats["cached"],
-                " (drafter cache reset)" if stats["reset"] else "",
+                " (drafter cache reset)" if stats["reset"] else "", copy_summary(draft_model),
             )
 
 
@@ -453,22 +466,30 @@ def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, promp
 
         timings = getattr(draft_model, "policy", None) or DraftPolicy()
         policy = draft_model.policy = timings.fresh()
+        copier = copier_for(draft_model, prompt, unfed.item())
         while produced < max_tokens:
             started = time.perf_counter()
             stats.setdefault("t_first", started)
-            k = min(policy.choose(k_draft), max_tokens - produced)
+            copy = copier and copier.propose(policy.rate(k_draft), policy.unit, max_tokens - produced)
+            if copy:
+                # Verify tokens copied from the context; the drafter only commits its pending pairs.
+                k = len(copy.tokens)
+                draft_model(pending_hidden, pending_tokens, mtp_cache)
+                drafts, qs = [mx.array([[t]], dtype=unfed.dtype) for t in copy.tokens], None
+            else:
+                k = min(policy.choose(k_draft), max_tokens - produced)
 
-            # Draft: commit the pending pairs, then chain k-1 provisional steps.
-            g = draft_model(pending_hidden, pending_tokens, mtp_cache)[:, -1:]
-            committed = mtp_cache.offset
-            drafts, qs = [], []
-            for i in range(k):
-                d, q = sample_draft(g)
-                drafts.append(d.reshape(1, 1))
-                qs.append(q)
-                if i + 1 < k:
-                    g = draft_model(g, drafts[-1], mtp_cache)
-            mtp_cache.trim(mtp_cache.offset - committed)
+                # Draft: commit the pending pairs, then chain k-1 provisional steps.
+                g = draft_model(pending_hidden, pending_tokens, mtp_cache)[:, -1:]
+                committed = mtp_cache.offset
+                drafts, qs = [], []
+                for i in range(k):
+                    d, q = sample_draft(g)
+                    drafts.append(d.reshape(1, 1))
+                    qs.append(q)
+                    if i + 1 < k:
+                        g = draft_model(g, drafts[-1], mtp_cache)
+                mtp_cache.trim(mtp_cache.offset - committed)
             if _PROFILE:
                 mx.eval(drafts, [q for q in qs if q is not None])
                 drafted_at = time.perf_counter()
@@ -496,7 +517,7 @@ def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, promp
             else:
                 draft_ids = mx.concatenate(drafts, axis=1)[0]
                 p = spec.probs(logits)  # (k+1, V)
-                q = mx.stack(qs)  # (k, V)
+                q = mx.stack(qs) if qs is not None else one_hot(draft_ids, p)  # (k, V)
                 rows = mx.arange(k)
                 ratio = p[rows, draft_ids] / mx.maximum(q[rows, draft_ids], 1e-20)
                 agree = (mx.random.uniform(shape=(k,)) < ratio).astype(mx.int32)
@@ -506,12 +527,15 @@ def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, promp
                 residual = mx.where(mass > 0, residual / mx.maximum(mass, 1e-20), p[:k])
                 dist = mx.concatenate([residual, p[k:]], axis=0)
                 bonus = mx.random.categorical(mx.log(dist))
-            mx.eval(n_ok, bonus, draft_ids)
+            mx.eval(n_ok, bonus, draft_ids, _cache_arrays([mtp_cache]))  # copies and plain steps leave the commit lazy
             j = int(n_ok.item())
             if _PROFILE:
                 verified_at = time.perf_counter()
                 stats["verify_s"] += verified_at - drafted_at
-            policy.update(k, j, time.perf_counter() - started)
+            if copy:
+                copier.feedback(copy, j, time.perf_counter() - started)
+            else:
+                policy.update(k, j, time.perf_counter() - started)
             stats["rounds"] += 1
             stats["drafted"] += k
             stats["accepted"] += j
@@ -523,6 +547,8 @@ def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, promp
                 mx.eval(_cache_arrays(target_cache))
                 stats["rollback_s"] += time.perf_counter() - verified_at
             out = draft_ids[:j].tolist() + [int(bonus[j].item())]
+            if copier:
+                copier.observe(out)
             z = mx.array([[out[-1]]], dtype=mx.uint32)
 
             # Pairs for the next round: (h at x_i, x_{i+1}) for the accepted run, then z.
@@ -553,6 +579,34 @@ def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, promp
 
         # The budget ran out right after the first token.
         _feed(target, draft_model, unfed, target_cache, mtp_cache, pending_hidden, pending_tokens)
+
+
+def copier_for(draft_model: Any, prompt: mx.array, first: int) -> Optional[copy_draft.CopyDrafter]:
+    """A copy drafter over this request's whole prompt, or None when copy drafting is off.
+
+    Verify costs it learns are the machine's, so they carry over between requests."""
+    draft_model.copier = None
+    if not COPY_DRAFTS:
+        return None
+    cost = getattr(draft_model, "copy_cost", None)
+    if cost is None:
+        cost = draft_model.copy_cost = copy_draft.VerifyCost(nax=DraftPolicy.PRIOR is DraftPolicy.NAX_PRIOR)
+    copier = draft_model.copier = copy_draft.CopyDrafter(copy_draft.context(prompt.reshape(-1).tolist()), cost)
+    copier.observe([first])
+    return copier
+
+
+def copy_summary(draft_model: Any) -> str:
+    copier = getattr(draft_model, "copier", None)
+    if not copier or not copier.stats["rounds"]:
+        return ""
+    c = copier.stats
+    return f"; {c['rounds']} rounds copied from the context, {c['kept']}/{c['drafted']} kept"
+
+
+def one_hot(token_ids: mx.array, like: mx.array) -> mx.array:
+    """Rows that put all probability on each copied token: the proposal q of a copy draft."""
+    return (mx.arange(like.shape[-1])[None] == token_ids[:, None]).astype(like.dtype)
 
 
 def _feed(target, drafter, token, target_cache, mtp_cache, pair_hidden, pair_tokens) -> None:
