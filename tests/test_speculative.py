@@ -5,7 +5,7 @@ from pathlib import Path
 
 try:
     from dyno.serve import mtp, speculative
-    from dyno.serve.cli import _explicit_concurrency, _take_speculative_flags
+    from dyno.serve.cli import _explicit_concurrency, _single_stream_at_concurrency_one, _take_speculative_flags
     HAS_MLX_LM = True
 except ImportError:
     HAS_MLX_LM = False
@@ -32,6 +32,20 @@ class SpeculativeFlags(unittest.TestCase):
         self.assertEqual(_explicit_concurrency(["--decode-concurrency", "4"]), 4)
         self.assertEqual(_explicit_concurrency(["--decode-concurrency=1"]), 1)
         self.assertIsNone(_explicit_concurrency(["--model", "m"]))
+
+    def test_one_request_at_a_time_skips_the_batch_generator(self):
+        def server():
+            class ModelProvider:
+                def load(self, model_path, adapter_path=None, draft_model_path=None):
+                    self.is_batchable = True  # what mlx_lm decides for a model without a drafter
+            return type("Module", (), {"ModelProvider": ModelProvider})
+
+        for argv, batchable in ((["--decode-concurrency", "1"], False), (["--decode-concurrency", "4"], True), ([], True)):
+            module = server()
+            _single_stream_at_concurrency_one(module, argv)
+            provider = module.ModelProvider()
+            provider.load("m")
+            self.assertEqual(provider.is_batchable, batchable, argv)
 
 
 @needs_mlx_lm
