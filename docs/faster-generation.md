@@ -72,7 +72,7 @@ The drafter is 3.2 GB to download and about 1.7 GB in memory, since Dyno loads i
 | Reasoning | 20.2 tok/s | 63.7–65.4 tok/s | 71.9–75.4 tok/s |
 | Code edit | 20.2 tok/s | 78.1–80.0 tok/s | 81.0–89.5 tok/s |
 
-Ranges are two sessions. DFlash2 is 10–15% faster on code and reasoning and about level on chat.
+Ranges are two sessions. DFlash2 is 10–15% faster on code and reasoning and about level on chat. On M5 Macs DFlash2 drafts up to 15 tokens a round (its block is trained for 8, but one drafter pass costs the same at any length and verifying 16 tokens costs about what 8 do): reasoning went from 87.5–98.1 to 107.0–119.1 tok/s, code and chat stayed level.
 
 ### Copying from the context
 

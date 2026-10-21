@@ -194,13 +194,29 @@ def dflash_generate_step(
             )
 
 
+# Draft length when --num-draft-tokens isn't given; set by `dyno serve` on GPUs with neural
+# accelerators, where a 16-token verify costs about what an 8-token one does. DFlash2 drafts a
+# whole block in one pass whatever its length, so the policy may go past the trained block of 8
+# (positions 8-15 are still accepted often on reasoning and edits).
+DEPTH: Optional[int] = None
+DEEP_DEPTH = 15
+
+
+def prior(nax: bool) -> dict:
+    """Round cost per draft length in plain steps: the verify, plus ~0.35 for one drafter pass."""
+    from .copy_draft import VerifyCost
+
+    cost = VerifyCost(nax=nax)
+    return {0: 1.0, **{k: cost(k + 1, None) + 0.35 for k in range(1, DEEP_DEPTH + 1)}}
+
+
 def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampler, prompt_cache, prefill_step_size):
     global _TAPS
     from mlx_lm.generate import generation_stream
 
     spec = sampler if isinstance(sampler, S.SamplerSpec) else None
     greedy = spec is None or spec.temperature == 0.0
-    k_max = max(1, min(int(num_draft_tokens), draft_model.block_size - 1))
+    k_max = DEPTH or max(1, min(int(num_draft_tokens), draft_model.block_size - 1))
     if prompt_cache is None:
         prompt_cache = make_prompt_cache(model) + draft_model.make_cache()
     target_cache, state = prompt_cache[:-1], prompt_cache[-1]
@@ -267,7 +283,7 @@ def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampl
             return
         produced = 1
 
-        timings = getattr(draft_model, "policy", None) or S.DraftPolicy()
+        timings = getattr(draft_model, "policy", None) or S.DraftPolicy(prior=prior(S.DraftPolicy.PRIOR is S.DraftPolicy.NAX_PRIOR))
         policy = draft_model.policy = timings.fresh()
         copier = S.copier_for(draft_model, prompt, int(z.item()))
         while produced < max_tokens:

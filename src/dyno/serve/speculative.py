@@ -237,9 +237,10 @@ class DraftPolicy:
     PLAIN_EVERY = 64  # rounds; a plain step is timed on the second round, then this often
     PLAIN_MARGIN = 1.05
 
-    def __init__(self, alpha: float = 0.1):
+    def __init__(self, alpha: float = 0.1, prior: Optional[dict] = None):
         self.alpha = alpha
-        self.accept = [0.75, 0.65, 0.6, 0.55, 0.5, 0.5, 0.45]
+        self.prior = prior or self.PRIOR  # verify cost per draft length, in plain steps, until measured
+        self.accept = [0.75, 0.65, 0.6, 0.55, 0.5, 0.5] + [0.45] * 9
         self.seconds: dict[int, float] = {}
         self.unit: Optional[float] = None  # seconds of one plain step, inferred
         self.rounds = 0
@@ -247,7 +248,7 @@ class DraftPolicy:
     def fresh(self) -> "DraftPolicy":
         """A policy for a new request: acceptance starts from the priors (a chat reply says
         little about the code that follows), round times carry over (they are the machine's)."""
-        policy = DraftPolicy(self.alpha)
+        policy = DraftPolicy(self.alpha, self.prior)
         policy.seconds, policy.unit = dict(self.seconds), self.unit
         return policy
 
@@ -266,12 +267,12 @@ class DraftPolicy:
         """The fastest draft length; plain (0) only when it beats drafting by PLAIN_MARGIN, so a
         noisy acceptance estimate doesn't flip a small drafting gain into plain decoding."""
         best, best_rate = self._fastest(k_max)
-        plain = self.seconds.get(0, self.PRIOR[0] * (self.unit or 1.0))
+        plain = self.seconds.get(0, self.prior[0] * (self.unit or 1.0))
         return 0 if 1.0 / plain > self.PLAIN_MARGIN * best_rate else best
 
     def rate(self, k_max: int) -> float:
         """Expected tokens per plain step at the best choice, what a copy draft has to beat."""
-        plain = self.seconds.get(0, self.PRIOR[0] * (self.unit or 1.0))
+        plain = self.seconds.get(0, self.prior[0] * (self.unit or 1.0))
         return max(self._fastest(k_max)[1], 1.0 / plain) * plain
 
     def _fastest(self, k_max: int) -> Tuple[int, float]:
@@ -284,7 +285,7 @@ class DraftPolicy:
                 expected += survive
             cost = self.seconds.get(k)
             if cost is None:
-                cost = self.PRIOR.get(k, 3.0) * (self.unit or 1.0)
+                cost = self.prior.get(k, 3.0) * (self.unit or 1.0)
             rate = expected / cost
             if rate > best_rate:
                 best, best_rate = k, rate
@@ -299,7 +300,7 @@ class DraftPolicy:
         if k == 0:
             self.unit = self.seconds[0]  # measured, not inferred from another Mac's priors
         elif self.unit is None:
-            self.unit = self.seconds[k] / self.PRIOR.get(k, 2.0)
+            self.unit = self.seconds[k] / self.prior.get(k, 2.0)
 
 
 # --- The speculative loop -----------------------------------------------------------

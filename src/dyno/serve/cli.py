@@ -298,9 +298,12 @@ def _enable_nax_verify(speculative: Any, argv: list[str]) -> None:
 
     if not nax_matmul.install():
         return
+    from . import dflash_spec
+
     speculative.DraftPolicy.PRIOR = speculative.DraftPolicy.NAX_PRIOR
     if not any(a == "--num-draft-tokens" or a.startswith("--num-draft-tokens=") for a in argv):
         argv += ["--num-draft-tokens", str(NAX_DRAFT_TOKENS)]
+        dflash_spec.DEPTH = dflash_spec.DEEP_DEPTH
     print("Speculative decoding: drafts are verified on the GPU's neural accelerators.", flush=True)
 
 
