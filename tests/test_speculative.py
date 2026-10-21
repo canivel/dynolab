@@ -90,11 +90,39 @@ class DraftLength(unittest.TestCase):
             policy.update(k, k, 0.04 + 0.005 * k)
         self.assertGreaterEqual(policy.choose(4), 3)
 
-    def test_backs_off_when_drafts_are_rejected(self):
+    def test_stops_drafting_when_drafts_are_rejected(self):
         policy = speculative.DraftPolicy()
         for _ in range(200):
             policy.update(3, 0, 0.06)
-        self.assertEqual(policy.choose(4), 1)
+        self.assertEqual(policy.choose(4), 0)
+
+    @staticmethod
+    def _run(plain, per_draft, accept=0.62, rounds=600, k_max=7):
+        """Simulated decoding: plain step seconds, extra seconds per drafted token; returns tokens/s and choices."""
+        import random
+        rng, policy, tokens, seconds, picks = random.Random(0), speculative.DraftPolicy(), 0, 0.0, []
+        for _ in range(rounds):
+            k = policy.choose(k_max)
+            j = 0
+            while j < k and rng.random() < accept: j += 1
+            took = plain + per_draft * k
+            policy.update(k, j, took)
+            tokens, seconds = tokens + j + 1, seconds + took
+            picks.append(k)
+        return tokens / seconds, picks
+
+    def test_a_gpu_where_verifying_is_expensive_decodes_plain(self):
+        # M4 Max-like, no NAX (drafts up to 3): each drafted token adds 80% of a plain step, so any
+        # drafting is slower than plain at 62% acceptance. The old policy always drafted (>= 1).
+        rate, picks = self._run(plain=1 / 18.5, per_draft=0.8 / 18.5, k_max=3)
+        self.assertGreater(picks[-200:].count(0), 160)  # one probe in 8 rounds drafts
+        self.assertGreater(rate, 0.95 * 18.5)
+
+    def test_a_gpu_where_verifying_is_cheap_keeps_drafting(self):
+        # M5 Max-like with NAX: each drafted token adds 15% of a plain step; best possible is ~1.55x plain.
+        rate, picks = self._run(plain=1 / 20.0, per_draft=0.15 / 20.0)
+        self.assertLess(picks[-200:].count(0), 10)
+        self.assertGreater(rate, 1.4 * 20.0)
 
 
 if __name__ == "__main__":

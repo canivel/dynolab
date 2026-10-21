@@ -78,6 +78,10 @@ Requests with options the exact rule can't handle (logit biases, repetition pena
 
 `--speculative off` turns it off; `--speculative mtp` and `--speculative dflash` choose a drafter and say so when it's missing. Mixture-of-experts models (Qwen3.6-35B-A3B) aren't supported yet.
 
+### On Macs before the M5
+
+The speeds above are from an M5 Max, where checking several drafted tokens costs little more than generating one. On earlier chips it costs more: an M4 Max with 62% of drafts accepted decoded Qwen3.8-27B 4-bit at 13.6 tok/s with drafting, below its plain speed. Since 0.6.13 Dyno times a plain step next to every draft length it tries and decodes plain whenever that's faster, drafting one token every 8 steps to notice when the text becomes predictable enough (code, edits) for drafting to pay. On these Macs it should cost at most a few percent against plain decoding, and gain where drafts are accepted often enough.
+
 ## The draft head
 
 The head is about 0.45 GB of extra memory. Dyno keeps one per base model in `~/.cache/dyno/mtp`. The first time, it takes it from the original full checkpoint if that's in your Hugging Face cache, or otherwise downloads just the head's weights from the original `Qwen/<model>` repository: about 0.85 GB, not the whole model. Set `HF_HUB_OFFLINE=1` to prevent the download, or pass `--mtp-head <folder>`.
