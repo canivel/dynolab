@@ -219,13 +219,20 @@ class DraftPolicy:
     given i-1 did). Round time comes from timing real rounds, so the policy re-tunes itself
     when verification gets cheaper. Priors are this M5 Max's verify costs relative to a
     one-token step (k+1 tokens verified), plus ~8% per drafted token.
+
+    k = 0 is a plain step, timed like the rest: on a GPU where verifying several tokens costs
+    much more than one (an M4 Max lost ~30% to drafting), the policy stops drafting rather
+    than decode slower than without speculation. It keeps probing, so drafting comes back
+    when the text gets predictable.
     """
 
-    PRIOR = {1: 1.21, 2: 1.54, 3: 1.71, 4: 2.07, 5: 2.45, 6: 2.85}
+    PRIOR = {0: 1.0, 1: 1.21, 2: 1.54, 3: 1.71, 4: 2.07, 5: 2.45, 6: 2.85}
     # With `nax_matmul` a verify of 5-16 tokens costs about the same as one of 5.
-    NAX_PRIOR = {1: 1.21, 2: 1.54, 3: 1.71, 4: 1.86, 5: 1.92, 6: 1.98, 7: 2.04}
+    NAX_PRIOR = {0: 1.0, 1: 1.21, 2: 1.54, 3: 1.71, 4: 1.86, 5: 1.92, 6: 1.98, 7: 2.04}
 
     PROBE_EVERY = 8  # rounds; deeper positions are only measured when they are drafted
+    PLAIN_EVERY = 64  # rounds; a plain step is timed on the second round, then this often
+    PLAIN_MARGIN = 1.05
 
     def __init__(self, alpha: float = 0.1):
         self.alpha = alpha
@@ -243,8 +250,18 @@ class DraftPolicy:
 
     def choose(self, k_max: int) -> int:
         self.rounds += 1
+        if (self.rounds == 2 and 0 not in self.seconds) or self.rounds % self.PLAIN_EVERY == 0:
+            return 0
+        best = self._best(k_max)
+        if best == 0:  # while plain wins, probe with one draft: cheap, and it measures what decides
+            return 1 if self.rounds % self.PROBE_EVERY == 0 else 0
         if self.rounds % self.PROBE_EVERY == 0:
             return min(k_max, len(self.accept))
+        return best
+
+    def _best(self, k_max: int) -> int:
+        """The fastest draft length; plain (0) only when it beats drafting by PLAIN_MARGIN, so a
+        noisy acceptance estimate doesn't flip a small drafting gain into plain decoding."""
         best, best_rate = 1, 0.0
         for k in range(1, min(k_max, len(self.accept)) + 1):
             expected, survive = 1.0, 1.0
@@ -257,7 +274,8 @@ class DraftPolicy:
             rate = expected / cost
             if rate > best_rate:
                 best, best_rate = k, rate
-        return best
+        plain = self.seconds.get(0, self.PRIOR[0] * (self.unit or 1.0))
+        return 0 if 1.0 / plain > self.PLAIN_MARGIN * best_rate else best
 
     def update(self, k: int, accepted: int, seconds: float) -> None:
         a = self.alpha
@@ -265,7 +283,10 @@ class DraftPolicy:
             self.accept[i] += a * ((1.0 if i < accepted else 0.0) - self.accept[i])
         previous = self.seconds.get(k)
         self.seconds[k] = seconds if previous is None else previous + a * (seconds - previous)
-        self.unit = self.seconds[k] / self.PRIOR.get(k, 2.0) if self.unit is None else self.unit
+        if k == 0:
+            self.unit = self.seconds[0]  # measured, not inferred from another Mac's priors
+        elif self.unit is None:
+            self.unit = self.seconds[k] / self.PRIOR.get(k, 2.0)
 
 
 # --- The speculative loop -----------------------------------------------------------
@@ -462,14 +483,18 @@ def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, promp
             finally:
                 _capture = None
             logits = target.logits(hidden)[0]  # (k+1, V)
-            draft_ids = mx.concatenate(drafts, axis=1)[0]  # (k,)
 
-            if greedy:
+            if k == 0:  # a plain step: the drafter only committed its pending pairs
+                draft_ids = mx.zeros((0,), dtype=unfed.dtype)
+                n_ok, bonus = mx.array(0), sample(logits)[0].reshape(-1)
+            elif greedy:
+                draft_ids = mx.concatenate(drafts, axis=1)[0]  # (k,)
                 choice = mx.argmax(logits, axis=-1)
                 agree = (choice[:k] == draft_ids).astype(mx.int32)
                 n_ok = mx.sum(mx.cumprod(agree))
                 bonus = choice
             else:
+                draft_ids = mx.concatenate(drafts, axis=1)[0]
                 p = spec.probs(logits)  # (k+1, V)
                 q = mx.stack(qs)  # (k, V)
                 rows = mx.arange(k)
@@ -502,7 +527,7 @@ def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, promp
 
             # Pairs for the next round: (h at x_i, x_{i+1}) for the accepted run, then z.
             pending_hidden = hidden[:, : j + 1]
-            pending_tokens = mx.concatenate(drafts[:j] + [z.astype(drafts[0].dtype)], axis=1)
+            pending_tokens = mx.concatenate(drafts[:j] + [z.astype(drafts[0].dtype if drafts else pending_tokens.dtype)], axis=1)
             unfed = z.astype(verify_in.dtype)
 
             def settle(i: int) -> None:

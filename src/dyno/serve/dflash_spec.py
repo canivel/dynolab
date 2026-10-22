@@ -272,9 +272,12 @@ def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampl
             started = time.perf_counter()
             k = min(policy.choose(k_max), max_tokens - produced)
 
-            proposal = draft_model.propose(state, z, k, 0.0 if greedy else spec.temperature, not greedy)
-            draft_ids = proposal.token_ids.reshape(-1).astype(mx.uint32)
-            q_ids, q_probs = proposal.q_token_ids, proposal.q_probs
+            if k == 0:  # a plain step; its features still reach the drafter through state.add
+                draft_ids = mx.zeros((0,), dtype=mx.uint32)
+            else:
+                proposal = draft_model.propose(state, z, k, 0.0 if greedy else spec.temperature, not greedy)
+                draft_ids = proposal.token_ids.reshape(-1).astype(mx.uint32)
+                q_ids, q_probs = proposal.q_token_ids, proposal.q_probs
 
             S._capture = records = []
             try:
@@ -284,7 +287,10 @@ def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampl
                 S._capture = None
             logits = logits_of(hidden)[0]  # (k+1, V)
 
-            if greedy:
+            if k == 0:
+                n_ok = mx.array(0)
+                bonus = mx.argmax(logits, axis=-1) if greedy else mx.random.categorical(mx.log(spec.probs(logits)))
+            elif greedy:
                 choice = mx.argmax(logits, axis=-1)
                 n_ok = mx.sum(mx.cumprod((choice[:k] == draft_ids).astype(mx.int32)))
                 bonus = choice
