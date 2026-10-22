@@ -151,8 +151,9 @@ struct BoostBadge: View {
             }
         }
         .foregroundStyle(DynoBrand.accent)
-        .help("Dyno Boost: Dyno drafts several tokens ahead and checks them in one pass, "
-              + "so this model generates about 2–3× faster on code and edits, and less on open-ended chat. "
-              + "Output is the same as without it. Fastest on M5 Macs.")
+        .help("Dyno Boost: Dyno drafts several tokens ahead and checks them in one pass. "
+              + "On M5 Macs this model generates about 3× faster or more on code, reasoning and edits, "
+              + "less on open-ended chat. On earlier Macs the gain is smaller, and Dyno decodes normally "
+              + "whenever drafting would be slower. Output is the same as without it.")
     }
 }
