@@ -1,3 +1,23 @@
+# Dyno Lab 0.6.13
+
+Dyno Lab 0.6.13 makes Qwen generation faster again: about 2× on code edits and 1.5× on reasoning on M5 Macs, no longer slower than plain decoding on earlier Macs, and a third faster for models without a draft head. Models Dyno speeds up now carry a **Dyno Boost** badge.
+
+## Faster generation
+
+- **Copying from the context.** When the model rewrites a file, quotes a path or repeats part of the question, the next tokens are often already in the prompt or earlier in the answer. Dyno now checks those copied tokens, up to 15 at once, instead of guessing. Code edits on Qwen3.8-27B: 115 → 242 tok/s greedy, 117 → 231 with sampling. `DYNO_COPY_DRAFTS=0` turns it off.
+- **Draft trees on M5.** With the DFlash2 drafter, Dyno checks a tree of the 15 likeliest guesses in one pass instead of one 15-token line, so when the drafter's first choice is wrong its second or third choice is often right. Reasoning: 94 → 148 tok/s greedy, 90 → 133 with sampling; chat 41 → 50 and 42 → 48; code 88 → 116 greedy, level with sampling. `DYNO_DFLASH_TREES=0` goes back to single lines. The tree search follows [mlx-serve](https://github.com/ddalcu/mlx-serve) (MIT).
+- **Not slower on M4 and earlier.** On Macs before the M5, checking several guesses costs more, and 0.6.12 could decode a Qwen model below its plain speed (13.6 tok/s on an M4 Max). Dyno now times a plain step next to its drafts and decodes plain whenever that's faster, trying a draft now and then to notice when the text becomes predictable (code, edits). It should cost at most a few percent where drafting doesn't pay.
+- **Plain decoding a third faster.** Models without a draft head (Qwen3.6-35B-A3B, other families, `--speculative off`) went through mlx_lm's batching path even one request at a time. They now decode like the library does: 21–25 → 29–33 tok/s on Qwen3.8-27B 4-bit.
+- **Same output.** Every guess, copied or drafted, is kept with the same exact rule as before, so each token has the model's own probability at your sampling settings.
+
+Measured through `dyno serve` on an M5 Max with Qwen3.8-27B 4-bit and the DFlash2 drafter, 384-token answers, median of three runs, alternating with 0.6.12. See [Faster generation](faster-generation.md).
+
+## Dyno Boost badge
+
+- **In Models and Discover,** a lime bolt marks the models Dyno speeds up (dense Qwen3.5, 3.6 and 3.8, fine-tunes included). Its tooltip says what to expect: the biggest gains on M5 Macs, smaller ones before.
+
+---
+
 # Dyno Lab 0.6.12
 
 Dyno Lab 0.6.12 sets up the agent sandbox the first time you open it, asking before it installs anything, and makes Qwen generation faster again on M5 Macs: up to 3.8× plain decoding on code, reasoning and edits.
