@@ -29,7 +29,7 @@ import mlx.core as mx
 import mlx.nn as nn
 from mlx_lm.models.cache import KVCache, make_prompt_cache
 
-from . import speculative as S
+from . import dflash_tree, speculative as S
 from .dflash.dflash2 import DFlash2DraftModel, DFlash2DraftModelArgs, remap_dflash2_codebook_weights
 from .dflash.model import ContextOnlyDraftKVCache
 
@@ -100,8 +100,9 @@ class DFlashDrafter(nn.Module):
             )
             state.pending = None
 
-    def propose(self, state: DFlashState, anchor: mx.array, k: int, temperature: float, capture_q: bool):
-        """k drafted tokens after `anchor`, consuming the pending context."""
+    def _draft(self, state: DFlashState, anchor: mx.array, k: int) -> Tuple[mx.array, mx.array]:
+        """The drafter's hidden states and logits for the k positions after `anchor`,
+        consuming the pending context."""
         text = self._text
         block = mx.concatenate([anchor.astype(mx.uint32), mx.full((1, k), self.mask_token_id, dtype=mx.uint32)], axis=1)
         context = self.model.project_target_hidden(state.pending)
@@ -111,10 +112,21 @@ class DFlashDrafter(nn.Module):
         )
         logits = text.lm_head(hidden[:, 1:]) if not text.args.tie_word_embeddings else \
             text.model.embed_tokens.as_linear(hidden[:, 1:])
+        return hidden[:, 1:], logits
+
+    def propose(self, state: DFlashState, anchor: mx.array, k: int, temperature: float, capture_q: bool):
+        """k drafted tokens after `anchor`: the selector's path through the candidates."""
+        hidden, logits = self._draft(state, anchor, k)
         return self.model.select_proposal(
-            draft_hidden=hidden[:, 1:], logits=logits, anchor_ids=anchor.reshape(1),
+            draft_hidden=hidden, logits=logits, anchor_ids=anchor.reshape(1),
             temperature=temperature, capture_q=capture_q,
         )
+
+    def propose_tree(self, state: DFlashState, anchor: mx.array, k: int, max_nodes: int) -> "dflash_tree.Tree":
+        """The likeliest prefixes of the selector's lattice over k positions, as a tree."""
+        hidden, logits = self._draft(state, anchor, k)
+        lattice = dflash_tree.lattice(self.model.candidate_selector, hidden, self.model.compute_logits(logits), anchor)
+        return dflash_tree.build(*lattice, max_nodes=max_nodes)
 
 
 def _install_taps(inner: Any, layer_ids: List[int]) -> None:
@@ -186,11 +198,12 @@ def dflash_generate_step(
             from .instrument import registry
 
             registry.note_speculation(stats["rounds"], stats["drafted"], stats["accepted"])
+            trees = stats.get("tree_rounds", 0)
             _log.info(
-                "DFlash2: %d tokens in %d rounds (%.2f per round), %d/%d drafts accepted%s%s",
+                "DFlash2: %d tokens in %d rounds (%.2f per round), %d/%d drafts accepted%s%s%s",
                 stats["tokens"], stats["rounds"], stats["tokens"] / stats["rounds"],
-                stats["accepted"], stats["drafted"], " (drafter context reset)" if stats["reset"] else "",
-                S.copy_summary(draft_model),
+                stats["accepted"], stats["drafted"], f", {trees} rounds as trees" if trees else "",
+                " (drafter context reset)" if stats["reset"] else "", S.copy_summary(draft_model),
             )
 
 
@@ -200,6 +213,8 @@ def dflash_generate_step(
 # (positions 8-15 are still accepted often on reasoning and edits).
 DEPTH: Optional[int] = None
 DEEP_DEPTH = 15
+# Draft trees instead of chains (dflash_tree); set with DEPTH, where a 16-row verify is cheap.
+TREES = False
 
 
 def prior(nax: bool) -> dict:
@@ -208,6 +223,26 @@ def prior(nax: bool) -> dict:
 
     cost = VerifyCost(nax=nax)
     return {0: 1.0, **{k: cost(k + 1, None) + 0.35 for k in range(1, DEEP_DEPTH + 1)}}
+
+
+def _accept_tree(tree, logits, logprobs, greedy, spec) -> Tuple[List[int], int]:
+    """(verify rows of the accepted path from the anchor, the bonus token after it)."""
+    if greedy:
+        choice = mx.argmax(logits, axis=-1)
+        mx.eval(choice, logprobs)
+        choice = choice.tolist()
+        rows = tree.walk_greedy(choice)
+        return rows, choice[rows[-1]]
+    p = spec.probs(logits)
+    pairs = [(r, tree.row_token[c]) for r in range(tree.L) for c in tree.children[r]]
+    child_p = p[mx.array([r for r, _ in pairs]), mx.array([t for _, t in pairs])]
+    uniforms = mx.random.uniform(shape=(tree.L, max(len(c) for c in tree.children) or 1))
+    mx.eval(child_p, uniforms, logprobs)
+    rows, removed = tree.walk_sampled(dict(zip(pairs, child_p.tolist())), uniforms.tolist())
+    last = p[rows[-1]]
+    if removed:
+        last = last.at[mx.array(removed)].multiply(0.0)
+    return rows, int(mx.random.categorical(mx.log(last)).item())
 
 
 def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampler, prompt_cache, prefill_step_size):
@@ -286,29 +321,47 @@ def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampl
         timings = getattr(draft_model, "policy", None) or S.DraftPolicy(prior=prior(S.DraftPolicy.PRIOR is S.DraftPolicy.NAX_PRIOR))
         policy = draft_model.policy = timings.fresh()
         copier = S.copier_for(draft_model, prompt, int(z.item()))
+        trees = TREES and dflash_tree.supported(target_cache)
+        if trees:
+            dflash_tree.install()
         while produced < max_tokens:
             started = time.perf_counter()
             copy = copier and copier.propose(policy.rate(k_max), policy.unit, max_tokens - produced)
             k = len(copy.tokens) if copy else min(policy.choose(k_max), max_tokens - produced)
 
+            tree = None
             if copy:  # tokens copied from the context
                 draft_ids = mx.array(copy.tokens, dtype=mx.uint32)
             elif k == 0:  # a plain step; its features still reach the drafter through state.add
                 draft_ids = mx.zeros((0,), dtype=mx.uint32)
+            elif trees:  # every position, with the selector's runners-up where it is unsure
+                k = k_max
+                tree = draft_model.propose_tree(state, z, k, min(dflash_tree.MAX_NODES, max_tokens - produced))
+                draft_ids = mx.array(tree.tokens, dtype=mx.uint32)
             else:
                 proposal = draft_model.propose(state, z, k, 0.0 if greedy else spec.temperature, not greedy)
                 draft_ids = proposal.token_ids.reshape(-1).astype(mx.uint32)
                 q_ids, q_probs = proposal.q_token_ids, proposal.q_probs
 
             S._capture = records = []
+            dflash_tree.ACTIVE = tree
             try:
                 verify_in = mx.concatenate([z, draft_ids[None]], axis=1)
                 hidden, feats = run_target(verify_in)
             finally:
                 S._capture = None
-            logits = logits_of(hidden)[0]  # (k+1, V)
+                dflash_tree.ACTIVE = None
+            logits = logits_of(hidden)[0]  # (k+1, V); a tree's: (nodes+1, V)
 
-            if k == 0:
+            if tree is not None:
+                logprobs = logprobs_of(logits)
+                path, bonus_token = _accept_tree(tree, logits, logprobs, greedy, spec)
+                j = len(path) - 1
+                out = [tree.row_token[r] for r in path[1:]] + [bonus_token]
+                rollback = dflash_tree.Commit(target_cache, records, path, tree.L)
+                feats = feats[:, mx.array(path, dtype=mx.int32)]  # from here on, rows of the path
+                logprobs = logprobs[mx.array(path, dtype=mx.int32)]
+            elif k == 0:
                 n_ok = mx.array(0)
                 bonus = mx.argmax(logits, axis=-1) if greedy else mx.random.categorical(mx.log(spec.probs(logits)))
             elif greedy:
@@ -329,21 +382,24 @@ def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampl
                 mass = residual.sum(-1, keepdims=True)
                 residual = mx.where(mass > 0, residual / mx.maximum(mass, 1e-20), p[:k])
                 bonus = mx.random.categorical(mx.log(mx.concatenate([residual, p[k:]], axis=0)))
-            logprobs = logprobs_of(logits)  # all rows at once, like the MTP loop
-            mx.eval(n_ok, bonus, draft_ids, logprobs)
-            j = int(n_ok.item())
+            if tree is None:
+                logprobs = logprobs_of(logits)  # all rows at once, like the MTP loop
+                mx.eval(n_ok, bonus, draft_ids, logprobs)
+                j = int(n_ok.item())
+                rollback = S._Rollback(target_cache, records, k + 1)
+                out = draft_ids[:j].tolist() + [int(bonus[j].item())]
             if copy:
                 copier.feedback(copy, j, time.perf_counter() - started)
             else:
                 policy.update(k, j, time.perf_counter() - started)
             stats["rounds"] += 1
-            stats["drafted"] += k
+            stats["drafted"] += len(tree.tokens) if tree is not None else k
             stats["accepted"] += j
             stats["tokens"] += j + 1
+            if tree is not None:
+                stats["tree_rounds"] = stats.get("tree_rounds", 0) + 1
 
-            rollback = S._Rollback(target_cache, records, k + 1)
             rollback.keep(j + 1)
-            out = draft_ids[:j].tolist() + [int(bonus[j].item())]
             if copier:
                 copier.observe(out)
             state.add(feats[:, : j + 1])

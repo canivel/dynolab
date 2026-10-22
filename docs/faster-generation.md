@@ -87,6 +87,20 @@ Same setup, through the server, median of four runs (two at temperature 0, two a
 
 Code, chat and reasoning stay within run-to-run noise, since fresh text rarely matches the context. `DYNO_COPY_DRAFTS=0` turns it off.
 
+### Draft trees
+
+DFlash2's selector scores the top 16 candidates of every position and how well each follows each candidate before it. On M5 Macs Dyno checks a tree of the 15 likeliest guesses instead of one 15-token path: where the selector is unsure, its second and third choices are checked in the same pass, so a wrong first guess no longer ends the round. A verify of 16 rows costs the same as a chain's; attention sees each guess's own ancestors, and the Gated-DeltaNet layers run each guess from its parent's state. The tree construction follows [mlx-serve](https://github.com/ddalcu/mlx-serve) (MIT).
+
+DFlash2 with chains vs trees, same window, alternating, 384 tokens, M5 Max:
+
+| Workload | Tokens per round, chain → tree | Temperature 0 | Temperature 0.6 |
+|---|---|---|---|
+| Code | 5.3 → 6.5 | +17% | +28% |
+| Chat | 2.0 → 3.1 | +29% | +20% |
+| Reasoning | 6.9 → 9.1 | +28% | +18% |
+
+The GPU was shared with other apps during these runs, so the speed-ups are the measurement, not the absolute tok/s. Accepted tokens are checked the same exact way: at temperature 0 a guess is kept while it is the model's top choice; with sampling each guess is tried in order and kept with the model's probability for it given the guesses already rejected, which leaves each token's probability unchanged. `DYNO_DFLASH_TREES=0` goes back to chains.
+
 ### The output doesn't change
 
 At temperature 0 every kept token is the model's own top choice: the text is the model's greedy text. With sampling, drafts are accepted with the standard lossless rule (accept with probability min(1, p/q), otherwise resample from the difference), so each token has exactly the probability the model gives it, with your temperature, top-p and top-k. On a 256-token check, every token matched the model's own choice.
@@ -117,7 +131,7 @@ The server log has one line per request:
 ```
 MTP: 512 tokens in 147 rounds (3.48 per round), 365/437 drafts accepted
 MTP: 384 tokens in 37 rounds (10.38 per round), 340/366 drafts accepted, cache 0; 29 rounds copied from the context, 337/350 kept
-DFlash2: 383 tokens in 74 rounds (5.18 per round), 309/468 drafts accepted
+DFlash2: 384 tokens in 42 rounds (9.14 per round), 342/609 drafts accepted, 41 rounds as trees
 ```
 
 `/stats` reports `speculative.mode` (`mtp`, `dflash` or null) and the drafted and accepted tokens, and `/metrics` has `mlx:draft_tokens_total` and `mlx:draft_tokens_accepted_total`.

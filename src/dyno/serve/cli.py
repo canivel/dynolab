@@ -304,6 +304,7 @@ def _enable_nax_verify(speculative: Any, argv: list[str]) -> None:
     if not any(a == "--num-draft-tokens" or a.startswith("--num-draft-tokens=") for a in argv):
         argv += ["--num-draft-tokens", str(NAX_DRAFT_TOKENS)]
         dflash_spec.DEPTH = dflash_spec.DEEP_DEPTH
+        dflash_spec.TREES = True
     print("Speculative decoding: drafts are verified on the GPU's neural accelerators.", flush=True)
 
 
