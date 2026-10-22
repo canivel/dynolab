@@ -145,6 +145,28 @@ def _explicit_concurrency(argv: list[str]) -> Optional[int]:
     return None
 
 
+def _single_stream_at_concurrency_one(server_module: Any, argv: list[str]) -> None:
+    """With --decode-concurrency 1 (how the app starts models), serve each request with
+    stream_generate instead of a one-slot BatchGenerator.
+
+    mlx_lm batches every request a model can batch, even one at a time, and the batched path
+    decodes about a third slower: Qwen3.8-27B 4-bit on an M5 Max ran 21-22 tok/s through it and
+    31-33 tok/s through stream_generate, the same as mlx_lm's own library. Requests with a drafter
+    already took the single-stream path; this covers models without one and --speculative off.
+    """
+    if _explicit_concurrency(argv) != 1:
+        return
+    provider = server_module.ModelProvider
+    loaded = provider.load
+
+    def load(self, model_path, adapter_path=None, draft_model_path=None):
+        result = loaded(self, model_path, adapter_path, draft_model_path)
+        self.is_batchable = False
+        return result
+
+    provider.load = load
+
+
 def _enable_speculative(server_module: Any, options: dict[str, Any], argv: list[str]) -> None:
     """Attach an MTP drafter to every loaded model that ships a head.
 
@@ -287,6 +309,7 @@ def main(argv: list[str] | None = None) -> int:
         print(SPECULATIVE_HELP)
     else:
         _announce(argv)
+        _single_stream_at_concurrency_one(server_module, argv)
         _enable_speculative(server_module, speculative_options, argv)
 
     # mlx_lm's main() reads sys.argv directly.

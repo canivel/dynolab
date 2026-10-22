@@ -19,6 +19,17 @@ Greedy (temperature 0), a 512-token code answer: 33.7 tok/s before, 66–75 tok/
 
 The gain depends on how predictable the text is. Code, step-by-step reasoning and edits that repeat their input gain the most; open-ended chat gains least.
 
+The 0.6.10 column is slower than plain MLX can decode. Without a drafter, the server ran each request through mlx_lm's batching path, about a third slower than one request at a time. Since 0.6.13, a server started with `--decode-concurrency 1` (as the app starts models) decodes one request at a time without that path. Same Mac and model, 384-token answers, through the server, temperature 0 / 0.6:
+
+| | Code | Chat |
+|---|---|---|
+| Plain, through the batching path (0.6.12) | 24.9 / 21.3 | 21.5 / 22.0 |
+| Plain, one request at a time (0.6.13) | 33.0 / 29.3 | 29.9 / 29.0 |
+| MTP head | 58.8 / 54.0 | 36.0 / 37.0 |
+| DFlash2 | 67.8 / 66.5 | 43.4 / 43.3 |
+
+Against plain decoding at full speed, the MTP head is about 1.8× on code and 1.25× on chat, and DFlash2 about 2.1× and 1.45×. Single runs; speeds drift a few percent with the GPU's temperature.
+
 ## How it works
 
 Qwen3.5, 3.6 and 3.8 are trained with a small extra layer, a multi-token-prediction (MTP) head, that guesses the token after next from the model's last hidden state. MLX conversions drop it. Dyno puts it back and uses it for **speculative decoding**:
