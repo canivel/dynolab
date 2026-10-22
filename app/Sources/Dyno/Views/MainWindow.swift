@@ -381,9 +381,12 @@ private struct ModelRow: View {
                 .fill(isRunning ? Color.green : Color.clear)
                 .frame(width: 6, height: 6)
             VStack(alignment: .leading, spacing: 1) {
-                Text(candidate.shortName)
-                    .font(.system(size: 12, weight: isRunning ? .semibold : .regular))
-                    .lineLimit(1).truncationMode(.tail)
+                HStack(spacing: 4) {
+                    Text(candidate.shortName)
+                        .font(.system(size: 12, weight: isRunning ? .semibold : .regular))
+                        .lineLimit(1).truncationMode(.tail)
+                    if DynoBoost.supports(candidate.name) { BoostBadge(compact: true) }
+                }
                 Text([candidate.owner, candidate.isIncomplete ? "incomplete download" : Format.bytes(candidate.sizeBytes)]
                         .compactMap { $0 }.joined(separator: "  ·  "))
                     .font(.system(size: 10)).foregroundStyle(candidate.isIncomplete ? AnyShapeStyle(.orange) : AnyShapeStyle(.tertiary))
