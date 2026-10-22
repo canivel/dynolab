@@ -72,7 +72,34 @@ The drafter is 3.2 GB to download and about 1.7 GB in memory, since Dyno loads i
 | Reasoning | 20.2 tok/s | 63.7–65.4 tok/s | 71.9–75.4 tok/s |
 | Code edit | 20.2 tok/s | 78.1–80.0 tok/s | 81.0–89.5 tok/s |
 
-Ranges are two sessions. DFlash2 is 10–15% faster on code and reasoning and about level on chat.
+Ranges are two sessions. DFlash2 is 10–15% faster on code and reasoning and about level on chat. On M5 Macs DFlash2 drafts up to 15 tokens a round (its block is trained for 8, but one drafter pass costs the same at any length and verifying 16 tokens costs about what 8 do): reasoning went from 87.5–98.1 to 107.0–119.1 tok/s, code and chat stayed level.
+
+### Copying from the context
+
+When the model rewrites a file, quotes a path or repeats part of the question, the next tokens are often already written in the prompt or earlier in the answer. Each round Dyno first looks for the newest tokens in the context; when they match earlier text and checking the copy is expected to beat the drafter, the round checks the copied tokens (up to 15) instead of drafting. A copy that agrees with a long stretch of the context is trusted for longer, and Dyno learns per request how often copies survive. Copied tokens go through the same exact rule, so the output is unchanged. The whole prompt is searched, including the part the server's prompt cache already holds, so agent turns can copy from earlier tool results.
+
+Same setup, through the server, median of four runs (two at temperature 0, two at 0.6 per cell):
+
+| Workload | MTP head | MTP head + copying | DFlash2 | DFlash2 + copying | MTPLX 2.12 |
+|---|---|---|---|---|---|
+| Code edit, temperature 0 | 109.6 tok/s | 203.5 tok/s | 105.3 tok/s | 218.0 tok/s | 113.7 tok/s |
+| Code edit, temperature 0.6 | 102.8 tok/s | 174.0 tok/s | 107.1 tok/s | 177.4 tok/s | 130.9 tok/s |
+
+Code, chat and reasoning stay within run-to-run noise, since fresh text rarely matches the context. `DYNO_COPY_DRAFTS=0` turns it off.
+
+### Draft trees
+
+DFlash2's selector scores the top 16 candidates of every position and how well each follows each candidate before it. On M5 Macs Dyno checks a tree of the 15 likeliest guesses instead of one 15-token path: where the selector is unsure, its second and third choices are checked in the same pass, so a wrong first guess no longer ends the round. A verify of 16 rows costs the same as a chain's; attention sees each guess's own ancestors, and the Gated-DeltaNet layers run each guess from its parent's state. The tree construction follows [mlx-serve](https://github.com/ddalcu/mlx-serve) (MIT).
+
+DFlash2 with chains vs trees, same window, alternating, 384 tokens, M5 Max:
+
+| Workload | Tokens per round, chain → tree | Temperature 0 | Temperature 0.6 |
+|---|---|---|---|
+| Code | 5.3 → 6.5 | +17% | +28% |
+| Chat | 2.0 → 3.1 | +29% | +20% |
+| Reasoning | 6.9 → 9.1 | +28% | +18% |
+
+The GPU was shared with other apps during these runs, so the speed-ups are the measurement, not the absolute tok/s. Accepted tokens are checked the same exact way: at temperature 0 a guess is kept while it is the model's top choice; with sampling each guess is tried in order and kept with the model's probability for it given the guesses already rejected, which leaves each token's probability unchanged. `DYNO_DFLASH_TREES=0` goes back to chains.
 
 ### The output doesn't change
 
@@ -103,7 +130,8 @@ The server log has one line per request:
 
 ```
 MTP: 512 tokens in 147 rounds (3.48 per round), 365/437 drafts accepted
-DFlash2: 383 tokens in 74 rounds (5.18 per round), 309/468 drafts accepted
+MTP: 384 tokens in 37 rounds (10.38 per round), 340/366 drafts accepted, cache 0; 29 rounds copied from the context, 337/350 kept
+DFlash2: 384 tokens in 42 rounds (9.14 per round), 342/609 drafts accepted, 41 rounds as trees
 ```
 
 `/stats` reports `speculative.mode` (`mtp`, `dflash` or null) and the drafted and accepted tokens, and `/metrics` has `mlx:draft_tokens_total` and `mlx:draft_tokens_accepted_total`.

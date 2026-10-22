@@ -186,6 +186,7 @@ def _enable_speculative(server_module: Any, options: dict[str, Any], argv: list[
 
     speculative.install(importlib.import_module("mlx_lm.generate"))
     _enable_nax_verify(speculative, argv)
+    _remember_prompts(server_module)
     server_module._make_sampler = speculative.wrap_sampler_factory(server_module._make_sampler)
 
     provider = server_module.ModelProvider
@@ -202,6 +203,21 @@ def _enable_speculative(server_module: Any, options: dict[str, Any], argv: list[
         return result
 
     provider.load = load
+
+
+def _remember_prompts(server_module: Any) -> None:
+    """Copy drafting looks for the next tokens in the whole prompt, but the generate step only
+    sees the part the prompt cache misses: keep each request's full prompt where it can look."""
+    from . import copy_draft
+
+    lru = server_module.LRUPromptCache
+    fetch = lru.fetch_nearest_cache
+
+    def fetch_nearest_cache(self, model, tokens):
+        copy_draft.request_prompt = list(tokens)
+        return fetch(self, model, tokens)
+
+    lru.fetch_nearest_cache = fetch_nearest_cache
 
 
 def _load_drafter(provider: Any, mtp: Any, options: dict[str, Any]) -> Any:
@@ -282,9 +298,13 @@ def _enable_nax_verify(speculative: Any, argv: list[str]) -> None:
 
     if not nax_matmul.install():
         return
+    from . import dflash_spec
+
     speculative.DraftPolicy.PRIOR = speculative.DraftPolicy.NAX_PRIOR
     if not any(a == "--num-draft-tokens" or a.startswith("--num-draft-tokens=") for a in argv):
         argv += ["--num-draft-tokens", str(NAX_DRAFT_TOKENS)]
+        dflash_spec.DEPTH = dflash_spec.DEEP_DEPTH
+        dflash_spec.TREES = True
     print("Speculative decoding: drafts are verified on the GPU's neural accelerators.", flush=True)
 
 
