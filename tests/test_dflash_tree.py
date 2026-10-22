@@ -121,6 +121,48 @@ class Recurrence(unittest.TestCase):
             err = mx.abs(ref[:, -1].astype(mx.float32) - y[:, r].astype(mx.float32)).max().item()
             self.assertLess(err, 2e-2, f"row {r}")
 
+    def test_commit_runs_the_accepted_rows_from_the_old_state(self):
+        from mlx_lm.models.gated_delta import gated_delta_ops
+
+        Hk, Hv, Dk, Dv, T = 2, 4, 32, 16, 6
+        ks = mx.random.split(mx.random.key(1), 6)
+        q = mx.random.normal((1, T, Hk, Dk), key=ks[0]).astype(mx.bfloat16)
+        k = (mx.random.normal((1, T, Hk, Dk), key=ks[1]) * 0.2).astype(mx.bfloat16)
+        v = mx.random.normal((1, T, Hv, Dv), key=ks[2]).astype(mx.bfloat16)
+        g = mx.random.uniform(0.8, 1.0, (1, T, Hv), key=ks[3])
+        beta = mx.random.uniform(0.1, 0.9, (1, T, Hv), key=ks[4]).astype(mx.bfloat16)
+        state = mx.random.normal((1, Hv, Dv, Dk), key=ks[5]) * 0.1
+        rows = mx.array([0, 3, 4], dtype=mx.int32)
+        got = dflash_tree.gated_delta_path(q, k, v, g, beta, state, rows)
+        _, want = gated_delta_ops(q[:, rows], k[:, rows], v[:, rows], g[:, rows], beta[:, rows], state)
+        self.assertLess(mx.abs(got - want).max().item(), 1e-3)
+
+    def test_the_conv_reads_each_rows_window(self):
+        import mlx.nn as nn
+
+        tree = Tree(TOKENS, PARENTS, DEPTH)
+        C = 300
+        x = mx.random.normal((1, 3 + tree.L, C), key=mx.random.key(2)).astype(mx.bfloat16)
+        w = mx.random.normal((C, 4, 1), key=mx.random.key(3)).astype(mx.bfloat16)
+        x32, w32 = x.astype(mx.float32), w.astype(mx.float32)
+        want = nn.silu((x32[:, tree.conv_rows] * w32[:, :, 0].T).sum(axis=2))
+        got = dflash_tree.conv_tree(x, tree.conv_rows, w).astype(mx.float32)
+        self.assertLess((mx.abs(got - want) / (1 + mx.abs(want))).max().item(), 1e-2)  # one bf16 rounding
+
+    def test_the_gpu_build_matches_the_host_build(self):
+        for seed in range(20):
+            cands, unary, e0, e = lattice(m=15, k=16, seed=seed)
+            for nodes in (15, 7, 1):
+                want = build(cands, unary, e0, e, max_nodes=nodes)
+                got = dflash_tree.build_gpu(mx.array(cands, dtype=mx.int32), mx.array(unary), mx.array(e0),
+                                            mx.array(e), max_nodes=nodes)
+                mx.eval(*got.arrays())
+                got.materialize()
+                self.assertEqual((got.row_token, got.row_parent, got.children), (want.row_token, want.row_parent, want.children))
+                self.assertEqual(got.ancestry.tolist(), want.ancestry.tolist())
+                self.assertEqual(got.conv_rows.tolist(), want.conv_rows.tolist())
+                self.assertEqual(got.depth.tolist(), want.depth.tolist())
+
 
 if __name__ == "__main__":
     unittest.main()

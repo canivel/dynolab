@@ -125,8 +125,12 @@ class DFlashDrafter(nn.Module):
     def propose_tree(self, state: DFlashState, anchor: mx.array, k: int, max_nodes: int) -> "dflash_tree.Tree":
         """The likeliest prefixes of the selector's lattice over k positions, as a tree."""
         hidden, logits = self._draft(state, anchor, k)
-        lattice = dflash_tree.lattice(self.model.candidate_selector, hidden, self.model.compute_logits(logits), anchor)
-        return dflash_tree.build(*lattice, max_nodes=max_nodes)
+        args = (self.model.candidate_selector, hidden, self.model.compute_logits(logits), anchor)
+        if max_nodes > k:
+            return dflash_tree.build(*dflash_tree.lattice(*args), max_nodes=max_nodes)
+        tree = dflash_tree.build_gpu(*dflash_tree.lattice_arrays(*args), max_nodes=max_nodes)
+        mx.async_eval(tree.arrays())  # the drafter runs while the host queues the verify
+        return tree
 
 
 def _install_taps(inner: Any, layer_ids: List[int]) -> None:
@@ -229,15 +233,17 @@ def _accept_tree(tree, logits, logprobs, greedy, spec) -> Tuple[List[int], int]:
     """(verify rows of the accepted path from the anchor, the bonus token after it)."""
     if greedy:
         choice = mx.argmax(logits, axis=-1)
-        mx.eval(choice, logprobs)
+        mx.eval(choice, logprobs, tree.token_ids, tree.parents)
+        tree.materialize()
         choice = choice.tolist()
         rows = tree.walk_greedy(choice)
         return rows, choice[rows[-1]]
     p = spec.probs(logits)
-    pairs = [(r, tree.row_token[c]) for r in range(tree.L) for c in tree.children[r]]
-    child_p = p[mx.array([r for r, _ in pairs]), mx.array([t for _, t in pairs])]
-    uniforms = mx.random.uniform(shape=(tree.L, max(len(c) for c in tree.children) or 1))
-    mx.eval(child_p, uniforms, logprobs)
+    child_p = p[tree.parents[1:], tree.token_ids]  # each node's probability at its parent's row
+    uniforms = mx.random.uniform(shape=(tree.L, dflash_tree.CHILDREN))
+    mx.eval(child_p, uniforms, logprobs, tree.token_ids, tree.parents)
+    tree.materialize()
+    pairs = [(tree.row_parent[r], tree.row_token[r]) for r in range(1, tree.L)]
     rows, removed = tree.walk_sampled(dict(zip(pairs, child_p.tolist())), uniforms.tolist())
     last = p[rows[-1]]
     if removed:
@@ -337,7 +343,7 @@ def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampl
             elif trees:  # every position, with the selector's runners-up where it is unsure
                 k = k_max
                 tree = draft_model.propose_tree(state, z, k, min(dflash_tree.MAX_NODES, max_tokens - produced))
-                draft_ids = mx.array(tree.tokens, dtype=mx.uint32)
+                draft_ids = tree.token_ids
             else:
                 proposal = draft_model.propose(state, z, k, 0.0 if greedy else spec.temperature, not greedy)
                 draft_ids = proposal.token_ids.reshape(-1).astype(mx.uint32)
@@ -393,7 +399,7 @@ def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampl
             else:
                 policy.update(k, j, time.perf_counter() - started)
             stats["rounds"] += 1
-            stats["drafted"] += len(tree.tokens) if tree is not None else k
+            stats["drafted"] += tree.L - 1 if tree is not None else k
             stats["accepted"] += j
             stats["tokens"] += j + 1
             if tree is not None:
