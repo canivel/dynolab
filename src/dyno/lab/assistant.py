@@ -34,7 +34,7 @@ import urllib.error
 import urllib.request
 
 ID = re.compile(r'^[0-9a-f]{32}$')
-MAX_STEPS = 12           # tool rounds per message before the assistant must stop and report
+MAX_STEPS = 30           # tool rounds per message before the assistant must stop and report (a web search or a page read is one)
 REPLY_TOKENS = 4096      # room left for the model's answer
 TOOL_STUB_AFTER = 2      # tool results older than this many user turns are sent as stubs
 RECENT_TURNS = 4         # the last turns are never summarized
@@ -287,6 +287,16 @@ class Assistant:
         self.complete = self._complete  # replaced in tests
         from .websearch import WebSearch
         self.web = WebSearch(self.folder.parent)
+        self._settle()
+
+    def _settle(self):
+        """A turn that was running when Dyno last quit has no worker now: show it as stopped, not thinking forever."""
+        for d in self.folder.iterdir():
+            meta = _load(d / 'meta.json', None) if ID.match(d.name) else None
+            if not isinstance(meta, dict) or meta.get('status') not in ('thinking', 'working'): continue
+            self._append(d.name, 'error', text='Dyno quit before this turn finished. Say "continue" to pick it up.')
+            meta['status'] = 'waiting' if self._pending(self._events(d.name)) else 'idle'
+            self._save_meta(d.name, meta)
 
     # --- storage -------------------------------------------------------------------------
 
@@ -591,7 +601,7 @@ class Assistant:
                 if not calls or cid in self.stopping: break
                 if self._handle_calls(cid, calls): break  # a proposal waits for the person
             else:
-                self._append(cid, 'error', text=f'Stopped after {MAX_STEPS} steps without finishing. Tell the assistant how to continue.')
+                self._wrap_up(cid)
         except Exception as error:  # the chat shows it instead of hanging
             self._append(cid, 'error', text=f'The model call failed: {error}')
         finally:
@@ -601,6 +611,21 @@ class Assistant:
                 meta = self._meta(cid)
                 meta['status'] = 'waiting' if self._pending(self._events(cid)) else 'idle'
                 self._save_meta(cid, meta)
+
+    def _wrap_up(self, cid):
+        """Out of steps: one last turn without tools, so the person gets what was found instead of a dead end."""
+        meta = self._meta(cid)
+        messages = self._prompt(cid) + [dict(role='user', content=(
+            f'(Dyno: you have used all {MAX_STEPS} steps for this message. Do not call tools. Answer the person now with what '
+            'you found so far, say plainly what is still open, and what you would do next if they say continue.)'))]
+        self.live[cid] = dict(reasoning='', content='', started=time.time())
+        reply = self.complete(meta['model'], messages, None, meta.get('thinking'),
+                              on_delta=lambda kind, text: self._delta(cid, kind, text), stop=lambda: cid in self.stopping)
+        self.live.pop(cid, None)
+        if (reply.get('content') or '').strip():
+            self._append(cid, 'assistant', text=reply['content'], reasoning=reply.get('reasoning') or '', tool_calls=[],
+                         stopped=cid in self.stopping, finish=reply.get('finish_reason'))
+        self._append(cid, 'error', text=f'Used all {MAX_STEPS} steps for this message. Say "continue" to let it keep going.')
 
     def _delta(self, cid, kind, text):
         live = self.live.get(cid)

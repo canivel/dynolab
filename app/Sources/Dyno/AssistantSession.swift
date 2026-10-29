@@ -46,7 +46,14 @@ import Observation
         guard self.lab == nil else { return }
         self.lab = lab
         conversationID = conversation ?? UserDefaults.standard.string(forKey: "assistantConversation")
-        Task { await refreshList(); if let id = conversationID { await open(id) } }
+        Task {
+            // The lab service may still be starting when the window opens: wait for it rather than show an empty list.
+            for _ in 0..<120 {
+                if (try? await lab.request("/health")) != nil { break }
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+            await refreshList(); if let id = conversationID { await open(id) }
+        }
     }
 
     // MARK: Conversations
@@ -69,7 +76,8 @@ import Observation
             if busy { poll() }
             if web { Task { await watchWeb() } }
         } catch {
-            if conversationID == id { conversationID = nil; events = []; title = "" }
+            // Forget it only when the lab says it no longer exists, not when the lab can't be reached.
+            if conversationID == id, error.localizedDescription.contains("Unknown conversation") { conversationID = nil; events = []; title = "" }
         }
     }
 
