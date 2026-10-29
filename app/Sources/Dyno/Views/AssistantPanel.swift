@@ -89,7 +89,7 @@ struct AssistantPanel: View {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles").foregroundStyle(DynoBrand.accent)
                 Menu {
-                    Button("New conversation") { Task { await session.newConversation() } }
+                    Button("New chat") { newChat() }.disabled(session.isBlank)
                     if !session.conversations.isEmpty {
                         Divider()
                         // Rows carry their values, never an index into a list that can change under them: switching to an
@@ -111,6 +111,10 @@ struct AssistantPanel: View {
                     Text(session.title.isEmpty ? "Assistant" : session.title).font(.callout.weight(.semibold)).lineLimit(1)
                 }.menuStyle(.borderlessButton).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 4)
+                Button(action: newChat) { Image(systemName: "square.and.pencil") }.buttonStyle(.plain)
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                    .disabled(session.isBlank)
+                    .help("New chat (⇧⌘N). This one stays in the conversation list.")
                 contextMenu
                 Menu {
                     contextSizes
@@ -627,6 +631,12 @@ struct AssistantPanel: View {
         guard panel.runModal() == .OK else { return }
         let urls = panel.urls
         Task { await session.attach(urls) }
+    }
+
+    private func newChat() {
+        if voice.listening { voice.cancel() }
+        text = ""; spoken = ""
+        Task { await session.startNew(); focused = true }
     }
 
     private func send() {

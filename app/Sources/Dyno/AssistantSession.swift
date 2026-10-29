@@ -76,9 +76,27 @@ import Observation
     func newConversation() async {
         guard let lab else { return }
         if let r = try? await lab.request("/assistant/conversations", body: [:], timeout: 10), let id = r["id"] as? String {
-            events = []; plan = []; pending = nil; live = nil; lastSeq = 0
+            clear()
             await open(id); await refreshList()
         }
+    }
+
+    /// A blank chat. The conversation on screen stays in the list (stopped if it was working); the new one is
+    /// made on the server with the first message, so pressing this twice doesn't leave empty conversations behind.
+    func startNew() async {
+        if busy { await stop() }
+        clear()
+        await refreshList()
+    }
+
+    var isBlank: Bool { conversationID == nil && events.isEmpty }
+
+    private func clear() {
+        poller?.cancel(); poller = nil
+        conversationID = nil
+        events = []; plan = []; pending = nil; live = nil; lastSeq = 0; hasEarlier = false
+        title = ""; status = "idle"; contextUse = nil; conversationModel = nil; undo = [:]; error = nil
+        budget = 32768; thinking = false; web = false
     }
 
     func loadEarlier() async {
@@ -99,7 +117,7 @@ import Observation
         guard let lab else { return }
         do {
             _ = try await lab.request("/assistant/conversations/\(id)/delete", body: [:], timeout: 10)
-            if id == conversationID { conversationID = nil; events = []; plan = []; pending = nil; title = "" }
+            if id == conversationID { clear() }
             await refreshList()
         } catch { self.error = error.localizedDescription }
     }
@@ -197,6 +215,7 @@ import Observation
             while !Task.isCancelled {
                 guard let self, let lab = self.lab, let id = self.conversationID else { return }
                 if let r = try? await lab.request("/assistant/conversations/\(id)?after=\(self.lastSeq)&limit=500", timeout: 10) {
+                    guard !Task.isCancelled, self.conversationID == id else { return }  // a new chat started meanwhile
                     self.merge(r)
                     if !self.busy { await self.refreshList(); return }
                 }
