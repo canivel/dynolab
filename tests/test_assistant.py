@@ -158,6 +158,28 @@ class AssistantTests(unittest.TestCase):
         self.assertTrue(m.requests[0]['tools'] and m.requests[0]['stream'])
         self.assertEqual(c['conversation']['title'], 'Which environments do I have?')
 
+    def test_a_turn_cut_off_by_quitting_is_not_thinking_forever(self):
+        cid = self.a.create()['id']
+        meta = self.a._meta(cid); meta['status'] = 'thinking'; self.a._save_meta(cid, meta)
+        c = Assistant(self.runs).get(cid)  # Dyno starts again
+        self.assertEqual(c['conversation']['status'], 'idle')
+        self.assertIn('Dyno quit before this turn finished', c['events'][-1]['text'])
+
+    def test_out_of_steps_it_answers_with_what_it_found(self):
+        m = self.model([dict(calls=[('list_environments', {})]), dict(calls=[('update_plan', dict(steps=[dict(title='Read GHOST', status='doing')]))]),
+                        dict(calls=[('update_plan', dict(steps=[dict(title='Read GHOST', status='done')]))]),
+                        dict(content='So far: two environments, GHOST and the admin API. Still open: which one fits.')])
+        cid = self.a.create()['id']
+        with unittest.mock.patch('dyno.lab.assistant.MAX_STEPS', 3):
+            self.send(cid, m, 'Look through every environment.')
+            c = self.wait(cid)
+        self.assertEqual(len(m.requests), 4)
+        self.assertNotIn('tools', m.requests[3])  # the last turn can only answer
+        self.assertIn('used all 3 steps', m.requests[3]['messages'][-1]['content'])
+        self.assertEqual([e['kind'] for e in c['events']][-2:], ['assistant', 'error'])
+        self.assertIn('Still open', c['events'][-2]['text'])
+        self.assertIn('Say "continue"', c['events'][-1]['text'])
+
     def test_acting_waits_for_the_person_and_only_the_click_runs_it(self):
         m = self.model([dict(content='Here is the test.', calls=[('show_test_setup', dict(spec=SPEC)), ('start_test', dict(spec=SPEC))]),
                         dict(content='It is running. Watch it in Agents → Room & Observer.'),
