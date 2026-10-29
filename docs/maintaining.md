@@ -16,9 +16,18 @@ Actions are pinned to verified full commit SHAs; Dependabot proposes weekly acti
 
 Keep repository workflow permissions read-only and disable Actions creating/approving PRs. Build jobs have `contents: read`, and checkout does not retain credentials. Only the separate release publication job can write release assets or request provenance attestations. It downloads the current run's artifact and never executes the app or checks out source. Avoid `pull_request_target` for executing contributor code; never put an untrusted fork on a self-hosted runner connected to private data.
 
+## Between releases
+
+Changes accumulate on `main`; nothing reaches users until a version tag is pushed.
+
+1. Every change starts as an issue in the Linear project for the next version (team Canivel, for example "Dyno Lab 0.6.14").
+2. Its branch and PR are named after the issue (`can-123-...`), and the PR description says `Fixes CAN-123`. The Linear GitHub integration links the PR and closes the issue when it merges.
+3. The PR adds its user-facing line to `docs/unreleased.md`.
+4. After a merge, `app/install-local.sh` builds `main` and installs it over `/Applications/Dyno.app` (keeping a backup) to test it on a real Mac.
+
 ## Release checklist
 
-1. Merge reviewed changes after required CI passes. Update the package version, release notes, compatibility notes and public documentation. Do not silently replace an existing version's assets.
+1. Merge reviewed changes after required CI passes. Move `docs/unreleased.md` into `docs/release-notes.md` as the new version's notes and reset it to its header. Update the package version, compatibility notes and public documentation. Do not silently replace an existing version's assets.
 2. On an idle Apple Silicon development Mac, run the full MLX regression suite and `tests/lab_acceptance.py` with a temporary service/data directory. Verify neutral intervention controls, resident capture followed by normal inference, history reload, SDK and MCP, and cancellation cleanup. Hosted native compilation is not a real-model GPU acceptance test.
 3. Create a version tag (`vX.Y.Z`) at a reviewed commit on `main`. Restrict version-tag creation, updates and deletion to release maintainers. The workflow verifies tag existence, ancestry, version and architecture before building.
 4. The release workflow builds the full DMG, Python wheel/source archive, runtime CycloneDX SBOM, lockfile and SHA-256 manifest. It verifies the DMG and code-signing structure, then attests the binary artifacts and creates a **draft release**. Existing releases are not overwritten.
