@@ -1,3 +1,9 @@
+Fixes CAN-
+
+## Release note
+
+The line this PR adds to `docs/unreleased.md`, or "none" for changes users won't notice (CI, tests, internal refactors).
+
 ## Problem and resulting behavior
 
 Describe the user-visible problem and what changes. Link an issue for large features or architectural changes.
