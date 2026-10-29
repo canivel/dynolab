@@ -2,8 +2,18 @@ import SwiftUI
 
 struct AppSettingsView: View {
     @ObservedObject private var updates = AppUpdates.shared
+    /// Which tab is open; the assistant's + menu sets it to "connectors" before opening Settings.
+    @AppStorage("settingsTab") private var tab = "general"
 
     var body: some View {
+        TabView(selection: $tab) {
+            general.tabItem { Label("General", systemImage: "gearshape") }.tag("general")
+            ConnectorsSettings().tabItem { Label("Connectors", systemImage: "puzzlepiece.extension") }.tag("connectors")
+        }
+        .frame(width: 600, height: 700)
+    }
+
+    private var general: some View {
         Form {
             Section("Dyno Lab") {
                 LabeledContent("Installed version", value: AppIdentity.label)
@@ -42,7 +52,6 @@ struct AppSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 700)
     }
 
     private func open(_ tab: MainWindow.Tab) {

@@ -28,13 +28,13 @@ The assistant is the panel on the right of every tab. Tell it what you want to f
   - Paste a Compose file or environment JSON into the chat and ask the assistant to save it. It reads the text from your message, the harness checks it, and errors come back to the assistant before you see anything. You approve one card, and the environment appears in **Agents → Setup** under **Yours**.
   - It can also import a whole test from a `.dynotest.json` package, from a file in your home folder or a research.dynolab.dev link, and fill **Setup** with it.
 - **Alerts and Speaks as.** A setup the assistant proposes can include the test's own Observer alerts and who speaks the rules said once and the script messages (*Speaks as*). Both appear in **Setup** and are used in the run.
-- **Documents.** Click the paperclip, or drop files on the panel, to give the assistant PDFs, Word, RTF, OpenDocument, HTML, Markdown, plain text or code files, or images. See [Documents](#documents).
+- **Documents.** Choose **+ → Add files or photos**, or drop files on the panel, to give the assistant PDFs, Word, RTF, OpenDocument, HTML, Markdown, plain text or code files, or images. See [Documents](#documents).
 - **Selecting text.** Drag over any message, thinking or card text to select it; ⌘C copies and ⌘A selects a whole message.
 - **Conversations** are in the title menu: new, open, rename, delete. **Plain chat with a model** opens the old full-window chat.
 
 ## Web search (optional)
 
-Tick **Web search** under the model menu to let the assistant search the web and read pages in that conversation. It's off by default, for each conversation.
+Choose **+ → Web search** in the composer to let the assistant search the web and read pages in that conversation. It's off by default, for each conversation.
 
 **How it works:**
 - Dyno runs [SearXNG](https://github.com/searxng/searxng), an open-source search engine, in Docker on your Mac. It listens only on `127.0.0.1`. The first time you tick the box, Docker downloads it (about 100 MB).
@@ -52,9 +52,31 @@ The model, your conversations, tests and files stay on your Mac.
 **The risks, and what Dyno does about them:**
 - **Prompt injection.** Web pages are written by other people and can contain instructions meant to mislead the assistant. Its instructions say to treat pages only as information, and it still can't run or save anything without your **Approve**.
 - **Your own Mac and network.** Only public web addresses can be read; local and private addresses are refused, including after a redirect. So a page can't steer the assistant into Dyno's own services or your local network.
-- **Search engines see your queries.** If that matters for a conversation, leave the box unticked.
+- **Search engines see your queries.** If that matters for a conversation, leave web search off.
 
 SearXNG stops when Dyno quits.
+
+## Connectors (MCP servers)
+
+Connectors give the assistant tools from [MCP](https://modelcontextprotocol.io) servers, the same servers Claude Desktop, Claude Code and ChatGPT use: your files, a notes app, GitHub, a database.
+
+**Add one** in **Settings → Connectors**:
+- **Add connector…** asks for a name and either a **command on this Mac** (for example `npx -y @modelcontextprotocol/server-filesystem ~/Papers`) or a **remote URL** (streamable HTTP, or SSE for older servers). **Examples** fills in a few official servers.
+- **Paste a config…** takes the `{"mcpServers": {…}}` JSON from Claude Desktop (`claude_desktop_config.json`) or Claude Code (`.mcp.json`) as it is.
+- Environment variables and headers (usually tokens) go to your macOS Keychain, never to a file, and aren't shown again. Leave a saved value empty to keep it.
+- **Test** starts the server and lists its tools. If it doesn't start, the row says why (for example the command wasn't found, or the server's own error).
+- Remote servers that sign in through a browser (OAuth) aren't supported yet; use a token in a header.
+
+**Use one in a conversation:** choose **+** in the composer and tick the connector. It shows as a chip above the message box with its state (*starting*, *12 tools*, *didn't start*); the **×** turns it off. Each conversation has its own connectors, off by default. The assistant's tools appear in the chat as, for example, *Notes: search notes*.
+
+**What it may do without asking:** nothing, by default: every connector tool is a card you approve, like starting a test. For a connector you trust, tick **Run read-only tools without asking**. Then the tools its server marks read-only run at once; anything else still waits for **Approve**.
+
+**What to keep in mind:**
+- A **remote** connector (orange chip) receives what the assistant sends it, so that leaves your Mac. A local one runs on your Mac, but can reach the internet itself, like any program.
+- What a connector returns is written by that service. The assistant treats it as information, never as instructions (prompt injection), and is told to send a connector only what the task needs.
+- Every tool's description is sent with each message, so a connector with many tools uses more of the model's context (see the meter). Dyno offers at most 60 connector tools per conversation.
+
+Local connectors start the first time a conversation turns them on, and stop when Dyno quits. Their output is logged in `~/.mlx-dyno/lab/connectors/logs`.
 
 ## Documents
 
@@ -89,6 +111,9 @@ The lab service at `http://127.0.0.1:8980/lab/v1`:
 | GET | `/assistant/conversations/{id}?after=&before=&limit=` | Events, the reply being written (`live`), the task list, a waiting `pending` proposal and `context` use |
 | POST | `/assistant/conversations/{id}/messages` | Send `{"text", "context", "model": {"port", "model"}}` (202). `context` is what the person sees |
 | POST | `/assistant/conversations/{id}/decide` | Answer a proposal `{"proposal", "approve", "note"}` (202) |
-| POST | `/assistant/conversations/{id}/stop` · `/rename` · `/settings` · `/delete` | Stop a turn; `{"title"}`; `{"budget", "thinking", "web"}` (`budget`: 8,192 to 1,048,576 tokens); delete |
+| POST | `/assistant/conversations/{id}/stop` · `/rename` · `/settings` · `/delete` | Stop a turn; `{"title"}`; `{"budget", "thinking", "web", "connectors": ["<connector id>", ...]}` (`budget`: 8,192 to 1,048,576 tokens); delete |
 | POST | `/assistant/conversations/{id}/documents` | Attach a document's text `{"name", "kind", "pages": ["page text", ...], "note"}` (201, up to 40 MB) |
+| GET | `/assistant/connectors` | Connectors with their state (`stopped`, `starting`, `running`, `error`) and tools. Saved values are never returned, only `env_keys` and `headers_keys` |
+| POST | `/assistant/connectors` | Add or change one `{"id"?, "name", "transport": "stdio"\|"http"\|"sse", "command", "args", "url", "env", "headers", "allow_reads"}`; a `null` value keeps the saved one (201) |
+| POST | `/assistant/connectors/import` · `/test` · `/delete` | `{"json": "<a Claude Desktop config>"}`; `{"id"}` starts it and lists its tools; `{"id"}` |
 | GET | `/assistant/model-context?model=` | The most tokens a downloaded model reads (`context`), or `null` |

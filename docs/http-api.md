@@ -120,7 +120,7 @@ Cancellation does not stop an inference server. Deleting a running job returns 4
 
 ## Dyno's assistant
 
-The chat panel's conversations, run by the lab with a local model: `GET/POST /assistant/conversations`, `GET /assistant/conversations/{id}`, and `POST …/{id}/messages`, `…/decide`, `…/stop`, `…/rename`, `…/settings`, `…/delete`. See [Dyno's assistant](assistant.md#api).
+The chat panel's conversations, run by the lab with a local model: `GET/POST /assistant/conversations`, `GET /assistant/conversations/{id}`, and `POST …/{id}/messages`, `…/decide`, `…/stop`, `…/rename`, `…/settings`, `…/delete`; connectors (MCP servers) at `GET/POST /assistant/connectors` and `POST /assistant/connectors/import`, `…/test`, `…/delete`. See [Dyno's assistant](assistant.md#api).
 
 ## Agent sandbox tests
 

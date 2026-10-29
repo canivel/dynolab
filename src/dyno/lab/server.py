@@ -250,6 +250,7 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
                 parts, q = path.removeprefix('/lab/v1/assistant/').split('/'), self._query()
                 if parts == ['conversations']: self._execution_send(self.server.assistant.list())
                 elif parts == ['web']: self._execution_send(self.server.assistant.web.status())
+                elif parts == ['connectors']: self._execution_send(self.server.assistant.connectors.list())
                 elif parts == ['web', 'providers']: self._execution_send(self.server.assistant.web.providers())
                 elif parts == ['model-context']:
                     from .assistant import model_context
@@ -435,6 +436,10 @@ class Handler(ExecutionHTTPMixin, BaseHTTPRequestHandler):
             if self.path.startswith('/lab/v1/assistant/'):
                 parts, a = self.path.split('?', 1)[0].removeprefix('/lab/v1/assistant/').split('/'), self.server.assistant
                 if parts == ['conversations']: self._execution_send(a.create(body), 201)
+                elif parts == ['connectors']: self._execution_send(a.connectors.save(body), 201)
+                elif len(parts) == 2 and parts[0] == 'connectors' and parts[1] in ('delete', 'import', 'test'):
+                    c = a.connectors
+                    self._execution_send(c.delete(body) if parts[1] == 'delete' else c.import_config(body) if parts[1] == 'import' else c.test(body))
                 elif parts == ['web', 'start']: self._execution_send(a.web.start(), 202)
                 elif parts == ['web', 'stop']: self._execution_send(a.web.stop())
                 elif parts == ['web', 'providers']: self._execution_send(a.web.configure(body))
@@ -634,6 +639,7 @@ def main(argv=None):
     finally:
         if server.assistant.web.status().get('status') in ('running', 'starting'):
             server.assistant.web.stop()  # SearXNG runs only while Dyno does
+        server.assistant.connectors.stop_all()
         if server.recipes.active:
             server.recipes.cancel(server.recipes.active)
         if server.sandbox.active:
