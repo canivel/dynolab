@@ -25,6 +25,10 @@ import Observation
     /// SearXNG's state: off, starting, running or error (with the reason).
     var webStatus = "off"
     var webError: String?
+    /// The connectors (MCP servers, Settings → Connectors) this conversation may use, by id; and every connector
+    /// added, with its state (stopped, starting, running, error) and tools.
+    var connectors: [String] = []
+    var available: [[String: Any]] = []
     var hasEarlier = false
     /// Files being read for the assistant ("Reading paper.pdf…"), and how many tokens the chosen model can read.
     var attaching: String?
@@ -52,7 +56,10 @@ import Observation
                 if (try? await lab.request("/health")) != nil { break }
                 try? await Task.sleep(for: .milliseconds(500))
             }
-            await refreshList(); if let id = conversationID { await open(id) }
+            await refreshList(); await loadConnectors(); if let id = conversationID { await open(id) }
+        }
+        NotificationCenter.default.addObserver(forName: .dynoConnectorsChanged, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in await self?.loadConnectors() }
         }
     }
 
@@ -75,6 +82,7 @@ import Observation
             error = nil
             if busy { poll() }
             if web { Task { await watchWeb() } }
+            if !connectors.isEmpty { Task { await watchConnectors() } }
         } catch {
             // Forget it only when the lab says it no longer exists, not when the lab can't be reached.
             if conversationID == id, error.localizedDescription.contains("Unknown conversation") { conversationID = nil; events = []; title = "" }
@@ -104,7 +112,7 @@ import Observation
         conversationID = nil
         events = []; plan = []; pending = nil; live = nil; lastSeq = 0; hasEarlier = false
         title = ""; status = "idle"; contextUse = nil; conversationModel = nil; undo = [:]; error = nil
-        budget = 32768; thinking = false; web = false
+        budget = 32768; thinking = false; web = false; connectors = []
     }
 
     func loadEarlier() async {
@@ -130,7 +138,7 @@ import Observation
         } catch { self.error = error.localizedDescription }
     }
 
-    func setSettings(budget: Int? = nil, thinking: Bool? = nil, web: Bool? = nil) async {
+    func setSettings(budget: Int? = nil, thinking: Bool? = nil, web: Bool? = nil, connectors: [String]? = nil) async {
         guard let lab else { return }
         if conversationID == nil { await newConversation() }  // settings chosen before the first message stay with it
         guard let id = conversationID else { return }
@@ -138,8 +146,36 @@ import Observation
         if let budget { body["budget"] = budget; self.budget = budget }
         if let thinking { body["thinking"] = thinking; self.thinking = thinking }
         if let web { body["web"] = web; self.web = web }
+        if let connectors { body["connectors"] = connectors; self.connectors = connectors }
         _ = try? await lab.request("/assistant/conversations/\(id)/settings", body: body, timeout: 10)
         if web == true { await watchWeb() }
+        if connectors != nil { await watchConnectors() }
+    }
+
+    // MARK: Connectors
+
+    func loadConnectors() async {
+        guard let lab, let r = try? await lab.request("/assistant/connectors", timeout: 10) else { return }
+        available = r["connectors"] as? [[String: Any]] ?? []
+    }
+
+    func connector(_ id: String) -> [String: Any]? { available.first { $0["id"] as? String == id } }
+
+    func toggleConnector(_ id: String) async {
+        let on = connectors.contains(id) ? connectors.filter { $0 != id } : connectors + [id]
+        await setSettings(connectors: on)
+    }
+
+    /// The connectors that are on, by name, and whether any sends data off this Mac.
+    var activeConnectors: [[String: Any]] { connectors.compactMap { connector($0) } }
+
+    /// Follows the connectors this conversation turned on while they start (npx may download a server first).
+    func watchConnectors() async {
+        for _ in 0..<90 {
+            await loadConnectors()
+            if !activeConnectors.contains(where: { $0["status"] as? String == "starting" }) { return }
+            try? await Task.sleep(for: .seconds(1))
+        }
     }
 
     /// The most tokens a model can read (from its config), cached by model id; nil if Dyno can't tell.
@@ -247,6 +283,7 @@ import Observation
         budget = c["budget"] as? Int ?? 32768
         thinking = c["thinking"] as? Bool ?? false
         web = c["web"] as? Bool ?? false
+        connectors = c["connectors"] as? [String] ?? []
         let used = c["model"] as? [String: Any]
         conversationModel = (used?["model"] as? String).map { m in (used?["port"] as? Int).map { "\($0) \(m)" } ?? m }
         live = r["live"] as? [String: Any]
@@ -254,4 +291,9 @@ import Observation
         contextUse = r["context"] as? [String: Any]
         for e in newEvents where e["kind"] as? String == "ui" { onAction?(e) }
     }
+}
+
+extension Notification.Name {
+    /// Settings → Connectors changed the list; the assistant reloads it.
+    static let dynoConnectorsChanged = Notification.Name("dynoConnectorsChanged")
 }

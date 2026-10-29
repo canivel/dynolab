@@ -23,6 +23,7 @@ struct AssistantPanel: View {
     @State private var dropping = false
     @State private var showSizes = false
     @FocusState private var focused: Bool
+    @Environment(\.openSettings) private var openSettings
 
     private var session: AssistantSession { model.assistant }
 
@@ -149,7 +150,6 @@ struct AssistantPanel: View {
                     Spacer()
                 }.help("The model the assistant puts test agents on and tests in evals. It can be a different model from the one the assistant runs on.")
             }
-            webRow
         }.padding(.horizontal, 12).padding(.vertical, 10)
     }
 
@@ -165,30 +165,114 @@ struct AssistantPanel: View {
         Off by default, and set per conversation. The first time, Docker downloads SearXNG (about 100 MB).
         """
 
-    private var webRow: some View {
-        HStack(spacing: 6) {
-            Toggle(isOn: Binding(get: { session.web }, set: { on in Task { await session.setSettings(web: on) } })) {
-                Text("Web search").font(.caption)
-            }
-            .toggleStyle(.checkbox).controlSize(.small)
-            .help(Self.webRisks)
-            Image(systemName: "info.circle").font(.caption2).foregroundStyle(.secondary).help(Self.webRisks)
-            if session.web {
-                switch session.webStatus {
-                case "starting":
-                    DynoSpinner(size: 9); Text("Starting SearXNG…").font(.caption2).foregroundStyle(.secondary)
-                case "running":
-                    Image(systemName: "globe").font(.caption2).foregroundStyle(.orange)
-                    Text("Queries go to search engines").font(.caption2).foregroundStyle(.orange)
-                case "error":
-                    Text(session.webError ?? "Web search didn't start").font(.caption2).foregroundStyle(.orange).lineLimit(2)
-                        .help(session.webError ?? "")
-                default:
-                    EmptyView()
+    // MARK: Tools on for this conversation (the + menu)
+
+    /// What the + menu turned on, as chips above the composer: web search and each connector, with its state.
+    @ViewBuilder private var toolChips: some View {
+        let on = session.activeConnectors
+        if session.web || !on.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    if session.web {
+                        chip(icon: "globe", name: "Web search", tint: .orange, help: Self.webRisks, state: webState) {
+                            Task { await session.setSettings(web: false) }
+                        }
+                    }
+                    ForEach(on.compactMap { $0["id"] as? String }, id: \.self) { id in
+                        let c = session.connector(id) ?? [:]
+                        let remote = c["remote"] as? Bool == true
+                        chip(icon: remote ? "network" : "puzzlepiece.extension", name: c["name"] as? String ?? "Connector",
+                             tint: remote ? .orange : DynoBrand.accent, help: Self.connectorHelp(c), state: Self.connectorState(c)) {
+                            Task { await session.toggleConnector(id) }
+                        }
+                    }
                 }
             }
-            Spacer()
         }
+    }
+
+    private var webState: (text: String, busy: Bool, failed: Bool)? {
+        switch session.webStatus {
+        case "starting": return ("starting", true, false)
+        case "error": return (session.webError ?? "didn't start", false, true)
+        default: return nil
+        }
+    }
+
+    static func connectorState(_ c: [String: Any]) -> (text: String, busy: Bool, failed: Bool)? {
+        switch c["status"] as? String {
+        case "starting": return ("starting", true, false)
+        case "error": return ("didn't start", false, true)
+        case "running": return ("\((c["tools"] as? [Any])?.count ?? 0) tools", false, false)
+        default: return nil
+        }
+    }
+
+    static func connectorHelp(_ c: [String: Any]) -> String {
+        let name = c["name"] as? String ?? "This connector"
+        var lines = [c["remote"] as? Bool == true
+            ? "\(name) is a remote server (\(URL(string: c["url"] as? String ?? "")?.host ?? "on the internet")). What the assistant sends it leaves this Mac."
+            : "\(name) runs on this Mac (\(c["command"] as? String ?? "a local command")). It can still reach the internet itself."]
+        lines.append(c["allow_reads"] as? Bool == true
+            ? "Tools that only read run without asking; anything else waits for your approval."
+            : "Every tool call waits for your approval.")
+        lines.append("What it returns is treated as information, never as instructions.")
+        if let e = c["error"] as? String { lines.append("Error: " + e) }
+        return lines.joined(separator: "\n\n")
+    }
+
+    private func chip(icon: String, name: String, tint: Color, help: String, state: (text: String, busy: Bool, failed: Bool)?,
+                      remove: @escaping () -> Void) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon).font(.caption2).foregroundStyle(tint)
+            Text(name).font(.caption2.weight(.medium)).lineLimit(1)
+            if let state {
+                if state.busy { DynoSpinner(size: 8) }
+                Text(state.text).font(.caption2).foregroundStyle(state.failed ? .orange : .secondary).lineLimit(1)
+            }
+            Button(action: remove) { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundStyle(.secondary) }
+                .buttonStyle(.plain).help("Turn off for this conversation")
+        }
+        .padding(.horizontal, 8).padding(.vertical, 3)
+        .background(Capsule().fill(DynoBrand.surface))
+        .overlay(Capsule().stroke((state?.failed == true ? Color.orange : tint).opacity(0.35)))
+        .help(help)
+    }
+
+    /// The + menu: files, web search, and connectors, each on or off for this conversation. Like Claude's and ChatGPT's.
+    private var plusMenu: some View {
+        Menu {
+            Button { pickDocuments() } label: { Label("Add files or photos…", systemImage: "paperclip") }
+                .disabled(session.busy || session.attaching != nil)
+            Divider()
+            Toggle(isOn: Binding(get: { session.web }, set: { on in Task { await session.setSettings(web: on) } })) {
+                Label("Web search", systemImage: "globe")
+            }
+            Divider()
+            Section("Connectors") {
+                ForEach(session.available.compactMap { $0["id"] as? String }, id: \.self) { id in
+                    let c = session.connector(id) ?? [:]
+                    Toggle(isOn: Binding(get: { session.connectors.contains(id) }, set: { _ in Task { await session.toggleConnector(id) } })) {
+                        Label((c["name"] as? String ?? "Connector") + (c["remote"] as? Bool == true ? " (remote)" : ""),
+                              systemImage: c["remote"] as? Bool == true ? "network" : "puzzlepiece.extension")
+                    }
+                }
+                Button { manageConnectors() } label: {
+                    Label(session.available.isEmpty ? "Add a connector…" : "Manage connectors…", systemImage: "slider.horizontal.3")
+                }
+            }
+        } label: {
+            Image(systemName: "plus").font(.system(size: 14, weight: .semibold)).foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .frame(width: 30, height: 30).background(Circle().fill(DynoBrand.surface))
+        .help("Add files, turn on web search, or use a connector (an MCP server) in this conversation")
+        .task { await session.loadConnectors() }
+    }
+
+    private func manageConnectors() {
+        UserDefaults.standard.set("connectors", forKey: "settingsTab")
+        openSettings()
     }
 
     /// The most the chosen model can read, when Dyno can tell (from the model's config).
@@ -380,7 +464,7 @@ struct AssistantPanel: View {
                     HStack(spacing: 5) {
                         Image(systemName: r == nil ? "circle.dotted" : failed ? "exclamationmark.circle" : "checkmark.circle")
                             .foregroundStyle(failed ? .orange : .secondary)
-                        Text(Self.label(name, c["arguments"] as? String)).foregroundStyle(.secondary)
+                        Text(Self.label(name, c["arguments"] as? String, connectors: session.available)).foregroundStyle(.secondary)
                     }.font(.caption2)
                     .help(failed ? (r?["content"] as? String ?? "") : "")
                 }
@@ -399,7 +483,7 @@ struct AssistantPanel: View {
         }
     }
 
-    static func label(_ name: String, _ arguments: String?) -> String {
+    static func label(_ name: String, _ arguments: String?, connectors: [[String: Any]] = []) -> String {
         let args = (arguments?.data(using: .utf8)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
         switch name {
         case "app_state": return "Looked at your screen"
@@ -420,7 +504,12 @@ struct AssistantPanel: View {
         case "read_page": return "Read " + ((args["url"] as? String).flatMap { URL(string: $0)?.host } ?? "a web page")
         case "open_screen": return "Opened \(screenTitle(args["screen"] as? String ?? ""))"
         case "update_plan": return "Updated the plan"
-        default: return name
+        default:
+            // A connector's tool: <connector>__<tool>.
+            guard let split = name.range(of: "__") else { return name }
+            let prefix = String(name[..<split.lowerBound]), tool = String(name[split.upperBound...])
+            let connector = connectors.first { $0["prefix"] as? String == prefix }?["name"] as? String ?? prefix
+            return "\(connector): \(tool.replacingOccurrences(of: "_", with: " "))"
         }
     }
 
@@ -577,6 +666,7 @@ struct AssistantPanel: View {
             if let a = session.attaching {
                 HStack(spacing: 6) { DynoSpinner(size: 9); Text(a).font(.caption2).foregroundStyle(.secondary) }
             }
+            toolChips
             if session.pending != nil {
                 Text("A proposal is waiting. Writing instead counts as not approving it.").font(.caption2).foregroundStyle(.secondary)
             }
@@ -595,11 +685,7 @@ struct AssistantPanel: View {
                 }
                 .padding(4).background(RoundedRectangle(cornerRadius: 10).fill(DynoBrand.surface))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(focused ? DynoBrand.accent.opacity(0.6) : Color.clear))
-                Button(action: pickDocuments) {
-                    Image(systemName: "paperclip").font(.system(size: 15)).foregroundStyle(.secondary).frame(width: 30, height: 30)
-                        .background(Circle().fill(DynoBrand.surface))
-                }.buttonStyle(.plain).disabled(session.busy || session.attaching != nil)
-                .help("Give the assistant a document: PDF, Word, RTF, HTML, text, or an image (read with OCR). Read on this Mac; you can also drop files here.")
+                plusMenu
                 Button {
                     if !voice.listening { spoken = text.isEmpty || text.hasSuffix(" ") ? text : text + " " }
                     voice.toggle()

@@ -200,6 +200,15 @@ enum ViewSnapshot {
                        ("assistant-panel", { AnyView(AssistantPanel(model: model, onMinimize: {}, onPlainChat: {}).frame(width: 420)) }, CGSize(width: 420, height: 950)),
                        ("assistant-rail", { AnyView(AssistantRail(model: model, onOpen: {}).frame(height: 400)) }, CGSize(width: 46, height: 400))]
         }
+        if arguments.contains("--connectors-only") {
+            // Settings → Connectors and the editor, against the Lab service at DYNO_LAB_PORT.
+            UserDefaults.standard.set("connectors", forKey: "settingsTab")
+            var draft = Draft()
+            draft.name = "GitHub"; draft.transport = "http"; draft.url = "https://api.githubcopilot.com/mcp/"
+            draft.headers = [Draft.Pair(key: "Authorization", saved: true)]
+            targets = [("settings-connectors", { AnyView(ConnectorsSettings().frame(width: 600, height: 760).background(DynoBrand.background)) }, CGSize(width: 600, height: 760)),
+                       ("connector-editor", { AnyView(ConnectorEditor(draft: draft) { _ in }) }, CGSize(width: 540, height: 560))]
+        }
         if arguments.contains("--context-sizes") {
             targets = [("context-sizes", { AnyView(VStack(spacing: 20) {
                 ContextSizes(session: model.assistant, modelName: "Qwen3-8B-4bit", modelMax: 40960, choices: [16384, 32768, 40960, 65536, 131072, 262144]) {}
