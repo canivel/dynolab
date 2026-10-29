@@ -107,6 +107,11 @@ def _patch(server_module: Any) -> None:
 
 
 SPECULATIVE_HELP = """\
+Mode (Dyno):
+  --mode {research,serve}       research (default): every Dyno feature (Observer history, activation
+                                capture). serve: only answering requests, as fast as one at a time goes;
+                                for Claude Code, Codex and other apps (`dyno launch` uses it).
+
 Speculative decoding (Dyno):
   --speculative {auto,mtp,dflash,off}
                                 auto (default): draft with a downloaded DFlash2 drafter for the
@@ -121,19 +126,34 @@ Speculative decoding (Dyno):
 
 def _take_speculative_flags(argv: list[str]) -> tuple[list[str], dict[str, Any]]:
     """Strip Dyno's own flags before mlx_lm's parser sees them."""
-    options: dict[str, Any] = {"mode": "auto", "head": None, "dflash": None}
+    options: dict[str, Any] = {"mode": "auto", "head": None, "dflash": None, "use": "research"}
     rest: list[str] = []
     values = iter(argv)
+    names = {"--speculative": "mode", "--mtp-head": "head", "--dflash-drafter": "dflash", "--mode": "use"}
     for argument in values:
         name, _, inline = argument.partition("=")
-        if name in ("--speculative", "--mtp-head", "--dflash-drafter"):
-            value = inline or next(values, "")
-            options[{"--speculative": "mode", "--mtp-head": "head", "--dflash-drafter": "dflash"}[name]] = value
+        if name in names:
+            options[names[name]] = inline or next(values, "")
         else:
             rest.append(argument)
     if options["mode"] not in ("auto", "mtp", "dflash", "off"):
         raise SystemExit(f"--speculative must be auto, mtp, dflash or off, not {options['mode']!r}")
+    if options["use"] not in ("research", "serve"):
+        raise SystemExit(f"--mode must be research or serve, not {options['use']!r}")
     return rest, options
+
+
+def _serve_only(argv: list[str]) -> list[str]:
+    """Serve-only mode: one request at a time on the fast single-stream path (with a drafter when there is one),
+    and none of the research features: no Observer history, no activation capture."""
+    from ..execution import ExecutionHTTPMixin
+
+    registry.mode = "serve"
+    ExecutionHTTPMixin.execution_history = False
+    if _explicit_concurrency(argv) is None:
+        argv = argv + ["--decode-concurrency", "1", "--prompt-concurrency", "1"]
+    print("Mode: serve only (one request at a time; no Observer history or activation capture).", flush=True)
+    return argv
 
 
 def _explicit_concurrency(argv: list[str]) -> Optional[int]:
@@ -329,6 +349,11 @@ def main(argv: list[str] | None = None) -> int:
         print(SPECULATIVE_HELP)
     else:
         _announce(argv)
+        if speculative_options["use"] == "serve":
+            argv = _serve_only(argv)
+        from . import checkpoints
+
+        checkpoints.install(server_module)
         _single_stream_at_concurrency_one(server_module, argv)
         _enable_speculative(server_module, speculative_options, argv)
 

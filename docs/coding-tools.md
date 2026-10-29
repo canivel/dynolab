@@ -35,7 +35,7 @@ dyno launch claude --model qwen3.8-27b
 
 `dyno launch` then:
 
-1. **Uses the model if it's already running** in a Dyno server, or starts it on a free port between 8970 and 8979. Loading takes a moment.
+1. **Uses the model if it's already running** in a Dyno server, or starts it on a free port between 8970 and 8979, in [serve-only mode](#speed-serve-only-mode). Loading takes a moment. It then says whether speculative decoding is on, and if not, why.
 2. **Starts the tool pointed at it.** Every model the tool would use, including Claude Code's background model and subagents, is the one you chose. The tool's context window is set to the model's own.
 3. **Stops the model it started** when you quit the tool, or close the terminal. Add `--keep` to leave it running.
 
@@ -45,6 +45,26 @@ Anything after `--` goes to the tool:
 dyno launch claude --model qwen3.8-27b -- -p "The tests fail. Fix them."
 dyno launch codex --model qwen3.8-27b -- exec "The tests fail. Fix them."
 ```
+
+## Speed: serve-only mode
+
+A Dyno model server runs in one of two modes:
+
+- **Research** (the default in **Models**) keeps every Dyno feature on: the Observer's request history, activation capture while serving, any number of requests at once.
+- **Serve only** is for Claude Code, Codex and other apps. It answers one request at a time on the fastest path, with speculative decoding when the model has a drafter, and turns the research features off. `dyno launch` starts servers this way. In **Models**, choose **Use: Serve only** before **Start**. From a terminal: `dyno serve --model … --mode serve`.
+
+What makes Claude Code fast or slow on your own model, measured with Qwen3.8-27B 4-bit on an M5 Max:
+
+| | Reply speed | Each later turn starts after |
+|---|---|---|
+| No drafter, several requests at once (what `dyno launch` did before) | 20 tok/s | 1–3 s |
+| DFlash2 drafter, before this change | 50–100 tok/s | 21 s (the whole prompt read again) |
+| **Serve only with the DFlash2 drafter** | **45–120 tok/s** | **0.6–2.3 s** |
+
+- **Get a drafter.** Speculative decoding is where the speed comes from: a small drafter proposes several tokens and the model checks them in one step, with the same output. For Qwen3.8-27B, `dyno pull z-lab/Qwen3.8-27B-DFlash2` (the fastest). Without it, Dyno uses the model's own MTP head, which it downloads once (~0.85 GB). If neither is available, `dyno launch` says why.
+- **Each turn reads only what's new.** Serve only saves the prompt cache at the end of the system prompt and at the start of each reply. The next turn, and a new session with the same tools, starts from there instead of reading Claude Code's ~12,000-token instructions again.
+- **Thinking.** Qwen3.x thinks before answering by default. That's better on hard tasks but slower. `dyno launch claude --model … --thinking off` starts the server without it.
+- **A server you started in Models** in research mode is used as it is. `dyno launch` says so; restart it with **Use: Serve only** for full speed.
 
 ### Permissions: skipping the prompts, and why auto mode doesn't work
 

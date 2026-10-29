@@ -477,6 +477,11 @@ private struct RunPanel: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            Picker("Use", selection: Binding(get: { model.serverUse }, set: { model.serverUse = $0 })) {
+                Text("Research").tag("research")
+                Text("Serve only").tag("serve")
+            }.frame(width: 170)
+                .help("Research: every Dyno feature (Observer history, activation capture). Serve only: for Claude Code, Codex and other apps; answers one request at a time on the fastest path and turns the research features off. For the next start.")
             Picker("Thinking", selection: Binding(get: { model.thinkingMode }, set: { model.thinkingMode = $0 })) {
                 Text("Model default").tag("default")
                 Text("On").tag("on")

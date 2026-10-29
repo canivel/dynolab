@@ -109,10 +109,34 @@ class Launch(unittest.TestCase):
         def hang_up(*a, **k): os.kill(os.getpid(), signal.SIGHUP)
         with mock.patch.object(L, 'serving', return_value=[]), mock.patch.object(L, '_free_port', return_value=8979), \
                 mock.patch.object(L, '_start_server', return_value=(server, Path('log'))), mock.patch.object(L, '_wait'), \
+                mock.patch.object(L, 'warm_up'), \
                 mock.patch.object(sp, 'call', side_effect=hang_up):
             with self.assertRaises(SystemExit): L.launch(['claude', '--model', 'qwen3-8b'])
         server.terminate.assert_called_once()
         self.assertIs(signal.getsignal(signal.SIGHUP), signal.SIG_DFL)
+
+    def test_a_started_server_runs_serve_only_with_the_chosen_thinking(self):
+        with mock.patch.object(L.subprocess, 'Popen') as popen, mock.patch.object(Path, 'home', return_value=Path(self.tmp.name)):
+            L._start_server(dict(id='m'), 8979, [], 'serve', False)
+            command = popen.call_args[0][0]
+            self.assertEqual(command[command.index('--mode') + 1], 'serve')
+            self.assertEqual(command[command.index('--chat-template-args') + 1], '{"enable_thinking": false}')
+            L._start_server(dict(id='m'), 8979, ['--mode', 'research'], 'serve')
+            command = popen.call_args[0][0]
+            self.assertEqual(command.count('--mode'), 1)
+            self.assertNotIn('--chat-template-args', command)
+
+    def test_says_how_fast_the_server_can_go(self):
+        log = Path(self.tmp.name) / 'launch.log'
+        log.write_text('Speculative decoding off: no MTP head for this model (pass --mtp-head)\n')
+        with mock.patch.object(L, '_get', return_value={'mode': 'serve', 'model': {'loaded_at': None}, 'speculative': {'mode': None}}):
+            self.assertEqual(L.speed_report(1), [])  # not loaded yet: the drafter isn't chosen
+        with mock.patch.object(L, '_get', return_value={'mode': 'serve', 'model': {'loaded_at': 1}, 'speculative': {'mode': 'dflash'}}):
+            self.assertEqual(L.speed_report(1), ['Speculative decoding: on (DFlash2 drafter).'])
+        with mock.patch.object(L, '_get', return_value={'mode': 'research', 'model': {'loaded_at': 1}, 'speculative': {'mode': None}}):
+            lines = L.speed_report(1, log)
+        self.assertIn('off (no MTP head for this model (pass --mtp-head))', lines[0])
+        self.assertIn('research mode', lines[1])
 
     def test_clear_refusals(self):
         self.assertEqual(L.launch(['claude', '--model', 'mistral', '--port', '1']), 1)

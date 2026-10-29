@@ -19,7 +19,24 @@ class SpeculativeFlags(unittest.TestCase):
             ["--model", "m", "--speculative", "off", "--mtp-head=/tmp/head", "--port", "1"]
         )
         self.assertEqual(argv, ["--model", "m", "--port", "1"])
-        self.assertEqual(options, {"mode": "off", "head": "/tmp/head", "dflash": None})
+        self.assertEqual(options, {"mode": "off", "head": "/tmp/head", "dflash": None, "use": "research"})
+
+    def test_serve_mode_runs_one_request_at_a_time_without_the_research_features(self):
+        from dyno.execution import ExecutionHTTPMixin
+        from dyno.serve.cli import _serve_only
+        from dyno.serve.instrument import registry
+
+        argv, options = _take_speculative_flags(["--model", "m", "--mode", "serve"])
+        self.assertEqual((argv, options["use"]), (["--model", "m"], "serve"))
+        try:
+            self.assertEqual(_serve_only(["--model", "m"]), ["--model", "m", "--decode-concurrency", "1", "--prompt-concurrency", "1"])
+            self.assertEqual(_serve_only(["--decode-concurrency", "4"]), ["--decode-concurrency", "4"])  # asked for: kept
+            self.assertEqual(registry.mode, "serve")
+            self.assertFalse(ExecutionHTTPMixin.execution_history)
+        finally:
+            registry.mode, ExecutionHTTPMixin.execution_history = "research", True
+        with self.assertRaises(SystemExit):
+            _take_speculative_flags(["--mode", "fast"])
 
     def test_auto_is_the_default(self):
         self.assertEqual(_take_speculative_flags(["--model", "m"])[1]["mode"], "auto")

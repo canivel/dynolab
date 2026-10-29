@@ -108,6 +108,7 @@ def stats_json(registry: MetricsRegistry, model_path: str | None = None) -> str:
             "load_seconds": _round(registry.model_load_seconds),
             "tool_calls": registry.tool_calls,
         },
+        "mode": registry.mode,
         "speculative": {
             "mode": registry.speculative,
             "rounds": registry.draft_rounds_total,

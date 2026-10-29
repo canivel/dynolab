@@ -12,4 +12,6 @@ Changes merged to `main` since the last release. Each PR adds its line here, und
 
 ## Claude Code and Codex
 
+- **Serve-only mode, and much faster turns.** Models has a new **Use: Research / Serve only** choice, and `dyno launch` now starts servers in serve-only mode. That means one request at a time on the fast path, with speculative decoding, and none of the research features. Before, `dyno launch` on a Mac without a drafter decoded through the batched path at ~20 tok/s. Separately, on the fast path, every Claude Code turn re-read the whole ~12,000-token prompt. On an M5 Max, a later turn now starts in 0.6–2.3 s instead of ~21 s. `dyno launch` says whether speculative decoding is on and why not, and `--thinking off` starts the model without thinking.
+
 - **No-prompts command.** Router → *Use with Claude Code or Codex* now shows `dyno launch claude --model … -- --dangerously-skip-permissions` with a Copy button. The guide explains when to use it, and why Claude Code's auto mode doesn't work with local models (it needs a Claude model to check each action).
