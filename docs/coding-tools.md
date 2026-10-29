@@ -46,6 +46,18 @@ dyno launch claude --model qwen3.8-27b -- -p "The tests fail. Fix them."
 dyno launch codex --model qwen3.8-27b -- exec "The tests fail. Fix them."
 ```
 
+### Permissions: skipping the prompts, and why auto mode doesn't work
+
+Claude Code asks before it runs a command or edits a file. To let it work without asking:
+
+```
+dyno launch claude --model qwen3.8-27b -- --dangerously-skip-permissions
+```
+
+Every command and edit then runs straight away, so start it in a git worktree or a throwaway copy of your project, not in a folder with work you can't lose. A local model makes more mistakes than Claude does, and nothing stops a wrong `rm` or `git reset`. Claude Code refuses this mode when run as root or with `sudo`. To keep asking but accept file edits without a prompt, press Shift+Tab in Claude Code to switch to *accept edits*.
+
+**Auto mode doesn't work with your own model.** Claude Code's [auto mode](https://code.claude.com/docs/en/permission-modes.md) approves safe actions on its own. It does that by sending each action it isn't sure about to a separate classifier model, and that classifier must be a Claude model: auto mode is [supported](https://code.claude.com/docs/en/auto-mode-config.md) only on Claude models. On a model served by Dyno it is either not offered in the Shift+Tab cycle, or its checks fail and Claude Code denies every action it checks. Use the normal prompts, *accept edits*, or the command above.
+
 What we saw with Qwen3.8-27B on an M5 Max: given a small project with a failing test, Claude Code ran the test, found the bug, fixed it and reran the test in 74 seconds, including loading the model. Codex did the same in 52 seconds.
 
 ## Web search

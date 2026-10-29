@@ -35,6 +35,8 @@ struct CodingToolsSection: View {
             }
 
             command("dyno launch claude --model \(modelName)", label: "Claude Code")
+            command("dyno launch claude --model \(modelName) -- --dangerously-skip-permissions", label: "No permission prompts",
+                    help: "Claude Code runs every command and edit without asking. Use it in a worktree or a throwaway copy: a local model makes more mistakes than Claude.")
             command("dyno launch codex --model \(modelName)", label: "Codex")
             command("dyno models", label: "Downloaded models")
 
@@ -53,13 +55,14 @@ struct CodingToolsSection: View {
             }
             if let note = setup.note { Text(note).font(.system(size: 10)).foregroundStyle(.orange) }
             Text("Needs Claude Code (npm install -g @anthropic-ai/claude-code) or Codex (npm install -g @openai/codex). "
-                 + "Arguments after -- go to the tool. Choose the web search provider in Settings.")
+                 + "Arguments after -- go to the tool. Choose the web search provider in Settings. "
+                 + "Claude Code's auto mode needs a Claude model: on a local model it isn't offered, or it blocks every action it checks.")
                 .font(.system(size: 9)).foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private func command(_ text: String, label: String) -> some View {
+    private func command(_ text: String, label: String, help: String? = nil) -> some View {
         HStack(spacing: 8) {
             Text(label).font(.system(size: 11)).frame(width: 110, alignment: .leading)
             Text(text)
@@ -75,5 +78,6 @@ struct CodingToolsSection: View {
             .controlSize(.small)
             Spacer(minLength: 0)
         }
+        .help(help ?? "")
     }
 }

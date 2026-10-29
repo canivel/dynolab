@@ -9,3 +9,7 @@ Changes merged to `main` since the last release. Each PR adds its line here, und
 - **Chats survive restarts.** A conversation cut off by quitting Dyno no longer stays "thinking" forever, and the assistant now waits for Dyno's lab service at launch, so the conversation list is no longer empty and the open chat is no longer forgotten.
 - **Connectors (MCP servers).** Add MCP servers in the new **Settings → Connectors** (a command on this Mac or a remote URL, or paste a Claude Desktop / Claude Code config), then turn them on per conversation from the new **+** menu in the composer. Tools that change something wait for your approval; read-only tools can run without asking if you allow it. Tokens go to the Keychain.
 - **A + menu in the composer.** Files, web search and connectors are all under **+**, and what's on shows as chips above the message box.
+
+## Claude Code and Codex
+
+- **No-prompts command.** Router → *Use with Claude Code or Codex* now shows `dyno launch claude --model … -- --dangerously-skip-permissions` with a Copy button. The guide explains when to use it, and why Claude Code's auto mode doesn't work with local models (it needs a Claude model to check each action).
