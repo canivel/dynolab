@@ -22,7 +22,7 @@ swift test --package-path app
 ./app/build.sh --slim
 ```
 
-The slim app verifies native compilation and packaging; it does not include the Python runtime and is not a distributable release. Use `./app/package-dmg.sh` for a complete local package. Bundled runtime dependencies come from `uv.lock` and are verified against hashes. When changing dependencies, run `uv lock`, review the lockfile diff and explain the change.
+The slim app verifies native compilation and packaging; it does not include the Python runtime and is not a distributable release. Use `./app/package-dmg.sh` for a complete local package. Bundled runtime dependencies come from `uv.lock` and are verified against hashes. When changing dependencies, run `uv lock`, review the lockfile diff and explain the change. Never add litellm, directly or through another package: `tests/test_dependencies.py` fails if it appears in `pyproject.toml`, `uv.lock` or the source.
 
 CI deliberately does not download large models or run community PRs on a maintainer's Mac. Tests requiring MLX/Metal are skipped in portable CI. On a quiet development Mac, install serving dependencies with `uv sync --locked --extra serve --extra mcp --extra docs`, then run the full Python suite and the opt-in `tests/lab_acceptance.py` against a temporary Lab service. Use a separate port and data directory; never stop another person's serving process to make a test fit.
 
