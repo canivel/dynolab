@@ -1,3 +1,24 @@
+# Dyno Lab 0.6.14
+
+Dyno Lab 0.6.14 makes Claude Code and Codex much faster on your own models, and lets the assistant use tools from MCP servers, the way Claude and ChatGPT add connectors.
+
+## Claude Code and Codex
+
+- **Serve-only mode.** Models has a new **Use: Research / Serve only** choice, and `dyno launch` now starts servers in serve-only mode. That means one request at a time on the fastest path, with speculative decoding, and none of the research features (Observer history, activation capture). Before, `dyno launch` on a Mac without a drafter decoded through mlx_lm's batched path at about 20 tok/s.
+- **Each turn reads only what's new.** With a drafter, every Claude Code turn used to read the whole ~12,000-token prompt again. Dyno now saves the prompt cache at the end of the system prompt and at the start of each reply. On an M5 Max with Qwen3.8-27B, a later turn starts in 0.6–2.3 s instead of about 21 s, at 45–120 tok/s with the DFlash2 drafter.
+- **`dyno launch` says how fast it can go.** It loads the model before the first turn, says whether speculative decoding is on and, if not, why. `--thinking off` starts the model without thinking, and `--research` keeps the research features. See [Speed: serve-only mode](coding-tools.md#speed-serve-only-mode).
+- **No-prompts command.** Router → *Use with Claude Code or Codex* shows `dyno launch claude --model … -- --dangerously-skip-permissions` with a Copy button. The guide explains when to use it, and why Claude Code's auto mode doesn't work with local models: it needs a Claude model to check each action.
+
+## Assistant
+
+- **Connectors (MCP servers).** Add MCP servers in the new **Settings → Connectors**. Each is a command on this Mac or a remote URL, or you can paste a Claude Desktop or Claude Code config as is. Turn them on per conversation from the **+** menu. Tools that change something wait for your approval. Read-only tools can run without asking if you allow it for that connector. Tokens go to the Keychain. See [Connectors](assistant.md#connectors-mcp-servers).
+- **A + menu in the composer.** Files, web search and connectors are all under **+**, and what's on shows as chips above the message box.
+- **New chat.** A pencil button in the header (⇧⌘N) clears the chat and starts a fresh one. The previous conversation stays in the list.
+- **Answers instead of stopping mid-research.** The assistant can take 30 steps per message instead of 12. If it still runs out, it answers with what it found and what's left.
+- **Chats survive restarts.** A conversation cut off by quitting Dyno no longer stays "thinking" forever. The assistant also waits for the lab service at launch, so the conversation list is no longer empty after a restart.
+
+---
+
 # Dyno Lab 0.6.13
 
 Dyno Lab 0.6.13 makes Qwen generation faster again: about 2× on code edits and 1.5× on reasoning on M5 Macs, no longer slower than plain decoding on earlier Macs, and a third faster for models without a draft head. Models Dyno speeds up now carry a **Dyno Boost** badge.
