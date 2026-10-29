@@ -111,7 +111,7 @@ Downloads are stored under `~/.mlx-dyno/gguf/`. Existing complete GGUF files in 
 
 1. In **Models**, select the weights in the left sidebar.
 2. Choose a **Start on port**, such as `8971`. If a model already uses it, Dyno starts on the next free port.
-3. Choose **Thinking: Model default / On / Off** beside Start. This is a default for the next server launch, not a switch that changes an existing process.
+3. Choose **Use: Research / Serve only** and **Thinking: Model default / On / Off** beside Start. Both apply to the next server launch, not to a running one. **Serve only** is for Claude Code, Codex and other apps: one request at a time on the fastest path, no Observer history or activation capture (see [Speed: serve-only mode](coding-tools.md#speed-serve-only-mode)).
 4. Expand **Launch options** if needed, then click **Start**. Wait until loading finishes and the endpoint is shown as serving.
 5. Open Chat or send requests to the displayed local URL.
 

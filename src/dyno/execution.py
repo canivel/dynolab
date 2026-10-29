@@ -229,6 +229,7 @@ class _Writer:
 class ExecutionHTTPMixin:
     """Use before the existing handler in its MRO; preserves inference transport."""
     execution_store: ExecutionStore
+    execution_history = True  # off in serve-only mode
 
     def _execution_endpoint(self):
         return self.path.split("?", 1)[0].rstrip("/")
@@ -286,7 +287,7 @@ class ExecutionHTTPMixin:
         self._execution_headers_done = True
 
     def do_POST(self):
-        if self._execution_endpoint() not in ("/v1/chat/completions", "/v1/completions", "/chat/completions", "/completions"):
+        if not self.execution_history or self._execution_endpoint() not in ("/v1/chat/completions", "/v1/completions", "/chat/completions", "/completions"):
             return super().do_POST()
         record = self.execution_store.begin(self._execution_endpoint(), self.headers.get("X-Dyno-Execution-ID", "")[:64] or None)
         if record is None:

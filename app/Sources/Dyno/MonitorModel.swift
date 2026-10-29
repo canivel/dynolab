@@ -48,6 +48,11 @@ final class MonitorModel {
     }() {
         didSet { UserDefaults.standard.set(thinkingMode, forKey: "serverThinkingMode") }
     }
+    /// "research" (every Dyno feature) or "serve" (serve only: for Claude Code, Codex and other apps; one request at a
+    /// time on the fast path, no Observer history or activation capture). For the next server start.
+    var serverUse: String = UserDefaults.standard.string(forKey: "serverUse") ?? "research" {
+        didSet { UserDefaults.standard.set(serverUse, forKey: "serverUse") }
+    }
 
     // -- router ---------------------------------------------------------------
     private(set) var router = RouterClient.Snapshot()
@@ -448,7 +453,7 @@ final class MonitorModel {
         }
         controller(for: model.path).start(
             model: model, port: port,
-            extraArguments: launchOptions.arguments + (thinkingMode == "default" ? [] : ["--chat-template-args", thinkingMode == "on" ? "{\"enable_thinking\":true}" : "{\"enable_thinking\":false}"])
+            extraArguments: launchOptions.arguments + (serverUse == "serve" ? ["--mode", "serve"] : []) + (thinkingMode == "default" ? [] : ["--chat-template-args", thinkingMode == "on" ? "{\"enable_thinking\":true}" : "{\"enable_thinking\":false}"])
         )
     }
 

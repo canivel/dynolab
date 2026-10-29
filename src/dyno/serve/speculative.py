@@ -419,35 +419,51 @@ def mtp_generate_step(
             )
 
 
+def _mtp_prefill(prompt, target, draft_model, prompt_cache, prefill_step_size):
+    """Run the target and the drafter over `prompt`, in lockstep, extending `prompt_cache`.
+    Returns the last position's hidden state (the drafter's pending input) and the drafter cache."""
+    target_cache, mtp_cache = prompt_cache[:-1], prompt_cache[-1]
+    offset = next((c.offset for c in target_cache if isinstance(c, KVCache)), 0)
+    # MTP pairs (h_i, x_{i+1}) stay in lockstep with the target: the drafter cache holds
+    # one entry per target position except the last, whose hidden waits in `svm_last_hidden`.
+    last_hidden = getattr(mtp_cache, "svm_last_hidden", None)
+    if last_hidden is None or mtp_cache.offset != offset - 1:
+        mtp_cache = prompt_cache[-1] = KVCache()
+        last_hidden = None
+    tokens = prompt.reshape(-1)
+    for start in range(0, tokens.size, prefill_step_size):
+        chunk = tokens[start : start + prefill_step_size][None]
+        hidden = target.hidden(chunk, target_cache)
+        pair_hidden = hidden[:, :-1] if last_hidden is None else mx.concatenate([last_hidden, hidden[:, :-1]], 1)
+        pair_tokens = chunk[:, 1:] if last_hidden is None else chunk
+        if pair_tokens.size:
+            draft_model(pair_hidden, pair_tokens, mtp_cache)
+        last_hidden = hidden[:, -1:]
+        mx.eval(last_hidden, _cache_arrays(target_cache + [mtp_cache]))
+    mtp_cache.svm_last_hidden = last_hidden
+    return last_hidden, mtp_cache
+
+
+def mtp_prefill(prompt, model, draft_model, prompt_cache, prefill_step_size=512):
+    """Extend the caches by `prompt` without generating (prompt-cache checkpoints)."""
+    from mlx_lm.generate import generation_stream
+
+    with mx.stream(generation_stream):
+        _mtp_prefill(prompt, _Target(model, draft_model), draft_model, prompt_cache, prefill_step_size)
+
+
 def _mtp_loop(prompt, model, draft_model, target, target_cache, mtp_cache, prompt_cache, sample,
               sample_draft, logprobs_of, target_offset, greedy, spec, k_draft, max_tokens,
               prefill_step_size):
     from mlx_lm.generate import generation_stream
 
     with mx.stream(generation_stream):
-        # MTP pairs (h_i, x_{i+1}) stay in lockstep with the target: the drafter cache holds
-        # one entry per target position except the last, whose hidden waits in `last_hidden`.
         last_hidden = getattr(mtp_cache, "svm_last_hidden", None)
         stats = draft_model.stats = {"rounds": 0, "drafted": 0, "accepted": 0, "tokens": 0,
                                      "draft_s": 0.0, "verify_s": 0.0, "rollback_s": 0.0, "host_s": 0.0,
                                      "reset": False, "cached": target_offset()}
-        if last_hidden is None or mtp_cache.offset != target_offset() - 1:
-            stats["reset"] = target_offset() > 0
-            mtp_cache = prompt_cache[-1] = KVCache()
-            last_hidden = None
-
-        # Prefill.
-        tokens = prompt.reshape(-1)
-        for start in range(0, tokens.size, prefill_step_size):
-            chunk = tokens[start : start + prefill_step_size][None]
-            hidden = target.hidden(chunk, target_cache)
-            pair_hidden = hidden[:, :-1] if last_hidden is None else mx.concatenate([last_hidden, hidden[:, :-1]], 1)
-            pair_tokens = chunk[:, 1:] if last_hidden is None else chunk
-            if pair_tokens.size:
-                draft_model(pair_hidden, pair_tokens, mtp_cache)
-            last_hidden = hidden[:, -1:]
-            mx.eval(last_hidden, _cache_arrays(target_cache + [mtp_cache]))
-        mtp_cache.svm_last_hidden = last_hidden
+        stats["reset"] = target_offset() > 0 and (last_hidden is None or mtp_cache.offset != target_offset() - 1)
+        last_hidden, mtp_cache = _mtp_prefill(prompt, target, draft_model, prompt_cache, prefill_step_size)
 
         first_logits = target.logits(last_hidden)[0, -1]
         token, _ = sample(first_logits)

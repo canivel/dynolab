@@ -40,7 +40,7 @@ class InstrumentedResponseGenerator(ResponseGenerator):
     def _next_request(self, timeout=None):
         # This seam runs on mlx_lm's single generation thread, between scheduler
         # iterations. No HTTP thread touches layers; active batch caches are not used.
-        if not self._is_distributed:
+        if not self._is_distributed and registry.mode == "research":
             self.activation_captures.service(self.model_provider)
         return super()._next_request(timeout)
 
@@ -65,6 +65,11 @@ class InstrumentedResponseGenerator(ResponseGenerator):
         if execution:
             execution.event("lifecycle", "\nPrompt ready; generating")
 
+        self._note_prompt(context, record)
+        return context, self._timed(stream, record, context)
+
+    @staticmethod
+    def _note_prompt(context, record):
         # The context carries the tokenized prompt and how much of it the
         # prompt cache satisfied, which is the only place those are exposed.
         prompt = getattr(context, "prompt", None)
@@ -76,13 +81,16 @@ class InstrumentedResponseGenerator(ResponseGenerator):
                 cached_tokens=cached if isinstance(cached, int) and cached > 0 else 0,
             )
 
-        return context, self._timed(stream, record)
-
-    def _timed(self, stream, record):
+    def _timed(self, stream, record, context=None):
         finish_reason: str | None = None
         failed = False
+        first = True
         try:
             for token in stream:
+                if first:
+                    # The single-stream path hands over the context before it looks up the prompt cache.
+                    self._note_prompt(context, record)
+                    first = False
                 registry.note_token(record)
                 execution = current_execution()
                 if execution:
@@ -132,7 +140,7 @@ class InstrumentedAPIHandler(CodingAPIsMixin, ExecutionHTTPMixin, APIHandler):
             if not self._execution_local(): return
             provider = self.response_generator.model_provider
             key = provider.model_key
-            self._execution_send(dict(serving_activations=not self.response_generator._is_distributed,
+            self._execution_send(dict(serving_activations=not self.response_generator._is_distributed and registry.mode == "research",
                 model=str(key[0]) if key else None, max_input_tokens=256, max_layers=4))
         elif path == "/metrics":
             self._send(prometheus_text(registry), PROMETHEUS_CONTENT_TYPE)
@@ -145,6 +153,8 @@ class InstrumentedAPIHandler(CodingAPIsMixin, ExecutionHTTPMixin, APIHandler):
         if self.path.split("?", 1)[0] != "/lab/activations":
             return super().do_POST()
         if not self._execution_local(): return
+        if registry.mode != "research":
+            return self._execution_send({"error": "This model runs in serve-only mode. Start it in research mode to capture activations."}, 409)
         try:
             if self.response_generator._is_distributed:
                 raise ValueError("Serving activation capture is unavailable for distributed servers")

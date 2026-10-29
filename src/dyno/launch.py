@@ -135,12 +135,16 @@ def _free_port():
     raise RuntimeError(f'No free port between {LAUNCH_PORTS.start} and {LAUNCH_PORTS.stop - 1}')
 
 
-def _start_server(model, port, extra):
+def _start_server(model, port, extra, mode='serve', thinking=None):
     logs = Path.home() / '.mlx-dyno' / 'logs'
     logs.mkdir(parents=True, exist_ok=True)
     log = logs / f'launch-{port}.log'
     # Codex doesn't say how long a reply may be, and mlx_lm's default (512 tokens) cuts off a model that thinks first.
     if not any(e.split('=')[0] == '--max-tokens' for e in extra): extra = ['--max-tokens', '32768', *extra]
+    # Serve only: one request at a time on the fast path, none of the research features (see `dyno serve --help`).
+    if not any(e.split('=')[0] == '--mode' for e in extra): extra = ['--mode', mode, *extra]
+    if thinking is not None and not any(e.split('=')[0] == '--chat-template-args' for e in extra):
+        extra = ['--chat-template-args', json.dumps({'enable_thinking': thinking}), *extra]
     command = [sys.executable, '-m', 'dyno', 'serve', '--model', model['id'], '--host', '127.0.0.1', '--port', str(port), *extra]
     with open(log, 'w') as out:
         process = subprocess.Popen(command, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
@@ -156,6 +160,39 @@ def _wait(process, port, log, limit=900):
         if _get(f'http://127.0.0.1:{port}/v1/models', timeout=1): return
         time.sleep(1)
     raise RuntimeError(f'The model server did not answer within {limit // 60} minutes (see {log})')
+
+
+def warm_up(port, timeout=900):
+    """mlx_lm loads the model (and Dyno its drafter) on the first request: do that now, before the tool's first turn."""
+    body = json.dumps({'model': 'default_model', 'messages': [{'role': 'user', 'content': 'hi'}], 'max_tokens': 1}).encode()
+    request = urllib.request.Request(f'http://127.0.0.1:{port}/v1/chat/completions', data=body, headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as r: r.read()
+    except (urllib.error.URLError, OSError, ValueError):
+        pass
+
+
+def speed_report(port, log=None):
+    """One line on how fast this server can go: its mode and whether speculative decoding is on, and if not, why."""
+    stats = _get(f'http://127.0.0.1:{port}/stats', timeout=3) or {}
+    mode = stats.get('mode') or 'research'
+    drafter = (stats.get('speculative') or {}).get('mode')
+    lines = []
+    if not (stats.get('model') or {}).get('loaded_at'):
+        pass  # the drafter is chosen when the model loads, on the first request
+    elif drafter:
+        lines.append(f"Speculative decoding: on ({'DFlash2 drafter' if drafter == 'dflash' else 'MTP head'}).")
+    else:
+        why = ''
+        if log and Path(log).exists():
+            said = [l.strip() for l in Path(log).read_text(errors='replace').splitlines() if l.startswith('Speculative decoding off')]
+            why = said[-1].split(':', 1)[1].strip() if said else ''
+        lines.append('Speculative decoding: off' + (f' ({why})' if why else '') + '. Replies come out at plain speed. '
+                     'For Qwen3.8-27B, `dyno pull z-lab/Qwen3.8-27B-DFlash2` gets the fastest drafter.')
+    if mode != 'serve':
+        lines.append(f'The server on :{port} runs in research mode. For the fastest replies, start the model in Models with '
+                     '"Serve only", or quit it and let `dyno launch` start one.')
+    return lines
 
 
 def _name(model):
@@ -209,6 +246,10 @@ def launch(argv):
     parser.add_argument('--model', required=True, help='a downloaded model: its id or part of its name (see `dyno models`)')
     parser.add_argument('--port', type=int, help='use the Dyno server on this port')
     parser.add_argument('--keep', action='store_true', help="leave a server this command started running when the tool exits")
+    parser.add_argument('--research', action='store_true',
+                        help='start the server in research mode (Observer history, activation capture) instead of serve only')
+    parser.add_argument('--thinking', choices=('on', 'off'),
+                        help="whether the model thinks before answering, for a server this command starts (default: the model's own; off is faster)")
     parser.add_argument('--serve-arg', action='append', default=[], metavar='ARG',
                         help='passed to `dyno serve` when one is started, e.g. --serve-arg=--max-tokens=16384')
     args = parser.parse_args(argv)
@@ -226,7 +267,7 @@ def launch(argv):
         return 2
     model = matches[0]
 
-    process, port = None, args.port
+    process, port, log = None, args.port, None
     if port is None:
         running = [s for s in serving() if s['id'] == model['id']]
         ready = next((s for s in running if speaks_anthropic(s['port'])), None)
@@ -239,9 +280,11 @@ def launch(argv):
                       f"starting another copy of the model ({size(model['bytes'])}).", file=sys.stderr)
             port = _free_port()
             print(f"Loading {model['id']} on :{port}…", file=sys.stderr)
-            process, log = _start_server(model, port, args.serve_arg)
+            process, log = _start_server(model, port, args.serve_arg, 'research' if args.research else 'serve',
+                                         None if args.thinking is None else args.thinking == 'on')
             try:
                 _wait(process, port, log)
+                warm_up(port)
             except (RuntimeError, KeyboardInterrupt) as error:
                 process.terminate()
                 print(error if isinstance(error, RuntimeError) else 'Stopped.', file=sys.stderr); return 1
@@ -252,6 +295,9 @@ def launch(argv):
     # told to stop (SIGTERM) still runs the cleanup below, so a model this command started never outlives it.
     def stopped(signum, frame): raise SystemExit(128 + signum)
     previous = {s: signal.signal(s, h) for s, h in ((signal.SIGINT, signal.SIG_IGN), (signal.SIGHUP, stopped), (signal.SIGTERM, stopped))}
+    if args.thinking and not process:
+        print(f'--thinking applies to a server this command starts; the one on :{port} keeps its own setting.', file=sys.stderr)
+    for line in speed_report(port, log): print(line, file=sys.stderr)
     try:
         print(f'The first reply waits while the model reads {label}\'s instructions (about 20,000 tokens): '
               'on some Macs that takes several minutes. Later replies only read what\'s new.', file=sys.stderr)

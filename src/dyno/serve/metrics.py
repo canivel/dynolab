@@ -114,6 +114,8 @@ class MetricsRegistry:
         self.tool_calls: str | None = None
         # "mtp" while drafting with the model's own MTP head, else None.
         self.speculative: str | None = None
+        # research: every Dyno feature; serve: only answering requests (no Observer history, no activation capture)
+        self.mode = "research"
         self.draft_rounds_total = 0
         self.draft_tokens_total = 0
         self.draft_tokens_accepted_total = 0

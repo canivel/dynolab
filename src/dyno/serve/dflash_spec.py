@@ -251,6 +251,45 @@ def _accept_tree(tree, logits, logprobs, greedy, spec) -> Tuple[List[int], int]:
     return rows, int(mx.random.categorical(mx.log(last)).item())
 
 
+def _run_target(draft_model, target_cache, tokens):
+    """Hidden states and feature-layer outputs of the target over `tokens`."""
+    global _TAPS
+    _TAPS = {}
+    try:
+        hidden = draft_model._text.model(tokens, target_cache)
+        return hidden, draft_model.features()
+    finally:
+        _TAPS = None
+
+
+def _dflash_prefill(prompt, draft_model, prompt_cache, prefill_step_size):
+    """Run the target over `prompt`, extending its cache and the drafter's context features.
+    Returns the last chunk's hidden states and the drafter state."""
+    target_cache, state = prompt_cache[:-1], prompt_cache[-1]
+    offset = next((c.offset for c in target_cache if isinstance(c, KVCache)), 0)
+    if not isinstance(state, DFlashState) or state.position != offset:
+        # Stale (the target cache moved without us): restart the drafter's context here.
+        state = prompt_cache[-1] = DFlashState(len(draft_model.model.layers))
+        state.position = offset
+    tokens = prompt.reshape(-1)
+    hidden = None
+    for start in range(0, tokens.size, prefill_step_size):
+        draft_model.flush(state)
+        chunk = tokens[start : start + prefill_step_size]
+        hidden, feats = _run_target(draft_model, target_cache, chunk[None])
+        state.add(feats)
+        mx.eval(hidden, state.pending, S._cache_arrays(target_cache))
+    return hidden, state
+
+
+def dflash_prefill(prompt, model, draft_model, prompt_cache, prefill_step_size=512):
+    """Extend the caches by `prompt` without generating (prompt-cache checkpoints)."""
+    from mlx_lm.generate import generation_stream
+
+    with mx.stream(generation_stream):
+        _dflash_prefill(prompt, draft_model, prompt_cache, prefill_step_size)
+
+
 def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampler, prompt_cache, prefill_step_size):
     global _TAPS
     from mlx_lm.generate import generation_stream
@@ -271,14 +310,7 @@ def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampl
         return 0
 
     def run_target(tokens: mx.array) -> Tuple[mx.array, mx.array]:
-        """Hidden states and feature-layer outputs of the target over `tokens`."""
-        global _TAPS
-        _TAPS = {}
-        try:
-            hidden = inner(tokens, target_cache)
-            return hidden, draft_model.features()
-        finally:
-            _TAPS = None
+        return _run_target(draft_model, target_cache, tokens)
 
     def logits_of(hidden: mx.array) -> mx.array:
         return text.lm_head(hidden) if not text.args.tie_word_embeddings else inner.embed_tokens.as_linear(hidden)
@@ -293,19 +325,8 @@ def _dflash_loop(prompt, model, draft_model, num_draft_tokens, max_tokens, sampl
 
     stats = draft_model.stats = {"rounds": 0, "drafted": 0, "accepted": 0, "tokens": 0, "reset": False}
     with mx.stream(generation_stream):
-        if not isinstance(state, DFlashState) or state.position != target_offset():
-            # Stale (the target cache moved without us): restart the drafter's context here.
-            stats["reset"] = target_offset() > 0
-            state = prompt_cache[-1] = DFlashState(len(draft_model.model.layers))
-            state.position = target_offset()
-
-        tokens = prompt.reshape(-1)
-        for start in range(0, tokens.size, prefill_step_size):
-            draft_model.flush(state)
-            chunk = tokens[start : start + prefill_step_size]
-            hidden, feats = run_target(chunk[None])
-            state.add(feats)
-            mx.eval(hidden, state.pending, S._cache_arrays(target_cache))
+        stats["reset"] = target_offset() > 0 and not (isinstance(state, DFlashState) and state.position == target_offset())
+        hidden, state = _dflash_prefill(prompt, draft_model, prompt_cache, prefill_step_size)
 
         first_logits = logits_of(hidden[:, -1:])[0, -1]
         z = sample(first_logits).reshape(1, 1).astype(mx.uint32)
