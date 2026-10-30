@@ -57,6 +57,44 @@ class AppcastTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.build(signature="invalid!")
 
 
+class DeltaTests(unittest.TestCase):
+    """Delta enclosures: listed per old version, signed with the app's key, named for their versions."""
+    setUp = AppcastTests.setUp
+    build = AppcastTests.build
+
+    def add_delta(self, old, data=b"patch", signer=None):
+        path = Path(self.tmp.name) / f"Dyno-0.4.3-from-{old}.delta"
+        path.write_bytes(data)
+        signature = base64.b64encode((signer or self.key).sign(data)).decode()
+        return {"from": old, "file": path.name, "length": len(data), "signature": signature}
+
+    def test_deltas_are_listed_with_their_old_version(self):
+        deltas = [self.add_delta("0.4.2"), self.add_delta("0.4.1", b"bigger patch")]
+        item = ET.fromstring(self.build(deltas=deltas)).find("channel/item")
+        enclosures = item.findall(f"{{{appcast.SPARKLE}}}deltas/enclosure")
+        self.assertEqual([e.get(f"{{{appcast.SPARKLE}}}deltaFrom") for e in enclosures], ["0.4.2", "0.4.1"])
+        self.assertEqual(enclosures[1].get("url"), "https://github.com/canivel/dynolab/releases/download/v0.4.3/Dyno-0.4.3-from-0.4.1.delta")
+        self.assertEqual(enclosures[1].get("length"), str(len(b"bigger patch")))
+        self.assertEqual(enclosures[0].get(f"{{{appcast.SPARKLE}}}version"), "0.4.3")
+        self.assertEqual(item.find("enclosure").get("url").rsplit("/", 1)[1], "Dyno-0.4.3-arm64.dmg")  # the full archive stays
+
+    def test_no_deltas_no_deltas_element(self):
+        self.assertIsNone(ET.fromstring(self.build()).find(f"channel/item/{{{appcast.SPARKLE}}}deltas"))
+
+    def test_a_delta_signed_with_another_key_is_rejected(self):
+        with self.assertRaises(InvalidSignature): self.build(deltas=[self.add_delta("0.4.2", signer=Ed25519PrivateKey.generate())])
+
+    def test_a_delta_changed_after_signing_is_rejected(self):
+        delta = self.add_delta("0.4.2")
+        (Path(self.tmp.name) / delta["file"]).write_bytes(b"swapped")
+        with self.assertRaises(InvalidSignature): self.build(deltas=[delta])
+
+    def test_a_delta_for_another_version_is_rejected(self):
+        delta = self.add_delta("0.4.2")
+        for bad in ({**delta, "from": "0.4.2-beta"}, {**delta, "file": "Dyno-0.4.4-from-0.4.2.delta"}):
+            with self.assertRaises(ValueError): self.build(deltas=[bad])
+
+
 class ReleaseNotesTests(unittest.TestCase):
     def test_only_current_release_is_rendered_as_html(self):
         notes = "# Dyno Lab 0.5.1\n\n- **New** [guide](agent-sandbox-tests.md) and [site](https://dynolab.dev)\n\n---\n\nDyno Lab 0.5.0 older notes"
