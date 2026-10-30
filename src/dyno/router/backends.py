@@ -177,6 +177,8 @@ def probe(port: int, host: str = "127.0.0.1") -> Backend | None:
     base = f"http://{host}:{port}"
 
     stats = _get(f"{base}/stats")
+    if isinstance(stats, dict) and stats.get("dyno_router"):
+        return None  # another Dyno router, not a model server
     # The command line first: it says what the server was told to load, and is
     # right before the model is lazily loaded, when /stats still reports a
     # placeholder and /v1/models lists the whole cache.
@@ -197,8 +199,8 @@ def probe(port: int, host: str = "127.0.0.1") -> Backend | None:
 
     if not model_id:
         models = _get(f"{base}/v1/models")
-        if not isinstance(models, dict):
-            return None
+        if not isinstance(models, dict) or models.get("dyno_router"):
+            return None  # nothing there, or another Dyno router: never a backend
         entries = models.get("data") or []
         if not entries:
             return None
@@ -225,6 +227,7 @@ def discover(
     ports: tuple[int, ...] = DEFAULT_PORTS,
     extra: list[str] | None = None,
     scan: bool = True,
+    exclude: set[int] | None = None,
 ) -> list[Backend]:
     """Every reachable model server, strongest first.
 
@@ -234,6 +237,8 @@ def discover(
     found: dict[str, Backend] = {}
 
     for port in (ports if scan else ()):
+        if exclude and port in exclude:
+            continue
         backend = probe(port)
         if backend:
             found[backend.url] = backend
@@ -243,6 +248,8 @@ def discover(
         host, _, port_text = entry.rpartition(":")
         host = host.replace("http://", "").replace("https://", "") or "127.0.0.1"
         if not port_text.isdigit():
+            continue
+        if exclude and int(port_text) in exclude and host in ("127.0.0.1", "localhost", "0.0.0.0"):
             continue
         backend = probe(int(port_text), host=host)
         if backend:
