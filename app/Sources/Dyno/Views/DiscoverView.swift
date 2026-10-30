@@ -94,7 +94,8 @@ struct DiscoverView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        if item.error == nil {
+                        // A drafter isn't listed as a model: its model's row says "Drafter ready" instead.
+                        if item.error == nil && !DynoBoost.isDrafter(item.repository) {
                             Button("View downloaded") {
                                 model.catalogFormat = (item.displayName ?? item.repository).localizedCaseInsensitiveContains("gguf") ? .gguf : .mlx
                                 model.searchCatalog("")
