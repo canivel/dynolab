@@ -323,7 +323,7 @@ Only one capture can be pending/running. It runs on the generation thread betwee
 
 ## Execution and performance endpoints
 
-On a current inference server, `GET /stats` exposes instrumented serving metrics. The native Performance view combines these with Mac hardware telemetry. An arbitrary OpenAI-compatible server may not support this extension.
+On a current inference server, `GET /stats` exposes instrumented serving metrics. `live.requests` lists each unfinished request with its `phase` (`queued`, `reading`, `generating`), `prompt_to_read` and `prompt_read` (prompt tokens not served from the prompt cache, and read so far), `prompt_read_tokens_per_second`, `completion_tokens`, `decode_tokens_per_second` and `seconds_since_last_token`. The native Performance view combines these with Mac hardware telemetry. An arbitrary OpenAI-compatible server may not support this extension.
 
 The execution inspector uses:
 

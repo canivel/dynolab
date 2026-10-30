@@ -29,6 +29,8 @@ import mlx.core as mx
 import mlx.nn as nn
 from mlx_lm.models.cache import KVCache, make_prompt_cache
 
+from . import progress
+
 from . import dflash_tree, speculative as S
 from .dflash.dflash2 import DFlash2DraftModel, DFlash2DraftModelArgs, remap_dflash2_codebook_weights
 from .dflash.model import ContextOnlyDraftKVCache
@@ -279,6 +281,7 @@ def _dflash_prefill(prompt, draft_model, prompt_cache, prefill_step_size):
         hidden, feats = _run_target(draft_model, target_cache, chunk[None])
         state.add(feats)
         mx.eval(hidden, state.pending, S._cache_arrays(target_cache))
+        progress.advance(chunk.size)
     return hidden, state
 
 

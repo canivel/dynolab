@@ -30,6 +30,19 @@ class RequestRecord:
     completion_tokens: int = 0
     finish_reason: str | None = None
     failed: bool = False
+    # Reading the prompt: tokens to read (not served from the prompt cache), and read so far.
+    prompt_to_read: int | None = None
+    prompt_read: int = 0
+    reading_started_at: float | None = None
+    last_token_at: float | None = None
+    counted_by_loops: bool = False  # the single-stream prefill loops report progress (see progress.py)
+
+    @property
+    def phase(self) -> str:
+        if self.finished_at is not None: return "failed" if self.failed else "done"
+        if self.first_token_at is not None: return "generating"
+        if self.started_at is not None: return "reading"
+        return "queued"
 
     @property
     def queue_seconds(self) -> float | None:
@@ -88,6 +101,27 @@ class RequestRecord:
             "total_seconds": _round(self.total_seconds),
             "finish_reason": self.finish_reason,
             "failed": self.failed,
+        }
+
+    def live_dict(self, now: float) -> dict[str, Any]:
+        """Where an unfinished request is: what /stats `live.current` shows."""
+        reading = self.reading_started_at or self.started_at
+        rate = None
+        if self.prompt_read and reading is not None and now > reading:
+            rate = self.prompt_read / ((self.first_token_at or now) - reading)
+        return {
+            "request_id": self.request_id,
+            "phase": self.phase,
+            "seconds": _round(now - self.submitted_at, 1),
+            "prompt_tokens": self.prompt_tokens or None,
+            "cached_prompt_tokens": self.cached_prompt_tokens,
+            "prompt_to_read": self.prompt_to_read,
+            "prompt_read": self.prompt_read,
+            "prompt_read_tokens_per_second": _round(rate, 1),
+            "completion_tokens": self.completion_tokens,
+            "decode_tokens_per_second": _round((self.completion_tokens - 1) / (now - self.first_token_at), 1)
+            if self.first_token_at is not None and self.completion_tokens > 1 and now > self.first_token_at else None,
+            "seconds_since_last_token": _round(now - self.last_token_at, 1) if self.last_token_at else None,
         }
 
 
@@ -161,9 +195,46 @@ class MetricsRegistry:
 
     def note_token(self, record: RequestRecord) -> None:
         with self._lock:
+            now = time.perf_counter()
             if record.first_token_at is None:
-                record.first_token_at = time.perf_counter()
+                record.first_token_at = now
+            record.last_token_at = now
             record.completion_tokens += 1
+
+    def current(self) -> RequestRecord | None:
+        """The request the generation thread is working on: the latest one started and not finished."""
+        with self._lock:
+            started = [r for r in self._active.values() if r.started_at is not None]
+            return max(started, key=lambda r: r.started_at) if started else None
+
+    def note_reading(self, new_tokens: int, cached_tokens: int) -> RequestRecord | None:
+        """The current request starts reading `new_tokens` of its prompt (the rest came from the prompt cache)."""
+        record = self.current()
+        if record is not None:
+            with self._lock:
+                record.prompt_to_read, record.prompt_read = new_tokens, 0
+                record.counted_by_loops = True
+                record.reading_started_at = time.perf_counter()
+                if cached_tokens: record.cached_prompt_tokens = cached_tokens
+        return record
+
+    def note_read(self, tokens: int) -> None:
+        record = self.current()
+        if record is not None:
+            with self._lock:
+                record.prompt_read += tokens
+
+    def note_read_absolute(self, record: RequestRecord, processed: int, total: int) -> None:
+        """mlx_lm's batched path reports (processed, total) per request."""
+        with self._lock:
+            if record.reading_started_at is None: record.reading_started_at = time.perf_counter()
+            record.prompt_to_read = max(record.prompt_to_read or 0, total)
+            record.prompt_read = max(record.prompt_read, processed)
+
+    def live_requests(self) -> list[dict[str, Any]]:
+        with self._lock:
+            now = time.perf_counter()
+            return [r.live_dict(now) for r in sorted(self._active.values(), key=lambda r: r.request_id)]
 
     def note_usage(
         self, record: RequestRecord, prompt_tokens: int, cached_tokens: int = 0

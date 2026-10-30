@@ -28,6 +28,8 @@ public final class ServerController: @unchecked Sendable {
     private var _port: UInt16?
     private var _state: State = .stopped
     private var recentOutput: [String] = []
+    /// Everything the server prints also goes to ~/.mlx-dyno/logs/serve-<port>.log, for Performance → Logs.
+    private var logFile: FileHandle?
 
     public var onStateChange: (@Sendable (State) -> Void)?
 
@@ -111,7 +113,8 @@ public final class ServerController: @unchecked Sendable {
         }
 
         setState(.launching(model: model.name))
-        lock.lock(); recentOutput = []; _port = port; lock.unlock()
+        let file = ServerLogs.create(port: port, header: "dyno serve \(model.name) on :\(port) " + extraArguments.joined(separator: " "))
+        lock.lock(); recentOutput = []; _port = port; try? logFile?.close(); logFile = file; lock.unlock()
 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: invocation.executable)
@@ -123,7 +126,9 @@ public final class ServerController: @unchecked Sendable {
         task.standardError = pipe
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
-            guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+            guard !data.isEmpty else { return }
+            self?.write(data)
+            guard let text = String(data: data, encoding: .utf8) else { return }
             self?.appendOutput(text)
         }
 
@@ -181,6 +186,11 @@ public final class ServerController: @unchecked Sendable {
         DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
             if task.isRunning { kill(task.processIdentifier, SIGKILL) }
         }
+    }
+
+    private func write(_ data: Data) {
+        lock.lock(); defer { lock.unlock() }
+        try? logFile?.write(contentsOf: data)
     }
 
     private func appendOutput(_ text: String) {

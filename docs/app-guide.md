@@ -317,6 +317,8 @@ Under **Point a tool at this endpoint**, **Configure** writes the listed client 
 
 Performance defaults to **Automatic**: while a pool started in this app is running, it shows the coordinator and worker GPU charts, worker VRAM, per-device model allocations, completed requests, generation speed and runtime activity. Select **This device** for coordinator metrics or **Pool** to inspect the last session after stopping. **Open Pools** returns to setup and generation controls. GPU load and power are device-wide, including other apps. The headroom card is a pre-load measurement, not live free memory or a guaranteed maximum model size. Missing or stale worker telemetry is labeled rather than reported as zero.
 
+**Logs** shows what a model server is doing and everything it printed. Pick a server (servers started in Models log to `~/.mlx-dyno/logs/serve-<port>.log`, `dyno launch` to `launch-<port>.log`). The status line says, for each request, whether it is waiting, reading the prompt (tokens read, speed, time left, with a progress bar), or generating (tokens, tok/s), and calls out a request that has produced no token for 30 seconds. The log below follows new lines; **Requests only** keeps just Dyno's request lines, and **Copy** and **Show in Finder** help when reporting a problem.
+
 Open **Performance** during a generation. Compare decode tokens/second, time to first token, prompt throughput and cache hits with GPU utilization, unified memory, swap, bandwidth and power.
 
 ![Performance measurements during a running local model workload](https://dynolab.dev/screenshots/window-observe-dark.png)
