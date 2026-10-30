@@ -1,5 +1,6 @@
 """Build a release feed only after verifying the final DMG's Ed25519 signature."""
 import argparse
+import json
 import base64
 from datetime import datetime, timezone
 from email.utils import format_datetime
@@ -31,7 +32,7 @@ def release_notes_html(notes, version):
     return re.sub(r'href="(?![a-z][a-z0-9+.-]*:|#|/)([^"]+)"', lambda m: f'href="{docs}{m.group(1)}"', html)
 
 
-def build_appcast(archive, version, signature, public_key, notes):
+def build_appcast(archive, version, signature, public_key, notes, deltas=()):
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise ValueError("The stable updater requires a three-part release version")
     archive = Path(archive)
@@ -40,6 +41,14 @@ def build_appcast(archive, version, signature, public_key, notes):
     # Verify against the public key shipped in the app, not merely the CI key.
     key = Ed25519PublicKey.from_public_bytes(base64.b64decode(public_key, validate=True))
     key.verify(base64.b64decode(signature, validate=True), archive.read_bytes())
+    # Deltas (see build_deltas.py) are checked the same way: Sparkle would reject a bad one, but it must not ship.
+    checked = []
+    for delta in deltas:
+        path = archive.parent / delta["file"]
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", delta["from"]) or path.name != f"Dyno-{version}-from-{delta['from']}.delta":
+            raise ValueError(f"Unexpected delta {delta['file']}")
+        key.verify(base64.b64decode(delta["signature"], validate=True), path.read_bytes())
+        checked.append((delta["from"], path, delta["signature"]))
     root = ET.Element("rss", version="2.0")
     channel = ET.SubElement(root, "channel")
     ET.SubElement(channel, "title").text = "Dyno Lab updates"
@@ -56,6 +65,17 @@ def build_appcast(archive, version, signature, public_key, notes):
         "length": str(archive.stat().st_size), "type": "application/octet-stream",
         f"{{{SPARKLE}}}edSignature": signature,
     })
+    if checked:
+        # Sparkle downloads the delta whose deltaFrom matches the installed CFBundleVersion, else the full archive.
+        container = ET.SubElement(item, f"{{{SPARKLE}}}deltas")
+        for old, path, delta_signature in checked:
+            ET.SubElement(container, "enclosure", {
+                "url": f"https://github.com/canivel/dynolab/releases/download/v{version}/{path.name}",
+                f"{{{SPARKLE}}}version": version, f"{{{SPARKLE}}}shortVersionString": version,
+                f"{{{SPARKLE}}}deltaFrom": old,
+                "length": str(path.stat().st_size), "type": "application/octet-stream",
+                f"{{{SPARKLE}}}edSignature": delta_signature,
+            })
     ET.indent(root)
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
@@ -68,6 +88,8 @@ if __name__ == "__main__":
     parser.add_argument("--public-key", type=Path, default=Path("app/sparkle-public-key.txt"))
     parser.add_argument("--notes", type=Path, default=Path("docs/release-notes.md"))
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--deltas", type=Path, help="deltas.json from build_deltas.py; the .delta files sit next to the archive")
     args = parser.parse_args()
     args.output.write_bytes(build_appcast(args.archive, args.version,
-        args.signature.read_text().strip(), args.public_key.read_text().strip(), args.notes.read_text()))
+        args.signature.read_text().strip(), args.public_key.read_text().strip(), args.notes.read_text(),
+        json.loads(args.deltas.read_text()) if args.deltas else ()))

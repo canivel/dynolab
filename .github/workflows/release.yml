@@ -104,6 +104,8 @@ jobs:
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           # Prereleases are distributed manually, never through the stable feed.
@@ -119,10 +121,16 @@ jobs:
             # Sign after notarization/stapling: any later modification invalidates it.
             printf '%s' "$SPARKLE_PRIVATE_KEY" | "$RUNNER_TEMP/sparkle/bin/sign_update" \
               --ed-key-file - -p "dist/Dyno-${VERSION}-arm64.dmg" > "$RUNNER_TEMP/update.sig"
+            # Deltas from the last 3 releases: a few MB instead of the whole DMG. Each is verified to rebuild this app
+            # exactly before it is signed; a release without one gets the full DMG, as before.
+            uv run --frozen python scripts/build_deltas.py "dist/Dyno-${VERSION}-arm64.dmg" "$VERSION" \
+              --sparkle-bin "$RUNNER_TEMP/sparkle/bin" --out dist --count 3
             uv run --frozen python scripts/build_appcast.py "dist/Dyno-${VERSION}-arm64.dmg" "$VERSION" \
-              --signature "$RUNNER_TEMP/update.sig" --output dist/appcast.xml
+              --signature "$RUNNER_TEMP/update.sig" --deltas dist/deltas.json --output dist/appcast.xml
+            rm dist/deltas.json
           fi
-          (cd dist && shasum -a 256 *.dmg *.whl *.tar.gz *.notary.json runtime-sbom.json uv.lock release-notes.md > SHA256SUMS)
+          (cd dist && shasum -a 256 *.dmg *.whl *.tar.gz *.notary.json runtime-sbom.json uv.lock release-notes.md \
+            $(ls *.delta 2>/dev/null) > SHA256SUMS)
           if [ -f dist/appcast.xml ]; then
             (cd dist && shasum -a 256 appcast.xml >> SHA256SUMS)
           fi
