@@ -33,13 +33,16 @@ class RouterState:
     """Shared state: what backends exist, the policy, and the decision log."""
 
     def __init__(
-        self, policy: Policy, ports: tuple[int, ...], extra: list[str], scan: bool = True
+        self, policy: Policy, ports: tuple[int, ...], extra: list[str], scan: bool = True,
+        own_port: int | None = None,
     ) -> None:
         self.executions = ExecutionStore()
         self.policy = policy
         self.ports = ports
         self.extra = extra
         self.scan = scan
+        # Never probe ourselves: our /v1/models runs discovery, which would probe us again, without end.
+        self.own_port = own_port
         self.traces: deque[dict[str, Any]] = deque(maxlen=_TRACE_LIMIT)
         self.trace_file: str | None = None
         self.started_at = time.time()
@@ -47,20 +50,24 @@ class RouterState:
         self._lock = threading.Lock()
         self._backends: list[Backend] = []
         self._discovered_at = 0.0
+        self._discovering = threading.Lock()
         self.requests_total = 0
         self.escalations_total = 0
         self.seconds_saved = 0.0
 
     def backends(self, force: bool = False) -> list[Backend]:
-        with self._lock:
-            fresh = time.time() - self._discovered_at < _DISCOVERY_TTL
-            if fresh and not force and self._backends:
-                return list(self._backends)
-        found = discover(self.ports, self.extra, scan=self.scan)
-        with self._lock:
-            self._backends = found
-            self._discovered_at = time.time()
-            return list(found)
+        # One discovery at a time, and its result (even "none") reused for a few seconds: discovery runs lsof and
+        # probes every port, and the app polls the router every second or two.
+        with self._discovering:
+            with self._lock:
+                if not force and time.time() - self._discovered_at < _DISCOVERY_TTL:
+                    return list(self._backends)
+            exclude = {self.own_port} if self.own_port else set()
+            found = discover(self.ports, self.extra, scan=self.scan, exclude=exclude)
+            with self._lock:
+                self._backends = found
+                self._discovered_at = time.time()
+                return list(found)
 
     def record(self, trace: dict[str, Any]) -> None:
         with self._lock:
@@ -213,6 +220,9 @@ class RouterHandler(CodingAPIsMixin, ExecutionHTTPMixin, _RouterDispatch):
 
         if path == "/health":
             self._send_json({"status": "ok"})
+        elif path == "/stats":
+            # What another router's discovery asks first: say we're a router, without discovering anything ourselves.
+            self._send_json({"dyno_router": True, "backends": len(state._backends)})
         elif path == "/backends":
             self._send_json({"backends": [b.describe() for b in state.backends()]})
         elif path in ("/routes", "/v1/routes"):
@@ -220,6 +230,8 @@ class RouterHandler(CodingAPIsMixin, ExecutionHTTPMixin, _RouterDispatch):
         elif path == "/v1/models":
             self._send_json({
                 "object": "list",
+                # Marks this as a router, so another router's discovery doesn't take it for a model server.
+                "dyno_router": True,
                 "data": [{"id": "auto", "object": "model", "created": int(state.started_at)}]
                 + [
                     {"id": b.model_id, "object": "model", "created": int(b.last_seen)}
@@ -475,7 +487,7 @@ def serve(
     host: str, port: int, policy: Policy, ports: tuple[int, ...],
     extra: list[str], trace_file: str | None = None, scan: bool = True,
 ) -> None:
-    state = RouterState(policy, ports, extra, scan=scan)
+    state = RouterState(policy, ports, extra, scan=scan, own_port=port)
     state.trace_file = trace_file
     handler = type("BoundRouterHandler", (RouterHandler,), {"state": state})
     server = ThreadingHTTPServer((host, port), handler)
