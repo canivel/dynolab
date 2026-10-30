@@ -185,12 +185,12 @@ struct DiscoverView: View {
             LazyVStack(alignment: .leading, spacing: 12) {
                 if model.catalogFormat == .mlx {
                     ForEach(model.localModels.filter { matches($0.name) }) { item in
-                        libraryRow(item.shortName, detail: "MLX · " + Format.bytes(item.sizeBytes), boost: DynoBoost.supports(item.name), drafter: DynoBoost.drafter(for: item.name), action: "Use in Models",
+                        libraryRow(item.shortName, source: item.name.contains("/") ? item.name : item.path, detail: "MLX · " + Format.bytes(item.sizeBytes), boost: DynoBoost.supports(item.name), drafter: DynoBoost.drafter(for: item.name), action: "Use in Models",
                                    delete: { deleting = ModelToDelete(path: item.path, name: item.name) }) { useMLX(item.name) }
                     }
                 } else {
                     ForEach(model.ggufModels.filter { matches($0.name + " " + ($0.repository ?? "")) }) { item in
-                        libraryRow(item.name, detail: "GGUF · " + Format.bytes(item.size), action: "Use in Pools",
+                        libraryRow(item.name, source: item.repository ?? item.path, detail: "GGUF · " + Format.bytes(item.size), action: "Use in Pools",
                                    delete: { deleting = ModelToDelete(path: item.path, name: item.name) }) { useGGUF(item.path) }
                     }
                 }
@@ -200,11 +200,14 @@ struct DiscoverView: View {
         }
         .confirmsModelDeletion(model, item: $deleting)
     }
-    private func libraryRow(_ name: String, detail: String, boost: Bool = false, drafter: DynoBoost.Drafter? = nil, action: String, delete: @escaping () -> Void, perform: @escaping () -> Void) -> some View {
+    /// `source` is the full lab/model id (or the folder): builds of one model from different labs share a short name.
+    private func libraryRow(_ name: String, source: String, detail: String, boost: Bool = false, drafter: DynoBoost.Drafter? = nil, action: String, delete: @escaping () -> Void, perform: @escaping () -> Void) -> some View {
         HStack {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) { Text(name).font(.headline); if boost { BoostBadge() } }
+                Text(source).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle).textSelection(.enabled).help(source)
                 Text(detail).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
