@@ -157,3 +157,42 @@ struct BoostBadge: View {
               + "whenever drafting would be slower. Output is the same as without it.")
     }
 }
+
+/// Gets the DFlash2 drafter for a Boost model, or says it is ready. The drafter isn't an MLX
+/// repository, so it never shows up in the Discover search; `dyno serve` uses it once it is in
+/// the Hugging Face cache.
+struct DrafterButton: View {
+    var model: MonitorModel
+    var drafter: DynoBoost.Drafter
+
+    var body: some View {
+        let progress = model.downloads[drafter.repository]
+        Group {
+            if model.readyDrafters.contains(drafter.repository) {
+                Label("Drafter ready", systemImage: "bolt.fill")
+                    .font(.caption).foregroundStyle(DynoBrand.accent)
+                    .help("\(drafter.repository) is downloaded. Starting this model drafts with it; restart the model if it is already running.")
+            } else if let progress, !progress.isFinished {
+                HStack(spacing: 6) {
+                    if let fraction = progress.fraction {
+                        ProgressView(value: fraction).frame(width: 70)
+                        Text("Drafter \(Int(fraction * 100))%").font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                    } else {
+                        ProgressView().controlSize(.small)
+                        Text("Drafter…").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Button("Cancel") { model.cancelGGUF(drafter.repository) }.controlSize(.mini)
+                }
+            } else {
+                Button { model.downloadDrafter(drafter) } label: {
+                    Label("Get drafter · \(Format.bytes(drafter.sizeBytes))", systemImage: "bolt.fill")
+                }
+                .controlSize(.small)
+                .disabled(model.runtime == nil)
+                .help("Downloads \(drafter.repository), the DFlash2 drafter for \(drafter.base). "
+                      + "It drafts further ahead than the model's built-in MTP head, so code and edits usually generate faster. "
+                      + (progress?.error.map { "Last try failed: \($0)" } ?? ""))
+            }
+        }
+    }
+}

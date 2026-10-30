@@ -61,7 +61,7 @@ What makes Claude Code fast or slow on your own model, measured with Qwen3.8-27B
 | DFlash2 drafter, before this change | 50–100 tok/s | 21 s (the whole prompt read again) |
 | **Serve only with the DFlash2 drafter** | **45–120 tok/s** | **0.6–2.3 s** |
 
-- **Get a drafter.** Speculative decoding is where the speed comes from: a small drafter proposes several tokens and the model checks them in one step, with the same output. For Qwen3.8-27B, `dyno pull z-lab/Qwen3.8-27B-DFlash2` (the fastest). Without it, Dyno uses the model's own MTP head, which it downloads once (~0.85 GB). If neither is available, `dyno launch` says why.
+- **Get a drafter.** Speculative decoding is where the speed comes from: a small drafter proposes several tokens and the model checks them in one step, with the same output. For Qwen3.8-27B, click **Get drafter** next to the model in Models or Discover, or run `dyno pull z-lab/Qwen3.8-27B-DFlash2` (the fastest). You never start the drafter yourself: the model uses it once it is downloaded. Without it, Dyno uses the model's own MTP head, which it downloads once (~0.85 GB). If neither is available, `dyno launch` says why.
 - **Each turn reads only what's new.** Serve only saves the prompt cache at the end of the system prompt and at the start of each reply. The next turn, and a new session with the same tools, starts from there instead of reading Claude Code's ~12,000-token instructions again.
 - **Thinking.** Qwen3.x thinks before answering by default. That's better on hard tasks but slower. `dyno launch claude --model … --thinking off` starts the server without it.
 - **A server you started in Models** in research mode is used as it is. `dyno launch` says so; restart it with **Use: Serve only** for full speed.

@@ -39,6 +39,19 @@ def repo_of(path):
     return f'{match.group(1)}/{match.group(2)}' if match else str(path)
 
 
+def drafter_of(config, name=''):
+    """The base model a speculative-decoding drafter is for, or None for an ordinary model.
+
+    A DFlash2 drafter (z-lab/Qwen3.8-27B-DFlash2) has weights and a config like a model, but it only loads next to
+    its base model; served alone, mlx_lm fails on it ("missing rope_theta").
+    """
+    if not isinstance(config, dict): return None
+    if 'dflash_config' in config or any('dflash' in str(a).lower() for a in config.get('architectures') or ()):
+        base = re.sub(r'-DFlash\d*$', '', repo_of(name).rsplit('/', 1)[-1], flags=re.I) if name else ''
+        return f'a {base} model' if base else 'its base model'
+    return None
+
+
 def downloaded(root=None):
     """Every model in the hub cache with weights on disk, newest revision only."""
     out = []
@@ -52,6 +65,8 @@ def downloaded(root=None):
         if any(not f.exists() for f in files) or any((folder / 'blobs').glob('*.incomplete')): continue
         try: config = json.loads((snapshot / 'config.json').read_text())
         except (OSError, ValueError): config = {}
+        # Served automatically next to the model it drafts for (`dyno serve --speculative auto`).
+        if drafter_of(config): continue
         text = config.get('text_config') if isinstance(config.get('text_config'), dict) else {}
         context = config.get('max_position_embeddings') or text.get('max_position_embeddings')
         out.append(dict(id=repo_of(folder), path=str(snapshot), bytes=sum(f.stat().st_size for f in files),

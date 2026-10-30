@@ -23,6 +23,8 @@ final class MonitorModel {
 
     // -- local model serving -------------------------------------------------
     private(set) var localModels: [LocalModel] = []
+    /// Drafters (by repository) downloaded where `dyno serve` looks for them.
+    private(set) var readyDrafters: Set<String> = []
     private(set) var ggufModels: [LocalGGUF] = []
     /// Each model Dyno serves has its own server, so several can run at once (by model folder).
     private(set) var serverStates: [String: ServerController.State] = [:]
@@ -322,6 +324,7 @@ final class MonitorModel {
     }
 
     func download(_ model: CatalogModel) { downloader.download(model.id) }
+    func downloadDrafter(_ drafter: DynoBoost.Drafter) { downloader.download(drafter.repository) }
     func cancelDownload(_ model: CatalogModel) { downloader.cancel(model.id) }
     func downloadGGUF(repository: String, filename: String) { downloader.download(repository, filename: filename) }
     func pauseDownload(_ identifier: String) { downloader.pause(identifier) }
@@ -366,10 +369,12 @@ final class MonitorModel {
         Task.detached(priority: .utility) {
             let found = ModelLibrary.scan(extraPaths: folders)
             let gguf = GGUFModels.scan()
+            let drafters = Set(DynoBoost.drafters.filter { DynoBoost.downloadedDrafter($0) != nil }.map(\.repository))
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 self.localModels = found
                 self.ggufModels = gguf
+                self.readyDrafters = drafters
                 if self.selectedModel == nil || !found.contains(where: { $0.id == self.selectedModel?.id }) {
                     self.selectedModel = found.first
                 }

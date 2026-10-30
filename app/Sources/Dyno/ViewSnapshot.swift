@@ -108,6 +108,15 @@ enum ViewSnapshot {
             RunLoop.main.run(until: Date().addingTimeInterval(4))
             targets = [("downloaded-mlx", { AnyView(DiscoverView(model: model, library: true).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1000, height: 560))]
         }
+        if arguments.contains("--suggested-only") {
+            model.catalogFormat = .mlx
+            model.searchCatalog("")
+            model.rescanModels()
+            RunLoop.main.run(until: Date().addingTimeInterval(4))
+            if let qwen = model.localModels.first(where: { DynoBoost.drafter(for: $0.name) != nil }) { model.selectedModel = qwen }
+            targets = [("discover-suggested", { AnyView(DiscoverView(model: model).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1100, height: 760)),
+                       ("window-drafter", { AnyView(MainWindow(model: model, initialTab: .run)) }, CGSize(width: 1100, height: 820))]
+        }
         if arguments.contains("--discover-only") {
             model.catalogFormat = .gguf
             model.searchCatalog("Qwen3-0.6B")

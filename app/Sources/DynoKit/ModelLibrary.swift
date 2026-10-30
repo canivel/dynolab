@@ -55,12 +55,15 @@ public enum ModelLibrary {
             let label = (root as NSString).lastPathComponent
             for directory in candidateDirectories(under: root) {
                 guard found[directory] == nil, isModelDirectory(directory) else { continue }
+                let name = displayName(for: directory)
+                // A drafter loads only next to its base model; Discover offers it on that model's row.
+                guard !DynoBoost.isDrafter(name) else { continue }
                 let size = directorySize(directory)
                 // Anything this small is a stub or a config-only repo.
                 guard size > 50 * 1024 * 1024 else { continue }
                 found[directory] = LocalModel(
                     path: directory,
-                    name: displayName(for: directory),
+                    name: name,
                     sizeBytes: size,
                     source: label,
                     missingFiles: missingWeights(in: directory)

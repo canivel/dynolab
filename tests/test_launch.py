@@ -33,6 +33,9 @@ class Models(unittest.TestCase):
         unfinished = fake_model(self.root, 'mlx-community/Llama-4-bit')
         (unfinished / 'blobs' / 'x.incomplete').write_text('')
         (self.root / 'models--nothing--here' / 'snapshots' / 'a').mkdir(parents=True)
+        # A DFlash2 drafter: weights and a config like a model, but it can't be served alone.
+        fake_model(self.root, 'z-lab/Qwen3.8-27B-DFlash2', config={'architectures': ['DFlash2DraftModel'], 'model_type': 'qwen3',
+                                                                   'dflash_config': {'block_size': 8}})
 
     def tearDown(self): self.tmp.cleanup()
 
@@ -49,6 +52,16 @@ class Models(unittest.TestCase):
         self.assertEqual(len(L.resolve('qwen', models)), 2)
         self.assertEqual(L.resolve('mistral', models), [])
         self.assertEqual(L.repo_of('/x/hub/models--a--b/snapshots/1'), 'a/b')
+
+
+    def test_serve_refuses_a_drafter_and_names_its_model(self):
+        from dyno.serve.cli import _drafter_refusal
+        drafter = self.root / 'models--z-lab--Qwen3.8-27B-DFlash2' / 'snapshots' / 'abc'
+        refusal = _drafter_refusal(['--model', str(drafter), '--port', '8080'])
+        self.assertIn('drafter, not a model', refusal)
+        self.assertIn('Serve a Qwen3.8-27B model instead', refusal)
+        self.assertIsNone(_drafter_refusal([f"--model={self.root / 'models--mlx-community--Qwen3-8B-4bit' / 'snapshots' / 'abc'}"]))
+        self.assertIsNone(_drafter_refusal(['--port', '8080']))
 
 
 class ClaudeEnv(unittest.TestCase):

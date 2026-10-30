@@ -72,6 +72,10 @@ For your first session, follow **Discover → Models → Chat → Lab**. Lab ope
 
 ## 3. Discover and download a model
 
+**Discover** opens with **Good with Dyno**: a few models checked with this version of Dyno, what each is good for, and only those that fit this Mac's memory. Below it is the hub's own list.
+
+For Qwen3.8-27B, **Get drafter** (in Discover once the model is downloaded, and in Models) downloads its DFlash2 drafter, which makes generation faster. The drafter isn't a model to start, so it isn't listed: start Qwen3.8-27B and it drafts with it.
+
 **Discover** has an **MLX / GGUF** format filter and **Search Hub / Downloaded** views. Search results identify locally downloaded models. Select **Downloaded** to filter your local library by name and format. **Use in Models** selects MLX weights in the serving controls; **Use in Pools** selects a GGUF and opens the pool configuration. Neither action starts inference.
 
 **Deleting a model.** The trash button on a row in **Downloaded** (also in **Downloaded GGUF models**, and **Move to Trash…** when you right-click a model in the Models sidebar) moves the model to the Trash after you confirm. The dialog shows the folder and how much space it frees. For a model in the Hugging Face cache, the whole cache entry goes, weights included, so the space really comes back; one GGUF file of several goes with only its own weights. A model that is running can't be deleted: stop it in Models first. Dyno only deletes inside the folders it scans for models. The space comes back when you empty the Trash; until then you can put the model back.
