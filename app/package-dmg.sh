@@ -65,7 +65,14 @@ if [ -n "${DYNO_NOTARY_PROFILE:-}" ]; then
     --output-format json > "$DMG.notary.json"
   python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print(r); sys.exit(0 if r.get("status") == "Accepted" else 1)' "$DMG.notary.json"
   # Never staple or generate a release checksum unless Apple accepted it.
-  xcrun stapler staple "$DMG"
+  # Stapling fetches the ticket from Apple's CloudKit, which can lag the Accepted status or drop the connection
+  # (error 68). Wait and try again rather than fail a whole release build over it.
+  for wait in 0 30 60 120 240; do
+    sleep "$wait"
+    if xcrun stapler staple "$DMG"; then break; fi
+    [ "$wait" = 240 ] && { echo "Stapling failed after 5 tries" >&2; exit 1; }
+    echo "Stapling failed; trying again" >&2
+  done
   xcrun stapler validate "$DMG"
 fi
 hdiutil verify "$DMG"
