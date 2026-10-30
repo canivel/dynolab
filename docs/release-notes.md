@@ -1,3 +1,15 @@
+# Dyno Lab 0.6.15
+
+Dyno Lab 0.6.15 makes the fastest setup for Claude Code one click away, and helps you pick what to download: Discover now suggests models that run well with Dyno, and the DFlash2 drafter downloads from the app.
+
+## Models and Discover
+
+- **Good with Dyno.** Discover opens with a short list of models that run well with Dyno, what each is good for, and only the ones that fit this Mac.
+- **Get the drafter in the app.** Qwen3.8-27B rows in Discover and Models have a **Get drafter** button that downloads the DFlash2 drafter (it never showed up in the search). Drafters no longer appear as models to start, and `dyno launch` and `dyno models` skip them: `dyno launch claude --model qwen3.8-27b` no longer picks the drafter and fails with "missing rope_theta". `dyno serve` on a drafter now says which model to serve instead.
+- **Which build is which.** Downloaded models show their full lab/model name (`lmstudio-community/Qwen3.8-27B-MLX-4bit`) under the short name, so builds of the same model from different labs no longer look identical.
+
+---
+
 # Dyno Lab 0.6.14
 
 Dyno Lab 0.6.14 makes Claude Code and Codex much faster on your own models, and lets the assistant use tools from MCP servers, the way Claude and ChatGPT add connectors.
