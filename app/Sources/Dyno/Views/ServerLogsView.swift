@@ -82,39 +82,48 @@ struct ServerLogsView: View {
     }
 
     private func requestRow(_ request: [String: Any]) -> some View {
-        let id = request["request_id"] as? Int ?? 0
-        let phase = request["phase"] as? String ?? ""
-        let seconds = (request["seconds"] as? Double).map { Self.duration($0) } ?? ""
-        let toRead = request["prompt_to_read"] as? Int
+        let toRead = request["prompt_to_read"] as? Int ?? 0
         let read = request["prompt_read"] as? Int ?? 0
-        let readRate = request["prompt_read_tokens_per_second"] as? Double
-        let tokens = request["completion_tokens"] as? Int ?? 0
         let quiet = request["seconds_since_last_token"] as? Double ?? 0
+        let phase = request["phase"] as? String ?? ""
         return VStack(alignment: .leading, spacing: 4) {
-            switch phase {
-            case "reading":
-                if let toRead, toRead > 0 {
-                    Text("Request \(id) · reading the prompt · \(read.formatted()) of \(toRead.formatted()) tokens"
-                         + (readRate.map { " · \(Int($0)) tok/s" } ?? "")
-                         + (readRate.flatMap { $0 > 0 && read < toRead ? " · about \(Self.duration(Double(toRead - read) / $0)) left" : nil } ?? "")
-                         + " · \(seconds)")
-                    ProgressView(value: Double(read), total: Double(toRead))
-                } else {
-                    Text("Request \(id) · preparing (loading the model or the prompt cache) · \(seconds)")
-                    ProgressView().controlSize(.small)
-                }
-            case "generating":
-                Text("Request \(id) · generating · \(tokens.formatted()) tokens"
-                     + ((request["decode_tokens_per_second"] as? Double).map { String(format: " · %.1f tok/s", $0) } ?? "")
-                     + " · \(seconds)")
-                if quiet >= 30 {
-                    Text("No new token for \(Self.duration(quiet)).").foregroundStyle(.orange)
-                }
-            default:
-                Text("Request \(id) · waiting for the request before it · \(seconds)")
+            Text(Self.describe(request))
+            if phase == "reading" && toRead > 0 {
+                ProgressView(value: Double(min(read, toRead)), total: Double(toRead))
+            } else if phase == "reading" {
+                ProgressView().controlSize(.small)
+            } else if phase == "generating" && quiet >= 30 {
+                Text("No new token for \(Self.duration(quiet)).").foregroundStyle(.orange)
             }
         }
         .font(.caption).monospacedDigit()
+    }
+
+    /// One request's state in words, from /stats `live.requests`.
+    static func describe(_ request: [String: Any]) -> String {
+        let id = request["request_id"] as? Int ?? 0
+        let seconds = duration(request["seconds"] as? Double ?? 0)
+        switch request["phase"] as? String {
+        case "reading":
+            let toRead = request["prompt_to_read"] as? Int ?? 0
+            guard toRead > 0 else { return "Request \(id) · preparing (loading the model or the prompt cache) · \(seconds)" }
+            let read = request["prompt_read"] as? Int ?? 0
+            var parts = ["Request \(id) · reading the prompt", "\(read.formatted()) of \(toRead.formatted()) tokens"]
+            if let rate = request["prompt_read_tokens_per_second"] as? Double, rate > 0 {
+                parts.append("\(Int(rate)) tok/s")
+                if read < toRead { parts.append("about \(duration(Double(toRead - read) / rate)) left") }
+            }
+            parts.append(seconds)
+            return parts.joined(separator: " · ")
+        case "generating":
+            let tokens = request["completion_tokens"] as? Int ?? 0
+            var parts = ["Request \(id) · generating", "\(tokens.formatted()) tokens"]
+            if let rate = request["decode_tokens_per_second"] as? Double { parts.append(String(format: "%.1f tok/s", rate)) }
+            parts.append(seconds)
+            return parts.joined(separator: " · ")
+        default:
+            return "Request \(id) · waiting for the request before it · \(seconds)"
+        }
     }
 
     private func serverLine(_ stats: [String: Any]) -> String {
