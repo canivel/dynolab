@@ -52,6 +52,24 @@ def drafter_of(config, name=''):
     return None
 
 
+def drafter_refusal(argv):
+    """Why `dyno serve` can't serve its --model, when that names a drafter instead of a model; None otherwise."""
+    ref = next((a.split('=', 1)[1] for a in argv if a.startswith('--model=')), None)
+    if ref is None and '--model' in argv[:-1]:
+        ref = argv[argv.index('--model') + 1]
+    if not ref: return None
+    folder = Path(ref).expanduser()
+    if not folder.is_dir():
+        snapshots = sorted((hub() / ('models--' + ref.replace('/', '--')) / 'snapshots').glob('*'), key=lambda p: p.stat().st_mtime, reverse=True)
+        folder = next(iter(snapshots), None)
+    try: config = json.loads((folder / 'config.json').read_text()) if folder else None
+    except (OSError, ValueError): return None
+    base = drafter_of(config, str(folder))
+    if not base: return None
+    return (f'{ref} is a speculative-decoding drafter, not a model to serve. Serve {base} instead: '
+            '`dyno serve` finds this drafter in the Hugging Face cache and drafts with it.')
+
+
 def downloaded(root=None):
     """Every model in the hub cache with weights on disk, newest revision only."""
     out = []

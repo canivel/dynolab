@@ -328,27 +328,6 @@ def _enable_nax_verify(speculative: Any, argv: list[str]) -> None:
     print("Speculative decoding: drafts are verified on the GPU's neural accelerators.", flush=True)
 
 
-def _drafter_refusal(argv: list[str]) -> Optional[str]:
-    """Why --model can't be served, when it names a speculative-decoding drafter instead of a model."""
-    import json
-
-    from ..launch import drafter_of
-
-    ref = next((a.split("=", 1)[1] for a in argv if a.startswith("--model=")), None)
-    if ref is None and "--model" in argv[:-1]:
-        ref = argv[argv.index("--model") + 1]
-    folder = ref and tool_calls.resolve_model_dir(ref)
-    try:
-        config = json.loads((folder / "config.json").read_text()) if folder else None
-    except (OSError, ValueError):
-        return None
-    base = drafter_of(config, str(folder))
-    if not base:
-        return None
-    return (f"{ref} is a speculative-decoding drafter, not a model to serve. Serve {base} instead: "
-            "`dyno serve` finds this drafter in the Hugging Face cache and drafts with it.")
-
-
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
 
@@ -359,7 +338,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     argv, speculative_options = _take_speculative_flags(argv)
-    if (refusal := _drafter_refusal(argv)):
+    from ..launch import drafter_refusal
+
+    if (refusal := drafter_refusal(argv)):
         print(refusal, file=sys.stderr)
         return 1
 

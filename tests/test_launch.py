@@ -55,13 +55,15 @@ class Models(unittest.TestCase):
 
 
     def test_serve_refuses_a_drafter_and_names_its_model(self):
-        from dyno.serve.cli import _drafter_refusal
+        _drafter_refusal = L.drafter_refusal
         drafter = self.root / 'models--z-lab--Qwen3.8-27B-DFlash2' / 'snapshots' / 'abc'
         refusal = _drafter_refusal(['--model', str(drafter), '--port', '8080'])
         self.assertIn('drafter, not a model', refusal)
         self.assertIn('Serve a Qwen3.8-27B model instead', refusal)
         self.assertIsNone(_drafter_refusal([f"--model={self.root / 'models--mlx-community--Qwen3-8B-4bit' / 'snapshots' / 'abc'}"]))
         self.assertIsNone(_drafter_refusal(['--port', '8080']))
+        with mock.patch.dict(os.environ, {'HF_HUB_CACHE': str(self.root)}):
+            self.assertIn('drafter, not a model', _drafter_refusal(['--model', 'z-lab/Qwen3.8-27B-DFlash2']))
 
 
 class ClaudeEnv(unittest.TestCase):
