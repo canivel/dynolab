@@ -338,6 +338,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     argv, speculative_options = _take_speculative_flags(argv)
+    from ..launch import drafter_refusal
+
+    if (refusal := drafter_refusal(argv)):
+        print(refusal, file=sys.stderr)
+        return 1
 
     try:
         _patch(server_module)

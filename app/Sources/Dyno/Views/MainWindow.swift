@@ -452,6 +452,15 @@ private struct RunPanel: View {
                     TextField("Port", value: Binding(get: { model.launchPort }, set: { model.launchPort = $0 }), format: .number.grouping(.never))
                         .frame(width: 90)
                 }
+                if let selected = model.selectedModel, let drafter = DynoBoost.drafter(for: selected.name) {
+                    HStack(spacing: 8) {
+                        Text(model.readyDrafters.contains(drafter.repository)
+                             ? "Speculative decoding uses the DFlash2 drafter for this model."
+                             : "A faster drafter is available for this model.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        DrafterButton(model: model, drafter: drafter)
+                    }
+                }
                 launchOptions
                 if let served, served.stats != nil || served.tokensPerSecond != nil {
                     throughput(served)

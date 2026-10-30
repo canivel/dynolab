@@ -47,6 +47,9 @@ struct DiscoverView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
+                        if model.catalogFormat == .mlx && model.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+                            recommended
+                        }
                         if model.catalog.isEmpty && !model.isSearching { Text("No matching models.").foregroundStyle(.secondary).padding() }
                         ForEach(model.catalog) { candidate in
                             CatalogRow(model: model, candidate: candidate,
@@ -91,7 +94,8 @@ struct DiscoverView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        if item.error == nil {
+                        // A drafter isn't listed as a model: its model's row says "Drafter ready" instead.
+                        if item.error == nil && !DynoBoost.isDrafter(item.repository) {
                             Button("View downloaded") {
                                 model.catalogFormat = (item.displayName ?? item.repository).localizedCaseInsensitiveContains("gguf") ? .gguf : .mlx
                                 model.searchCatalog("")
@@ -152,6 +156,25 @@ struct DiscoverView: View {
             Divider()
         }
     }
+    /// A few models that run well with Dyno, above the hub's own list, which is ordered by downloads.
+    @ViewBuilder private var recommended: some View {
+        let entries = RecommendedModels.fitting(budget: model.system.gpuMemoryBudget)
+        if !entries.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                Label("Good with Dyno", systemImage: "star.fill").font(.headline)
+                Text("Checked with this version of Dyno and sized for this Mac.").font(.caption).foregroundStyle(.secondary)
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 4)
+            ForEach(entries) { entry in
+                CatalogRow(model: model, candidate: entry.catalogModel, note: entry.use,
+                           isDownloaded: model.downloadedRepositories.contains(entry.id),
+                           progress: model.downloads[entry.id], budget: model.system.gpuMemoryBudget,
+                           useMLX: useMLX, chooseGGUF: { selectedRepository = $0 })
+                Divider().padding(.leading, 16)
+            }
+            Text("ALL MLX MODELS ON THE HUB").font(.system(size: 10, weight: .semibold)).tracking(0.7).foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.top, 18).padding(.bottom, 4)
+        }
+    }
     private var downloadedCount: Int { model.catalogFormat == .mlx ? model.localModels.count : model.ggufModels.count }
     private func matches(_ value: String) -> Bool {
         let query = model.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -162,12 +185,12 @@ struct DiscoverView: View {
             LazyVStack(alignment: .leading, spacing: 12) {
                 if model.catalogFormat == .mlx {
                     ForEach(model.localModels.filter { matches($0.name) }) { item in
-                        libraryRow(item.shortName, detail: "MLX · " + Format.bytes(item.sizeBytes), boost: DynoBoost.supports(item.name), action: "Use in Models",
+                        libraryRow(item.shortName, source: item.name.contains("/") ? item.name : item.path, detail: "MLX · " + Format.bytes(item.sizeBytes), boost: DynoBoost.supports(item.name), drafter: DynoBoost.drafter(for: item.name), action: "Use in Models",
                                    delete: { deleting = ModelToDelete(path: item.path, name: item.name) }) { useMLX(item.name) }
                     }
                 } else {
                     ForEach(model.ggufModels.filter { matches($0.name + " " + ($0.repository ?? "")) }) { item in
-                        libraryRow(item.name, detail: "GGUF · " + Format.bytes(item.size), action: "Use in Pools",
+                        libraryRow(item.name, source: item.repository ?? item.path, detail: "GGUF · " + Format.bytes(item.size), action: "Use in Pools",
                                    delete: { deleting = ModelToDelete(path: item.path, name: item.name) }) { useGGUF(item.path) }
                     }
                 }
@@ -177,14 +200,18 @@ struct DiscoverView: View {
         }
         .confirmsModelDeletion(model, item: $deleting)
     }
-    private func libraryRow(_ name: String, detail: String, boost: Bool = false, action: String, delete: @escaping () -> Void, perform: @escaping () -> Void) -> some View {
+    /// `source` is the full lab/model id (or the folder): builds of one model from different labs share a short name.
+    private func libraryRow(_ name: String, source: String, detail: String, boost: Bool = false, drafter: DynoBoost.Drafter? = nil, action: String, delete: @escaping () -> Void, perform: @escaping () -> Void) -> some View {
         HStack {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) { Text(name).font(.headline); if boost { BoostBadge() } }
+                Text(source).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle).textSelection(.enabled).help(source)
                 Text(detail).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
+            if let drafter { DrafterButton(model: model, drafter: drafter) }
             Button(action, action: perform).buttonStyle(.dynoPrimary)
             Button(action: delete) { Image(systemName: "trash") }.buttonStyle(.borderless).foregroundStyle(.secondary)
                 .help("Delete this model (moves it to the Trash)")
@@ -196,6 +223,8 @@ struct DiscoverView: View {
 private struct CatalogRow: View {
     var model: MonitorModel
     var candidate: CatalogModel
+    /// What the model is good for, on suggested rows.
+    var note: String? = nil
     var isDownloaded: Bool
     var progress: DownloadManager.Progress?
     var budget: Int64?
@@ -239,6 +268,9 @@ private struct CatalogRow: View {
                             .foregroundStyle(.orange)
                             .help("Weights approach or exceed this Mac's GPU budget; context and workspace need additional memory.")
                     }
+                }
+                if let note {
+                    Text(note).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
                 }
                 HStack(spacing: 8) {
                     Text(candidate.author)
@@ -299,6 +331,7 @@ private struct CatalogRow: View {
             }
         } else if isDownloaded || progress?.isFinished == true {
             HStack(spacing: 5) {
+                if let drafter = DynoBoost.drafter(for: candidate.id) { DrafterButton(model: model, drafter: drafter) }
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green).font(.system(size: 11))
                 Button("Use in Models") { useMLX(candidate.id) }.controlSize(.small)
