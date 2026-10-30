@@ -60,7 +60,7 @@ class Lines(unittest.TestCase):
         registry.note_reading(20_000, 0)
         record.reading_started_at -= 40; record.submitted_at -= 45
         registry.note_read(6000)
-        activity._said.clear(); activity._said[record.request_id] = 0
+        activity._said.clear(); activity._said[record.request_id] = time.perf_counter() - 1000
         text = self.say(lambda: activity.report(registry, time.perf_counter()))
         self.assertIn(f'request {record.request_id} · reading the prompt: 6,000 of 20,000 tokens (30%)', text)
         self.assertRegex(text, r'· 1\d\d tok/s · about \d+ s left · 4\d s')
@@ -69,13 +69,13 @@ class Lines(unittest.TestCase):
         registry = MetricsRegistry(); registry.note_model_loaded('qwen')
         record = registry.begin_request('qwen'); registry.note_started(record)
         registry.note_token(record); record.last_token_at -= 45
-        activity._said.clear(); activity._said[record.request_id] = 0
+        activity._said.clear(); activity._said[record.request_id] = time.perf_counter() - 1000
         self.assertIn('no new token for 45 s', self.say(lambda: activity.report(registry, time.perf_counter())))
 
     def test_waiting_for_the_model_to_load(self):
         registry = MetricsRegistry()
         record = registry.begin_request('qwen'); registry.note_started(record)
-        activity._said.clear(); activity._said[record.request_id] = 0
+        activity._said.clear(); activity._said[record.request_id] = time.perf_counter() - 1000
         self.assertIn('loading the model', self.say(lambda: activity.report(registry, time.perf_counter())))
 
     def test_finished_and_failed_lines(self):
