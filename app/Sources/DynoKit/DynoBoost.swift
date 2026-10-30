@@ -34,10 +34,14 @@ public enum DynoBoost {
         Drafter(repository: "z-lab/Qwen3.8-27B-DFlash2", base: "Qwen3.8-27B", sizeBytes: 3_850_000_000),
     ]
 
-    /// True for drafter repositories: they load only next to their base model, so they are not
-    /// listed as models to serve.
-    public static func isDrafter(_ name: String) -> Bool {
-        name.range(of: #"-DFlash\d*(?:$|[-/])"#, options: [.regularExpression, .caseInsensitive]) != nil
+    /// True for a draft model's folder: it loads only next to its base model, so it is not listed as a
+    /// model to serve. Decided from config.json, as `dyno launch` does: some full models carry
+    /// "DFlash2" in their names.
+    public static func isDraftModel(at folder: String) -> Bool {
+        guard let data = FileManager.default.contents(atPath: (folder as NSString).appendingPathComponent("config.json")),
+              let config = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
+        let architectures = config["architectures"] as? [String] ?? []
+        return config["dflash_config"] != nil || architectures.contains { $0.localizedCaseInsensitiveContains("dflash") }
     }
 
     /// The downloaded drafter's snapshot, found the way `dflash_spec.find_drafter` does.

@@ -50,6 +50,10 @@ struct DiscoverView: View {
                         if model.catalogFormat == .mlx && model.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
                             recommended
                         }
+                        ForEach(matchingDraftModels, id: \.repository) { drafter in
+                            DraftModelRow(model: model, drafter: drafter)
+                            Divider().padding(.leading, 16)
+                        }
                         if model.catalog.isEmpty && !model.isSearching { Text("No matching models.").foregroundStyle(.secondary).padding() }
                         ForEach(model.catalog) { candidate in
                             CatalogRow(model: model, candidate: candidate,
@@ -94,8 +98,8 @@ struct DiscoverView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        // A drafter isn't listed as a model: its model's row says "Drafter ready" instead.
-                        if item.error == nil && !DynoBoost.isDrafter(item.repository) {
+                        // A draft model isn't listed with the models: its own section in Downloaded shows it.
+                        if item.error == nil && !DynoBoost.drafters.contains(where: { $0.repository == item.repository }) {
                             Button("View downloaded") {
                                 model.catalogFormat = (item.displayName ?? item.repository).localizedCaseInsensitiveContains("gguf") ? .gguf : .mlx
                                 model.searchCatalog("")
@@ -175,6 +179,14 @@ struct DiscoverView: View {
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.top, 18).padding(.bottom, 4)
         }
     }
+    /// Draft models the hub search can't list (they aren't MLX repositories), shown when the search names them.
+    private var matchingDraftModels: [DynoBoost.Drafter] {
+        let query = model.searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard model.catalogFormat == .mlx, !query.isEmpty else { return [] }
+        return DynoBoost.drafters.filter { drafter in
+            ["speculative", "draft", "dflash"].contains { query.contains($0) } || drafter.repository.lowercased().contains(query)
+        }
+    }
     private var downloadedCount: Int { model.catalogFormat == .mlx ? model.localModels.count : model.ggufModels.count }
     private func matches(_ value: String) -> Bool {
         let query = model.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -192,6 +204,16 @@ struct DiscoverView: View {
                     ForEach(model.ggufModels.filter { matches($0.name + " " + ($0.repository ?? "")) }) { item in
                         libraryRow(item.name, source: item.repository ?? item.path, detail: "GGUF · " + Format.bytes(item.size), action: "Use in Pools",
                                    delete: { deleting = ModelToDelete(path: item.path, name: item.name) }) { useGGUF(item.path) }
+                    }
+                }
+                let drafts = model.catalogFormat == .mlx ? DynoBoost.drafters.filter { model.readyDrafters.contains($0.repository) && matches($0.repository) } : []
+                if !drafts.isEmpty {
+                    Text("DRAFT MODELS · USED FOR SPECULATIVE DECODING").font(.system(size: 10, weight: .semibold)).tracking(0.7).foregroundStyle(.tertiary).padding(.top, 6)
+                    ForEach(drafts, id: \.repository) { drafter in
+                        DraftModelRow(model: model, drafter: drafter) {
+                            if let path = DynoBoost.downloadedDrafter(drafter) { deleting = ModelToDelete(path: path, name: drafter.repository) }
+                        }
+                        .background(.quaternary.opacity(0.3)).clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                 }
                 Text("Only complete local models are listed. Selecting a model does not start it or replace a running endpoint.").font(.caption).foregroundStyle(.secondary)
@@ -271,6 +293,10 @@ private struct CatalogRow: View {
                 }
                 if let note {
                     Text(note).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
+                    if let drafter = DynoBoost.drafter(for: candidate.id) {
+                        Label("+ speculative decoding with \(drafter.repository) (\(Format.bytes(drafter.sizeBytes)))", systemImage: "bolt.fill")
+                            .font(.system(size: 10)).foregroundStyle(DynoBrand.accent)
+                    }
                 }
                 HStack(spacing: 8) {
                     Text(candidate.author)
@@ -357,5 +383,40 @@ private struct CatalogRow: View {
         if count >= 1_000_000 { return String(format: "%.1fM", Double(count) / 1_000_000) }
         if count >= 1_000 { return String(format: "%.0fk", Double(count) / 1_000) }
         return "\(count)"
+    }
+}
+
+/// A draft model as its own row: what it is for, the model it pairs with, and its download state.
+private struct DraftModelRow: View {
+    var model: MonitorModel
+    var drafter: DynoBoost.Drafter
+    var delete: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(drafter.repository.split(separator: "/").last.map(String.init) ?? drafter.repository)
+                        .font(.system(size: 13, weight: .medium))
+                    Text("draft model")
+                        .font(.system(size: 9, weight: .medium))
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(DynoBrand.accent.opacity(0.18), in: Capsule())
+                        .foregroundStyle(DynoBrand.accent)
+                }
+                Text("Speculative decoding for \(drafter.base): it guesses several tokens ahead and \(drafter.base) checks them in one pass, "
+                     + "so the same answer comes faster. Not a model to start: start \(drafter.base) and Dyno uses it.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text("\(drafter.repository) · \(Format.bytes(drafter.sizeBytes))")
+                    .font(.system(size: 10)).foregroundStyle(.tertiary)
+            }
+            Spacer(minLength: 8)
+            DrafterButton(model: model, drafter: drafter)
+            if let delete, model.readyDrafters.contains(drafter.repository) {
+                Button(action: delete) { Image(systemName: "trash") }.buttonStyle(.borderless).foregroundStyle(.secondary)
+                    .help("Delete this draft model (moves it to the Trash). \(drafter.base) keeps working, with its built-in MTP head.")
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
     }
 }

@@ -114,12 +114,12 @@ Mode (Dyno):
 
 Speculative decoding (Dyno):
   --speculative {auto,mtp,dflash,off}
-                                auto (default): draft with a downloaded DFlash2 drafter for the
+                                auto (default): draft with a downloaded DFlash2 draft model for the
                                 model, else its own MTP head, when decode concurrency is 1.
                                 Output is unchanged; generation is ~2-3.5x faster.
   --mtp-head PATH               an extracted MTP head folder (default: ~/.cache/dyno/mtp,
                                 taken from a local full checkpoint or downloaded once, ~0.85 GB)
-  --dflash-drafter PATH         a DFlash2 drafter folder (default: z-lab/<model>-DFlash2 in the
+  --dflash-drafter PATH         a DFlash2 draft model folder (default: z-lab/<model>-DFlash2 in the
                                 Hugging Face cache; get it with `dyno pull z-lab/Qwen3.8-27B-DFlash2`)
 """
 
@@ -275,14 +275,14 @@ def _load_dflash(provider: Any, mtp: Any, model_ref: str, options: dict[str, Any
         path = options["dflash"] or (base and dflash_spec.find_drafter(base))
         if not path:
             if options["mode"] == "dflash":
-                print("Speculative decoding: no DFlash2 drafter for this model (pass --dflash-drafter).", flush=True)
+                print("Speculative decoding: no DFlash2 draft model for this model (pass --dflash-drafter).", flush=True)
             return None
         drafter = dflash_spec.load_dflash_drafter(path, provider.model)
     except Exception as error:  # noqa: BLE001 - a broken drafter must never stop serving
-        print(f"Speculative decoding: DFlash2 drafter unusable ({_first_line(error)}).", flush=True)
+        print(f"Speculative decoding: DFlash2 draft model unusable ({_first_line(error)}).", flush=True)
         return None
     registry.speculative = "dflash"
-    print(f"Speculative decoding: DFlash2 drafter from {path}", flush=True)
+    print(f"Speculative decoding: DFlash2 draft model from {path}", flush=True)
     return drafter
 
 
