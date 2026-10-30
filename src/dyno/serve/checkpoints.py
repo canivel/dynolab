@@ -23,6 +23,8 @@ from typing import Any, List, Optional
 
 MIN_SEGMENT = 512  # tokens: shorter stretches cost more to copy than to read again
 
+from . import progress
+
 _log = logging.getLogger(__name__)
 _pending = threading.local()
 
@@ -49,7 +51,8 @@ def _prefill(model, draft_model, cache, tokens, step):
 
     prompt = mx.array(tokens)
     if draft_model is None:
-        for _ in generate_step(prompt, model, max_tokens=0, prompt_cache=cache, prefill_step_size=step): pass
+        for _ in generate_step(prompt, model, max_tokens=0, prompt_cache=cache, prefill_step_size=step,
+                               prompt_progress_callback=progress.counting(None)): pass
         return True
     if getattr(draft_model, 'is_dflash_drafter', False):
         from .dflash_spec import dflash_prefill
@@ -79,6 +82,10 @@ def install(server_module: Any) -> None:
     def stream_generate(model, tokenizer, prompt, *args, prompt_cache=None, draft_model=None, prefill_step_size=2048, **kwargs):
         request = getattr(_pending, 'request', None)
         _pending.request = None
+        if isinstance(prompt, list):
+            progress.begin(len(prompt), len(request[2]) - len(prompt) if request is not None else 0)
+        # The plain loop reports through mlx_lm's callback; the MTP and DFlash2 loops report to `progress` directly.
+        kwargs['prompt_progress_callback'] = progress.counting(kwargs.get('prompt_progress_callback'))
         if request is not None and prompt_cache is not None and isinstance(prompt, list) and prompt:
             try: prompt = _checkpoint(request, model, tokenizer, prompt, prompt_cache, draft_model, prefill_step_size)
             except Exception as error:  # noqa: BLE001 - a checkpoint is an optimization; never fail the request over it

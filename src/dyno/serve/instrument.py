@@ -21,8 +21,11 @@ from ..apis import CodingAPIsMixin
 from ..execution import ExecutionHTTPMixin, ExecutionStore, current_execution
 
 from .activations import CaptureBroker
+from . import activity, progress
 
 registry = MetricsRegistry()
+progress.on_begin = lambda new, cached: activity.reading(registry.note_reading(new, cached))
+progress.on_advance = registry.note_read
 
 
 class InstrumentedResponseGenerator(ResponseGenerator):
@@ -47,6 +50,14 @@ class InstrumentedResponseGenerator(ResponseGenerator):
     def generate(self, request, generation_args, progress_callback=None):
         model = _model_name(generation_args, request)
         record = registry.begin_request(model)
+        activity.watch(registry)
+        activity.received(record)
+
+        def progress_report(processed, total):
+            # mlx_lm's batched path: (processed, total) for this request. The single-stream path reports to `progress`
+            # first (prompt_to_read is set), and its tuples here would count the same tokens twice.
+            if not record.counted_by_loops: registry.note_read_absolute(record, processed, total)
+            if progress_callback is not None: progress_callback(processed, total)
         execution = current_execution()
         if execution:
             execution.tokens = True
@@ -56,16 +67,18 @@ class InstrumentedResponseGenerator(ResponseGenerator):
         try:
             # This call blocks until the scheduler picks the request up, so
             # everything before it is queue wait.
-            context, stream = super().generate(request, generation_args, progress_callback)
-        except Exception:
+            context, stream = super().generate(request, generation_args, progress_report)
+        except Exception as error:
             registry.finish_request(record, finish_reason="error", failed=True)
+            activity.finished(record, str(error))
             raise
 
         registry.note_started(record)
+        self._note_prompt(context, record)
+        activity.started(record, record.queue_seconds)
         if execution:
             execution.event("lifecycle", "\nPrompt ready; generating")
 
-        self._note_prompt(context, record)
         return context, self._timed(stream, record, context)
 
     @staticmethod
@@ -85,13 +98,15 @@ class InstrumentedResponseGenerator(ResponseGenerator):
         finish_reason: str | None = None
         failed = False
         first = True
+        error = None
         try:
             for token in stream:
+                registry.note_token(record)
                 if first:
                     # The single-stream path hands over the context before it looks up the prompt cache.
                     self._note_prompt(context, record)
+                    activity.first_token(record)
                     first = False
-                registry.note_token(record)
                 execution = current_execution()
                 if execution:
                     with execution.store.lock:
@@ -104,12 +119,14 @@ class InstrumentedResponseGenerator(ResponseGenerator):
             # The client hung up mid-stream; still record what was produced.
             finish_reason = finish_reason or "cancelled"
             raise
-        except Exception:
+        except Exception as exc:
             failed = True
             finish_reason = "error"
+            error = f"{type(exc).__name__}: {exc}"
             raise
         finally:
             registry.finish_request(record, finish_reason=finish_reason, failed=failed)
+            activity.finished(record, error)
             execution = current_execution()
             if execution:
                 execution.data["finish_reason"] = finish_reason

@@ -119,6 +119,8 @@ def stats_json(registry: MetricsRegistry, model_path: str | None = None) -> str:
         },
         "live": {
             "requests_active": registry.active_requests,
+            # Each unfinished request: phase (queued, reading, generating) and how far it has read the prompt.
+            "requests": registry.live_requests(),
             "decode_tokens_per_second":
                 _round(registry.live_decode_rate() or registry.rolling_decode_rate()),
             "live_decode_tokens_per_second": _round(registry.live_decode_rate()),

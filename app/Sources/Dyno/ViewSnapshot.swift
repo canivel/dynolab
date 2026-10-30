@@ -108,6 +108,10 @@ enum ViewSnapshot {
             RunLoop.main.run(until: Date().addingTimeInterval(4))
             targets = [("downloaded-mlx", { AnyView(DiscoverView(model: model, library: true).background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1000, height: 1100))]
         }
+        if arguments.contains("--logs-only") {
+            RunLoop.main.run(until: Date().addingTimeInterval(1))
+            targets = [("performance-logs", { AnyView(ServerLogsView().background(DynoBrand.background).dynoTheme()) }, CGSize(width: 1100, height: 700))]
+        }
         if arguments.contains("--draft-search-only") {
             model.catalogFormat = .mlx
             model.searchCatalog("dflash")

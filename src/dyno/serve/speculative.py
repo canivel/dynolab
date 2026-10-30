@@ -34,7 +34,7 @@ from mlx_lm.models.cache import KVCache, make_prompt_cache
 from mlx_lm.models.gated_delta import gated_delta_update
 from mlx_lm.sample_utils import apply_min_p, apply_top_k, apply_top_p
 
-from . import copy_draft
+from . import copy_draft, progress
 
 _log = logging.getLogger(__name__)
 _PROFILE = os.environ.get("DYNO_MTP_PROFILE") == "1"  # sync between phases and log where a round goes
@@ -440,6 +440,7 @@ def _mtp_prefill(prompt, target, draft_model, prompt_cache, prefill_step_size):
             draft_model(pair_hidden, pair_tokens, mtp_cache)
         last_hidden = hidden[:, -1:]
         mx.eval(last_hidden, _cache_arrays(target_cache + [mtp_cache]))
+        progress.advance(chunk.size)
     mtp_cache.svm_last_hidden = last_hidden
     return last_hidden, mtp_cache
 
