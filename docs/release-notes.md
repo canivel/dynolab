@@ -1,3 +1,17 @@
+# Dyno Lab 0.6.17
+
+Dyno Lab 0.6.17 makes updates small: from one of the last three releases, the updater downloads about 5 MB instead of the whole 306 MB DMG. It also stops an idle router with Scan on from running hot.
+
+## Updates
+
+- **Smaller updates.** Updating from one of the last three releases now downloads a delta of about 5 MB instead of the whole 306 MB DMG: only what changed in the app, while Python and its libraries stay as they are. Each delta is checked to rebuild the new app exactly before it's published, and is signed like the DMG. If one can't be used, the updater downloads the full DMG as before.
+
+## Router
+
+- **An idle router no longer runs hot.** With **Scan** on and no model server answering, the router could find itself among the ports it scans and keep sending requests to itself, using about a fifth of a CPU core indefinitely and filling its log with errors. It now skips its own port and other routers, and reuses an empty result for a few seconds instead of scanning on every poll.
+
+---
+
 # Dyno Lab 0.6.16
 
 Dyno Lab 0.6.16 shows what a model server is doing: Performance → Logs follows each request as it reads the prompt and generates, so a long first prompt from Claude Code no longer looks like a hang. The DFlash2 draft model can now be found by name in Discover, and the app says "speculative decoding" and "draft model".
