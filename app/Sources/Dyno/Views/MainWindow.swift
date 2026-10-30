@@ -455,8 +455,8 @@ private struct RunPanel: View {
                 if let selected = model.selectedModel, let drafter = DynoBoost.drafter(for: selected.name) {
                     HStack(spacing: 8) {
                         Text(model.readyDrafters.contains(drafter.repository)
-                             ? "Speculative decoding uses the DFlash2 drafter for this model."
-                             : "A faster drafter is available for this model.")
+                             ? "Speculative decoding: on, with the DFlash2 draft model."
+                             : "Speculative decoding: on, with the built-in MTP head. The DFlash2 draft model is faster:")
                             .font(.caption).foregroundStyle(.secondary)
                         DrafterButton(model: model, drafter: drafter)
                     }

@@ -58,12 +58,12 @@ class Models(unittest.TestCase):
         _drafter_refusal = L.drafter_refusal
         drafter = self.root / 'models--z-lab--Qwen3.8-27B-DFlash2' / 'snapshots' / 'abc'
         refusal = _drafter_refusal(['--model', str(drafter), '--port', '8080'])
-        self.assertIn('drafter, not a model', refusal)
+        self.assertIn('draft model for speculative decoding, not a model to serve', refusal)
         self.assertIn('Serve a Qwen3.8-27B model instead', refusal)
         self.assertIsNone(_drafter_refusal([f"--model={self.root / 'models--mlx-community--Qwen3-8B-4bit' / 'snapshots' / 'abc'}"]))
         self.assertIsNone(_drafter_refusal(['--port', '8080']))
         with mock.patch.dict(os.environ, {'HF_HUB_CACHE': str(self.root)}):
-            self.assertIn('drafter, not a model', _drafter_refusal(['--model', 'z-lab/Qwen3.8-27B-DFlash2']))
+            self.assertIn('draft model for speculative decoding, not a model to serve', _drafter_refusal(['--model', 'z-lab/Qwen3.8-27B-DFlash2']))
 
 
 class ClaudeEnv(unittest.TestCase):
@@ -147,7 +147,7 @@ class Launch(unittest.TestCase):
         with mock.patch.object(L, '_get', return_value={'mode': 'serve', 'model': {'loaded_at': None}, 'speculative': {'mode': None}}):
             self.assertEqual(L.speed_report(1), [])  # not loaded yet: the drafter isn't chosen
         with mock.patch.object(L, '_get', return_value={'mode': 'serve', 'model': {'loaded_at': 1}, 'speculative': {'mode': 'dflash'}}):
-            self.assertEqual(L.speed_report(1), ['Speculative decoding: on (DFlash2 drafter).'])
+            self.assertEqual(L.speed_report(1), ['Speculative decoding: on (DFlash2 draft model).'])
         with mock.patch.object(L, '_get', return_value={'mode': 'research', 'model': {'loaded_at': 1}, 'speculative': {'mode': None}}):
             lines = L.speed_report(1, log)
         self.assertIn('off (no MTP head for this model (pass --mtp-head))', lines[0])

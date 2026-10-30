@@ -74,7 +74,7 @@ For your first session, follow **Discover → Models → Chat → Lab**. Lab ope
 
 **Discover** opens with **Good with Dyno**: a few models checked with this version of Dyno, what each is good for, and only those that fit this Mac's memory. Below it is the hub's own list.
 
-For Qwen3.8-27B, **Get drafter** (in Discover once the model is downloaded, and in Models) downloads its DFlash2 drafter, which makes generation faster. The drafter isn't a model to start, so it isn't listed: start Qwen3.8-27B and it drafts with it.
+**Speculative decoding and draft models.** A draft model is a small model that guesses several tokens ahead; the big model checks the guesses in one pass and keeps the ones it would have written itself, so you get the same answer faster. For Qwen3.8-27B, the **Speculative decoding** button (in Discover and in Models) downloads its DFlash2 draft model, `z-lab/Qwen3.8-27B-DFlash2`. Hugging Face lists that repository as a Transformers model, not MLX, so the hub search can't return it; Dyno adds it to the results when you search for its name, "dflash", "draft" or "speculative". Once downloaded it shows as **Speculative decoding ready**, and under **Downloaded → Draft models**, where you can delete it. A draft model isn't a model to start on its own: start Qwen3.8-27B and Dyno uses it.
 
 **Discover** has an **MLX / GGUF** format filter and **Search Hub / Downloaded** views. Search results identify locally downloaded models. Select **Downloaded** to filter your local library by name and format. **Use in Models** selects MLX weights in the serving controls; **Use in Pools** selects a GGUF and opens the pool configuration. Neither action starts inference.
 

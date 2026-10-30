@@ -23,7 +23,7 @@ public enum RecommendedModels {
 
     public static let all = [
         Entry(id: "lmstudio-community/Qwen3.8-27B-MLX-4bit",
-              use: "Coding with Claude Code or Codex. The fastest with its drafter.", sizeBytes: 16_100_000_000),
+              use: "Coding with Claude Code or Codex. The fastest with speculative decoding.", sizeBytes: 16_100_000_000),
         Entry(id: "lmstudio-community/Qwen3.8-27B-MLX-8bit",
               use: "The same model at higher quality, for Macs with 64 GB or more.", sizeBytes: 29_500_000_000),
         Entry(id: "lmstudio-community/Qwen3.5-9B-MLX-4bit",

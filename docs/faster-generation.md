@@ -53,17 +53,17 @@ On Macs whose GPU has neural accelerators (M5 and later), Dyno checks drafts wit
 
 Ranges are two runs whose absolute speed differed with the GPU's temperature; within each run the kernel gained 1.2–1.9× on code, reasoning and edits, and made no difference to chat. The kernel is checked against MLX's own result before Dyno uses it. `DYNO_NAX=0` turns it off.
 
-### A faster drafter: DFlash2
+### A faster draft model: DFlash2
 
-[DFlash2](https://inco.ai/blog/dflash2/) is a separate 1.6-billion-parameter drafter trained for Qwen3.8-27B. Instead of guessing one token at a time, it drafts a block of up to 7 tokens in a single pass, reading hidden states from five of the model's layers, and a small selector picks one coherent path through its top candidates. Its drafts are checked with the same exact rule, so the output is unchanged.
+[DFlash2](https://inco.ai/blog/dflash2/) is a separate 1.6-billion-parameter draft model trained for Qwen3.8-27B. Instead of guessing one token at a time, it drafts a block of up to 7 tokens in a single pass, reading hidden states from five of the model's layers, and a small selector picks one coherent path through its top candidates. Its drafts are checked with the same exact rule, so the output is unchanged.
 
-Dyno uses it when it's downloaded. In the app, click **Get drafter** next to Qwen3.8-27B in Models or Discover; from a terminal:
+Dyno uses it when it's downloaded. In the app, click **Speculative decoding** next to Qwen3.8-27B in Models or Discover, or search Discover for "dflash"; from a terminal:
 
 ```sh
 dyno pull z-lab/Qwen3.8-27B-DFlash2
 ```
 
-The drafter is 3.8 GB to download and about 1.7 GB in memory, since Dyno loads it at 8 bits. With it on disk, `--speculative auto` drafts with DFlash2 instead of the MTP head; `--speculative mtp` keeps the head. Through the server, same setup, temperature 0.6, M5 Max on power:
+The draft model is 3.8 GB to download and about 1.7 GB in memory, since Dyno loads it at 8 bits. With it on disk, `--speculative auto` drafts with DFlash2 instead of the MTP head; `--speculative mtp` keeps the head. Through the server, same setup, temperature 0.6, M5 Max on power:
 
 | Workload | Plain | MTP head | DFlash2 |
 |---|---|---|---|

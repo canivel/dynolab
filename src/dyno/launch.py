@@ -66,8 +66,8 @@ def drafter_refusal(argv):
     except (OSError, ValueError): return None
     base = drafter_of(config, str(folder))
     if not base: return None
-    return (f'{ref} is a speculative-decoding drafter, not a model to serve. Serve {base} instead: '
-            '`dyno serve` finds this drafter in the Hugging Face cache and drafts with it.')
+    return (f'{ref} is a draft model for speculative decoding, not a model to serve. Serve {base} instead: '
+            '`dyno serve` finds this draft model in the Hugging Face cache and uses it.')
 
 
 def downloaded(root=None):
@@ -214,14 +214,14 @@ def speed_report(port, log=None):
     if not (stats.get('model') or {}).get('loaded_at'):
         pass  # the drafter is chosen when the model loads, on the first request
     elif drafter:
-        lines.append(f"Speculative decoding: on ({'DFlash2 drafter' if drafter == 'dflash' else 'MTP head'}).")
+        lines.append(f"Speculative decoding: on ({'DFlash2 draft model' if drafter == 'dflash' else 'MTP head'}).")
     else:
         why = ''
         if log and Path(log).exists():
             said = [l.strip() for l in Path(log).read_text(errors='replace').splitlines() if l.startswith('Speculative decoding off')]
             why = said[-1].split(':', 1)[1].strip() if said else ''
         lines.append('Speculative decoding: off' + (f' ({why})' if why else '') + '. Replies come out at plain speed. '
-                     'For Qwen3.8-27B, `dyno pull z-lab/Qwen3.8-27B-DFlash2` gets the fastest drafter.')
+                     'For Qwen3.8-27B, `dyno pull z-lab/Qwen3.8-27B-DFlash2` gets the fastest draft model.')
     if mode != 'serve':
         lines.append(f'The server on :{port} runs in research mode. For the fastest replies, start the model in Models with '
                      '"Serve only", or quit it and let `dyno launch` start one.')

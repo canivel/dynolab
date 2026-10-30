@@ -24,11 +24,20 @@ struct DynoBoostTests {
         #expect(DynoBoost.drafter(for: "z-lab/Qwen3.8-27B-DFlash2") == nil)
     }
 
-    @Test func draftersAreNotModels() {
-        #expect(DynoBoost.isDrafter("z-lab/Qwen3.8-27B-DFlash2"))
-        #expect(DynoBoost.isDrafter("z-lab/Qwen3.6-27B-DFlash"))
-        #expect(!DynoBoost.isDrafter("lmstudio-community/Qwen3.8-27B-MLX-4bit"))
-        #expect(!DynoBoost.isDrafter("someone/DFlashy-7B"))
+    @Test func draftModelsAreToldByTheirConfigNotTheirName() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        func folder(_ name: String, _ config: String) throws -> String {
+            let url = root.appendingPathComponent(name)
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            try Data(config.utf8).write(to: url.appendingPathComponent("config.json"))
+            return url.path
+        }
+        #expect(DynoBoost.isDraftModel(at: try folder("Qwen3.8-27B-DFlash2", #"{"architectures": ["DFlash2DraftModel"], "dflash_config": {}}"#)))
+        // Full models with DFlash2 in the name (GLM-5.3-Flash-…-DFlash2) stay models.
+        #expect(!DynoBoost.isDraftModel(at: try folder("GLM-5.3-Flash-mlx-oQ4e-DFlash2", #"{"architectures": ["Glm5NextForConditionalGeneration"]}"#)))
+        #expect(!DynoBoost.isDraftModel(at: try folder("Qwen3.8-27B-MLX-4bit", #"{"model_type": "qwen3_5"}"#)))
+        #expect(!DynoBoost.isDraftModel(at: root.appendingPathComponent("missing").path))
     }
 
     @Test func findsADownloadedDrafterOnlyWhenComplete() throws {
