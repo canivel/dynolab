@@ -58,11 +58,21 @@ Every Dyno model server, and the router, also answers the APIs Claude Code and C
 - `POST /v1/messages` and `POST /v1/messages/count_tokens`: Anthropic's Messages API, streamed or not, with tools, tool results, thinking and images.
 - `POST /v1/responses`: OpenAI's Responses API, streamed or not, with function tools and their outputs.
 
-Both are translated to `/v1/chat/completions` on the same server, so Execution shows them like any other request. A `model` the server doesn't list means the model it's serving. When a request includes Anthropic's `web_search_…` tool or the Responses `web_search` tool, Dyno runs the searches with its own web search (Settings → Web search) and returns them as `server_tool_use` / `web_search_tool_result` blocks or `web_search_call` items. These APIs answer only programs on this Mac, and refuse requests with an `Origin` header (web pages), even when the router is shared on your network. See [Claude Code and Codex on your own models](coding-tools.md).
+Both are translated to `/v1/chat/completions` on the same server, so Execution shows them like any other request. A `model` the server doesn't list means the model it's serving. When a request includes Anthropic's `web_search_…` tool or the Responses `web_search` tool, Dyno runs the searches with its own web search (Settings → Web search) and returns them as `server_tool_use` / `web_search_tool_result` blocks or `web_search_call` items. Anthropic's `web_fetch_…` tool is answered the same way, with Dyno's page reader: `web_fetch_tool_result` blocks, public pages only. These APIs answer only programs on this Mac, and refuse requests with an `Origin` header (web pages), even when the router is shared on your network. See [Claude Code and Codex on your own models](coding-tools.md).
 
 ```bash
 curl http://127.0.0.1:8971/v1/messages -H 'Content-Type: application/json' \
   -d '{"model": "local", "max_tokens": 200, "messages": [{"role": "user", "content": "Say hello."}]}'
+```
+
+## Web access
+
+A server started with `--web` (Models → **Web access**) lets apps that use `/v1/chat/completions` without tools of their own reach the web. Dyno gives such a request two tools, `web_search` and `read_page`, adds a line saying the model has them at the end of the system prompt, runs the model's calls on this Mac and lets it continue, for up to 8 rounds. The client gets the answer as one completion or stream: no tool calls, one finish reason, and the usage of every round. Searches use Settings → Web search (SearXNG in Docker, or a paid provider). `read_page` reads public http(s) pages only: never this Mac, your local network or link-local addresses, also after a redirect. Requests that bring their own tools, and requests from web pages (an `Origin` header) or other computers, are passed to the model unchanged. Each search and page read is a `web ·` line in the server's log (Performance → Logs), and `/stats` reports `"web_access": true`.
+
+```bash
+dyno serve --model mlx-community/Qwen3-8B-4bit --port 8971 --web
+curl http://127.0.0.1:8971/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model": "default_model", "messages": [{"role": "user", "content": "What changed in the latest Dyno Lab release?"}]}'
 ```
 
 ## Isolated research: first request

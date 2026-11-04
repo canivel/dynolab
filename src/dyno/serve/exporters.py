@@ -109,6 +109,7 @@ def stats_json(registry: MetricsRegistry, model_path: str | None = None) -> str:
             "tool_calls": registry.tool_calls,
         },
         "mode": registry.mode,
+        "web_access": _web_access(),
         "speculative": {
             "mode": registry.speculative,
             "rounds": registry.draft_rounds_total,
@@ -148,3 +149,9 @@ def stats_json(registry: MetricsRegistry, model_path: str | None = None) -> str:
 
 def _round(value: float | None, digits: int = 3) -> float | None:
     return None if value is None else round(value, digits)
+
+
+def _web_access() -> bool:
+    from ..apis import CodingAPIsMixin
+
+    return CodingAPIsMixin.web_access

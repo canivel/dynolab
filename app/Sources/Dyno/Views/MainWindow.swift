@@ -497,6 +497,9 @@ private struct RunPanel: View {
                 Text("Off").tag("off")
             }.frame(width: 205)
                 .help("Default for the next server start. Requires a compatible model template. Individual chat/API requests can override it; restart for changes to apply.")
+            Toggle("Web access", isOn: Binding(get: { model.serverWebAccess }, set: { model.serverWebAccess = $0 }))
+                .toggleStyle(.checkbox)
+                .help("Apps that chat with this model without tools of their own get web search and page reading, run on this Mac with the search chosen in Settings → Web search. Only public pages, never this Mac or your network. Claude Code and Codex use their own web tools either way. For the next start.")
             if let served, model.canStopEndpoint(served) {
                 Button("Stop") { model.stopEndpoint(served) }.controlSize(.large)
             } else if served != nil {

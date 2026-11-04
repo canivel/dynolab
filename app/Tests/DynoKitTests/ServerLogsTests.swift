@@ -37,6 +37,7 @@ struct ServerLogsTests {
 
     @Test func requestLines() {
         #expect(ServerLogs.isRequestLine("12:38:57 request 1 · reading 39,470 new prompt tokens"))
+        #expect(ServerLogs.isRequestLine("12:39:02 web · searched “dyno lab” · 6 results"))
         #expect(!ServerLogs.isRequestLine("Speculative decoding: DFlash2 draft model from /x"))
     }
 }
