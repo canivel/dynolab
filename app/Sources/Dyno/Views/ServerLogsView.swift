@@ -136,6 +136,7 @@ struct ServerLogsView: View {
         let name = named ?? fromPath ?? (path.isEmpty ? "model" : (path as NSString).lastPathComponent)
         var parts = [":\(entry?.port.map(String.init) ?? "?")", name]
         if let mode = stats["mode"] as? String { parts.append(mode == "serve" ? "Serve only" : "Research") }
+        if stats["web_access"] as? Bool == true { parts.append("web access") }
         let speculative = (stats["speculative"] as? [String: Any])?["mode"] as? String
         parts.append(speculative == "dflash" ? "speculative decoding: DFlash2 draft model"
                      : speculative == "mtp" ? "speculative decoding: MTP head" : "no speculative decoding yet")

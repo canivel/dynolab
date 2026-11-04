@@ -59,6 +59,6 @@ public enum ServerLogs {
 
     /// Dyno's own request lines ("12:38:57 request 1 · …").
     public static func isRequestLine(_ line: Substring) -> Bool {
-        line.range(of: #"^\d\d:\d\d:\d\d request \d+ · "#, options: .regularExpression) != nil
+        line.range(of: #"^\d\d:\d\d:\d\d (request \d+|web) · "#, options: .regularExpression) != nil
     }
 }

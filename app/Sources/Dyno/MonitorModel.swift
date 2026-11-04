@@ -55,6 +55,11 @@ final class MonitorModel {
     var serverUse: String = UserDefaults.standard.string(forKey: "serverUse") ?? "research" {
         didSet { UserDefaults.standard.set(serverUse, forKey: "serverUse") }
     }
+    /// Web access (`--web`): chat requests that bring no tools can search the web and read public pages, run on this
+    /// Mac. Off unless the user turns it on. For the next server start.
+    var serverWebAccess: Bool = UserDefaults.standard.bool(forKey: "serverWebAccess") {
+        didSet { UserDefaults.standard.set(serverWebAccess, forKey: "serverWebAccess") }
+    }
 
     // -- router ---------------------------------------------------------------
     private(set) var router = RouterClient.Snapshot()
@@ -458,7 +463,7 @@ final class MonitorModel {
         }
         controller(for: model.path).start(
             model: model, port: port,
-            extraArguments: launchOptions.arguments + (serverUse == "serve" ? ["--mode", "serve"] : []) + (thinkingMode == "default" ? [] : ["--chat-template-args", thinkingMode == "on" ? "{\"enable_thinking\":true}" : "{\"enable_thinking\":false}"])
+            extraArguments: launchOptions.arguments + (serverUse == "serve" ? ["--mode", "serve"] : []) + (serverWebAccess ? ["--web"] : []) + (thinkingMode == "default" ? [] : ["--chat-template-args", thinkingMode == "on" ? "{\"enable_thinking\":true}" : "{\"enable_thinking\":false}"])
         )
     }
 

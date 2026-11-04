@@ -111,6 +111,9 @@ Mode (Dyno):
   --mode {research,serve}       research (default): every Dyno feature (Observer history, activation
                                 capture). serve: only answering requests, as fast as one at a time goes;
                                 for Claude Code, Codex and other apps (`dyno launch` uses it).
+  --web                         web access: chat requests that bring no tools get web_search and
+                                read_page, which Dyno runs on this Mac (Settings → Web search;
+                                public pages only). Off by default.
 
 Speculative decoding (Dyno):
   --speculative {auto,mtp,dflash,off}
@@ -126,13 +129,15 @@ Speculative decoding (Dyno):
 
 def _take_speculative_flags(argv: list[str]) -> tuple[list[str], dict[str, Any]]:
     """Strip Dyno's own flags before mlx_lm's parser sees them."""
-    options: dict[str, Any] = {"mode": "auto", "head": None, "dflash": None, "use": "research"}
+    options: dict[str, Any] = {"mode": "auto", "head": None, "dflash": None, "use": "research", "web": False}
     rest: list[str] = []
     values = iter(argv)
     names = {"--speculative": "mode", "--mtp-head": "head", "--dflash-drafter": "dflash", "--mode": "use"}
     for argument in values:
         name, _, inline = argument.partition("=")
-        if name in names:
+        if argument == "--web":
+            options["web"] = True
+        elif name in names:
             options[names[name]] = inline or next(values, "")
         else:
             rest.append(argument)
@@ -356,6 +361,11 @@ def main(argv: list[str] | None = None) -> int:
         _announce(argv)
         if speculative_options["use"] == "serve":
             argv = _serve_only(argv)
+        if speculative_options["web"]:
+            from ..apis import CodingAPIsMixin
+
+            CodingAPIsMixin.web_access = True
+            print("Web access: on (chat requests without tools can search the web and read public pages).", flush=True)
         from . import checkpoints
 
         checkpoints.install(server_module)

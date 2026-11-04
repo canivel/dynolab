@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import uuid
 
 STOP = {'stop': 'end_turn', 'length': 'max_tokens', 'tool_calls': 'tool_use', 'function_call': 'tool_use'}
@@ -184,6 +185,7 @@ class StreamTranslator:
         self.usage = {'input_tokens': 0, 'output_tokens': 0}
         self.spent = 0            # output tokens of earlier rounds
         self.searches = 0
+        self.fetches = 0
         # Calls to tools Dyno runs itself (web search) are collected, not shown as the client's tool_use.
         self.hidden = set(hidden)
         self.new_round()
@@ -276,10 +278,24 @@ class StreamTranslator:
         out += self._begin(('result', self.index + 1), {'type': 'web_search_tool_result', 'tool_use_id': call['id'], 'content': content})
         return out + self._close()
 
+    def fetched(self, call, url, page, error=None):
+        """A page Dyno read, shown as Anthropic's web fetch server tool blocks."""
+        self.fetches += 1
+        out = (b'' if self.started else self.start())
+        out += self._begin(('server', self.index + 1), {'type': 'server_tool_use', 'id': call['id'], 'name': 'web_fetch', 'input': {}})
+        out += self._delta({'type': 'input_json_delta', 'partial_json': json.dumps({'url': url}, ensure_ascii=False)})
+        content = ({'type': 'web_fetch_tool_error', 'error_code': 'url_not_accessible'} if error else
+                   {'type': 'web_fetch_result', 'url': page['url'], 'retrieved_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                    'content': {'type': 'document', 'title': page['title'],
+                                'source': {'type': 'text', 'media_type': 'text/plain', 'data': page['text']}}})
+        out += self._begin(('result', self.index + 1), {'type': 'web_fetch_tool_result', 'tool_use_id': call['id'], 'content': content})
+        return out + self._close()
+
     def finish(self):
         out = (b'' if self.started else self.start()) + self._close()
         stop = 'tool_use' if self.tool else (self.stop if self.stop not in (None, 'tool_use') else 'end_turn')
-        usage = dict(self.usage, server_tool_use={'web_search_requests': self.searches}) if self.searches else self.usage
+        used = {**({'web_search_requests': self.searches} if self.searches else {}), **({'web_fetch_requests': self.fetches} if self.fetches else {})}
+        usage = dict(self.usage, server_tool_use=used) if used else self.usage
         return out + self.event('message_delta', {'type': 'message_delta', 'delta': {'stop_reason': stop, 'stop_sequence': None},
                                                   'usage': usage}) + \
             self.event('message_stop', {'type': 'message_stop'})

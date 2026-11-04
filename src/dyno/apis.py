@@ -7,12 +7,17 @@ reads, metrics.
 Web search: both tools ask for a search that runs on Anthropic's or OpenAI's servers. Here Dyno runs it: the model
 gets a web_search function, Dyno answers its calls with Dyno's web search (SearXNG, or the paid provider chosen in
 Settings) and lets the model continue, and the client sees the searches as server tool blocks or web_search_call items.
+Claude's web fetch tool is answered the same way, with Dyno's page reader (public pages only).
+
+Web access (`dyno serve --web`): a /v1/chat/completions request that brings no tools gets web_search and read_page,
+run the same way; see webaccess.py.
 
 Only clients on this Mac are answered, and never from a web page (a browser sends Origin), so a site can't drive
 the local model through them.
 """
 from __future__ import annotations
 
+import io
 import ipaddress
 import json
 import os
@@ -23,13 +28,16 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from . import anthropic, responses
+from . import anthropic, responses, webaccess
 from .anthropic import RequestError
+from .webaccess import wants_web
 
 MAX_BODY = 32_000_000
 # Seconds of silence before a keepalive: reading Claude Code's ~20k-token prompt takes minutes on some Macs.
 KEEPALIVE = 10
 PATHS = ('/v1/messages', '/v1/messages/count_tokens', '/v1/responses')
+# On Dyno's own requests to the model server, so they aren't given web access a second time.
+INNER = {'Content-Type': 'application/json', 'X-Dyno-Inner': '1'}
 
 
 def _openai_error(kind, message):
@@ -45,6 +53,14 @@ def wants_search(body, claude):
     return 0, None
 
 
+def wants_fetch(body):
+    """Claude's hosted web fetch tool, when the client asks for one: (how many page reads, its settings)."""
+    for tool in (body.get('tools') or []) if isinstance(body, dict) else []:
+        if isinstance(tool, dict) and str(tool.get('type') or '').startswith('web_fetch_'):
+            return max(1, min(int(tool.get('max_uses') or 5), 10)), tool
+    return 0, None
+
+
 def _host_in(url, domains):
     host = urllib.parse.urlsplit(url).hostname or ''
     return any(host == d or host.endswith('.' + d) for d in domains)
@@ -56,6 +72,12 @@ def filter_domains(results, tool):
     allowed = [str(d).lower().lstrip('.') for d in tool.get('allowed_domains') or (tool.get('filters') or {}).get('allowed_domains') or []]
     blocked = [str(d).lower().lstrip('.') for d in tool.get('blocked_domains') or []]
     return [r for r in results if (not allowed or _host_in(r['url'], allowed)) and not _host_in(r['url'], blocked)]
+
+
+def fetch_tool(name):
+    return {'type': 'function', 'function': {
+        'name': name, 'description': 'Read the text of a public web page, e.g. one found with web_search.',
+        'parameters': {'type': 'object', 'properties': {'url': {'type': 'string', 'description': 'The page address (http or https)'}}, 'required': ['url']}}}
 
 
 def search_tool(name):
@@ -85,9 +107,29 @@ def run_search(query, tool=None):
         found = engine.search(query, 10)
         found['results'] = filter_domains(found['results'], tool)[:6]
         if not found['results']: found['note'] = 'No results. Try other words.'
+        say(f'web · searched “{query}” · {len(found["results"])} results')
         return found['results'], None, json.dumps(found, ensure_ascii=False)
     except Exception as error:
+        say(f'web · search for “{query}” failed: {error}')
         return [], str(error), f'Web search failed: {error}'
+
+
+def run_read(url, tool=None):
+    """(page, error, text for the model). Public http(s) pages only, also after redirects."""
+    url = str(url or '').strip()[:2000]
+    try:
+        if tool and not filter_domains([{'url': url}], tool): raise ValueError('That site is not allowed for this request')
+        page = web().read_page(url)
+        say(f'web · read {page["url"]} · {len(page["text"]):,} characters')
+        return page, None, json.dumps(page, ensure_ascii=False)
+    except Exception as error:
+        say(f'web · reading {url} failed: {error}')
+        return None, str(error), f'Reading the page failed: {error}'
+
+
+def say(text):
+    from .serve.activity import say as log
+    log(text)
 
 
 def _chunks(response):
@@ -101,7 +143,10 @@ def _chunks(response):
 
 
 class CodingAPIsMixin:
-    """POST /v1/messages, /v1/messages/count_tokens and /v1/responses. Use before the handler that serves chat completions."""
+    """POST /v1/messages, /v1/messages/count_tokens and /v1/responses, and web access for /v1/chat/completions. Use
+    before the handler that serves chat completions."""
+
+    web_access = False  # `dyno serve --web`
 
     def _api_reply(self, payload, status=200):
         body = json.dumps(payload, ensure_ascii=False).encode()
@@ -132,6 +177,8 @@ class CodingAPIsMixin:
 
     def do_POST(self):
         path = self.path.split('?', 1)[0].rstrip('/')
+        if path == '/v1/chat/completions' and self.web_access and not self.headers.get('X-Dyno-Inner') and self._api_local():
+            return self._chat_with_web()
         if path not in PATHS: return super().do_POST()
         claude = path.startswith('/v1/messages')
         fail = anthropic.error if claude else _openai_error
@@ -146,14 +193,14 @@ class CodingAPIsMixin:
             translate = anthropic.to_openai if claude else responses.to_chat
             request = translate(body, self._api_model(requested))
             searches, hosted = wants_search(body, claude)
+            fetches, fetching = wants_fetch(body) if claude else (0, None)
         except (RequestError, ValueError, UnicodeDecodeError) as e:
             return self._api_reply(fail('invalid_request_error', str(e)), 400)
-        if searches:
-            try: return self._api_with_search(request, requested, claude, searches, hosted)
+        if searches or fetches:
+            try: return self._api_with_search(request, requested, claude, searches, hosted, fetches, fetching)
             except (BrokenPipeError, ConnectionResetError): self.close_connection = True; return
         if request['stream']: return self._api_stream(request, requested, claude)
-        upstream = urllib.request.Request(self._api_upstream() + '/v1/chat/completions', data=json.dumps(request).encode(),
-                                          headers={'Content-Type': 'application/json'})
+        upstream = urllib.request.Request(self._api_upstream() + '/v1/chat/completions', data=json.dumps(request).encode(), headers=INNER)
         try:
             response = urllib.request.urlopen(upstream, timeout=3600)
         except urllib.error.HTTPError as e:
@@ -170,8 +217,7 @@ class CodingAPIsMixin:
         or ('error', exception); ('idle', None) after KEEPALIVE seconds without a chunk."""
         items = queue.Queue()
         leaving = threading.Event()
-        upstream = urllib.request.Request(self._api_upstream() + '/v1/chat/completions', data=json.dumps(request).encode(),
-                                          headers={'Content-Type': 'application/json'})
+        upstream = urllib.request.Request(self._api_upstream() + '/v1/chat/completions', data=json.dumps(request).encode(), headers=INNER)
 
         def pump():
             try:
@@ -237,15 +283,18 @@ class CodingAPIsMixin:
         self.close_connection = True
         self.end_headers()
 
-    def _api_with_search(self, request, requested, claude, limit, hosted=None):
-        """Rounds of generation; between them Dyno runs the searches the model asked for."""
+    def _api_with_search(self, request, requested, claude, searches, hosted=None, fetches=0, fetching=None):
+        """Rounds of generation; between them Dyno runs the searches and page reads the model asked for."""
         fail = anthropic.error if claude else _openai_error
         names = {t['function']['name'] for t in request.get('tools') or []}
         name = 'web_search' if 'web_search' not in names else 'dyno_web_search'
-        tools = [*(request.get('tools') or []), search_tool(name)]
+        reader = 'web_fetch' if 'web_fetch' not in names else 'dyno_web_fetch'
+        client_tools = list(request.get('tools') or [])
+        left = {name: searches, reader: fetches}
+        limit = searches + fetches
         streaming = request['stream']
         request.update(stream=True, stream_options={'include_usage': True})
-        stream = (anthropic.StreamTranslator if claude else responses.StreamTranslator)(requested, hidden={name})
+        stream = (anthropic.StreamTranslator if claude else responses.StreamTranslator)(requested, hidden={name, reader})
         kept = bytearray()
 
         def send(data):
@@ -255,8 +304,9 @@ class CodingAPIsMixin:
 
         if streaming: self._api_stream_headers()
         for round_ in range(limit + 1):
-            # The last round has no search tool, so the model answers with what it found.
-            request['tools'] = tools if round_ < limit else tools[:-1]
+            # Each tool goes once its uses are spent; the last round has none, so the model answers with what it found.
+            request['tools'] = client_tools + ([search_tool(name)] if left[name] > 0 and round_ < limit else []) \
+                + ([fetch_tool(reader)] if left[reader] > 0 and round_ < limit else [])
             if not request['tools']: request.pop('tools'); request.pop('tool_choice', None)
             error = None
             for kind, value in self._api_relay(request):
@@ -275,9 +325,16 @@ class CodingAPIsMixin:
             if not calls: break
             answers = []
             for call in calls:
-                query = str(anthropic._input(call['arguments']).get('query') or '')[:300]
-                results, error, text = run_search(query, hosted)
-                send(stream.searched(call, query, results, error))
+                arguments = anthropic._input(call['arguments'])
+                left[call['name']] = left.get(call['name'], 0) - 1
+                if call['name'] == reader:
+                    url = str(arguments.get('url') or '')
+                    page, error, text = run_read(url, fetching)
+                    send(stream.fetched(call, url, page, error))
+                else:
+                    query = str(arguments.get('query') or '')[:300]
+                    results, error, text = run_search(query, hosted)
+                    send(stream.searched(call, query, results, error))
                 answers.append({'role': 'tool', 'tool_call_id': call['id'], 'content': text})
             request['messages'] = [*request['messages'], {'role': 'assistant', 'content': stream.text, 'tool_calls': [
                 {'id': c['id'], 'type': 'function', 'function': {'name': c['name'], 'arguments': c['arguments'] or '{}'}} for c in calls]}, *answers]
@@ -285,3 +342,57 @@ class CodingAPIsMixin:
         send(stream.finish() if claude else stream.done())
         if not streaming:
             self._api_reply(anthropic.collect(bytes(kept)) if claude else responses.collect(bytes(kept)))
+
+    def _chat_with_web(self):
+        """/v1/chat/completions with web access: rounds of generation, with Dyno running the model's searches and page
+        reads between them. Requests that bring their own tools go to the model server unchanged."""
+        size = int(self.headers.get('Content-Length') or 0)
+        raw = self.rfile.read(size) if 0 < size <= MAX_BODY else b''
+        try: body = json.loads(raw)
+        except ValueError: body = None
+        if not wants_web(body):
+            self.rfile = io.BytesIO(raw)  # the model server reads the body again
+            return super().do_POST()
+        streaming = bool(body.get('stream'))
+        request = webaccess.with_web(body)
+        rounds = webaccess.ChatRounds(str(body.get('model') or 'default_model'))
+        sent = False
+
+        def send(chunk):
+            nonlocal sent
+            if not streaming or chunk is None: return
+            if not sent: self._api_stream_headers(); sent = True
+            self.wfile.write(chunk if isinstance(chunk, bytes) else b'data: ' + json.dumps(chunk, ensure_ascii=False).encode() + b'\n\n')
+            self.wfile.flush()
+
+        try:
+            for round_ in range(webaccess.ROUNDS + 1):
+                if round_ == webaccess.ROUNDS: request.pop('tools', None)  # answer with what was found
+                error = None
+                for kind, value in self._api_relay(request):
+                    if kind == 'idle': send(b': keepalive\n\n')  # an SSE comment: clients ignore it, the connection stays up
+                    elif kind == 'chunk':
+                        if value.get('error'): error = json.dumps(value['error'])[:2000]; break
+                        send(rounds.chunk(value))
+                    elif kind == 'http': error = f'{value[0]}: {value[1]}'
+                    elif kind == 'error': error = str(value)
+                if error:
+                    message = _openai_error('api_error', f'The model server failed: {error}')
+                    if sent: send(message); return send(b'data: [DONE]\n\n')
+                    return self._api_reply(message, 502)
+                calls = rounds.web_calls()
+                if not calls: break
+                answers = []
+                for call in calls:
+                    arguments = anthropic._input(call['arguments'])
+                    if call['name'] == 'read_page': _, _, text = run_read(arguments.get('url'))
+                    else: _, _, text = run_search(str(arguments.get('query') or '')[:300])
+                    answers.append({'role': 'tool', 'tool_call_id': call['id'], 'content': text})
+                request['messages'] = [*request['messages'], {'role': 'assistant', 'content': rounds.text, 'tool_calls': [
+                    {'id': c['id'], 'type': 'function', 'function': {'name': c['name'], 'arguments': c['arguments'] or '{}'}} for c in calls]}, *answers]
+                rounds.new_round()
+            if not streaming: return self._api_reply(rounds.completion())
+            for chunk in rounds.last(): send(chunk)
+            send(b'data: [DONE]\n\n')
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True

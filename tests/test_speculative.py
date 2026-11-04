@@ -19,7 +19,9 @@ class SpeculativeFlags(unittest.TestCase):
             ["--model", "m", "--speculative", "off", "--mtp-head=/tmp/head", "--port", "1"]
         )
         self.assertEqual(argv, ["--model", "m", "--port", "1"])
-        self.assertEqual(options, {"mode": "off", "head": "/tmp/head", "dflash": None, "use": "research"})
+        self.assertEqual(options, {"mode": "off", "head": "/tmp/head", "dflash": None, "use": "research", "web": False})
+        argv, options = _take_speculative_flags(["--model", "m", "--web"])
+        self.assertEqual((argv, options["web"]), (["--model", "m"], True))
 
     def test_serve_mode_runs_one_request_at_a_time_without_the_research_features(self):
         from dyno.execution import ExecutionHTTPMixin
