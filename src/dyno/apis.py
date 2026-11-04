@@ -354,7 +354,7 @@ class CodingAPIsMixin:
             self.rfile = io.BytesIO(raw)  # the model server reads the body again
             return super().do_POST()
         streaming = bool(body.get('stream'))
-        request = webaccess.with_web(body)
+        request = webaccess.with_web(body, webaccess.browser_status())
         rounds = webaccess.ChatRounds(str(body.get('model') or 'default_model'))
         sent = False
 
@@ -385,7 +385,10 @@ class CodingAPIsMixin:
                 answers = []
                 for call in calls:
                     arguments = anthropic._input(call['arguments'])
-                    if call['name'] == 'read_page': _, _, text = run_read(arguments.get('url'))
+                    if call['name'].startswith('browser_'):
+                        text, line = webaccess.browse(call['name'], arguments)
+                        say(f'web · {line}')
+                    elif call['name'] == 'read_page': _, _, text = run_read(arguments.get('url'))
                     else: _, _, text = run_search(str(arguments.get('query') or '')[:300])
                     answers.append({'role': 'tool', 'tool_call_id': call['id'], 'content': text})
                 request['messages'] = [*request['messages'], {'role': 'assistant', 'content': rounds.text, 'tool_calls': [

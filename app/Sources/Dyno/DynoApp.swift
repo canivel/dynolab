@@ -18,6 +18,10 @@ struct DynoApp: App {
         if arguments.contains("--diagnose") {
             exit(Diagnose.run(arguments: Array(arguments.dropFirst())))
         }
+        if arguments.contains("--browser-session") {
+            let rest = Array(arguments.dropFirst())
+            exit(MainActor.assumeIsolated { ViewSnapshot.browserSession(arguments: rest) })
+        }
         if arguments.contains("--snapshot") {
             let rest = Array(arguments.dropFirst())
             exit(MainActor.assumeIsolated { ViewSnapshot.run(arguments: rest) })
@@ -60,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     nonisolated func applicationDidFinishLaunching(_ notification: Notification) {
         MainActor.assumeIsolated {
             AppDelegate.shared = self
+            BrowserController.shared.startBridge()
             AppUpdates.shared.start()
             // Menu bar only until a window is opened.
             NSApp.setActivationPolicy(.accessory)
@@ -101,6 +106,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     nonisolated func applicationWillTerminate(_ notification: Notification) {
-        MainActor.assumeIsolated { MonitorModel.shared.shutdown() }
+        MainActor.assumeIsolated { BrowserController.shared.stopBridge(); MonitorModel.shared.shutdown() }
     }
 }
