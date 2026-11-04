@@ -454,6 +454,55 @@ enum ViewSnapshot {
         RunLoop.main.run(until: Date().addingTimeInterval(2.5))
     }
 
+    /// `Dyno --browser-session <directory>`: only the browser and its bridge, for testing a model driving it without
+    /// the rest of the app. The Browser tab is drawn offscreen to browser-<n>.png every few seconds. DYNO_BROWSER_MODE
+    /// picks the mode; DYNO_BROWSER_APPROVE=allow or deny answers approvals; DYNO_BROWSER_SECONDS ends it (default 300).
+    static func browserSession(arguments: [String]) -> Int32 {
+        let directory = arguments.first { !$0.hasPrefix("--") } ?? FileManager.default.currentDirectoryPath
+        try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        let environment = ProcessInfo.processInfo.environment
+        let browser = BrowserController.shared
+        if let mode = environment["DYNO_BROWSER_MODE"].flatMap(BrowserMode.init(rawValue:)) { browser.mode = mode }
+        browser.startBridge()
+        guard browser.bridgeError == nil else { print(browser.bridgeError ?? ""); return 1 }
+        print("Browser bridge ready"); fflush(stdout)
+        let size = CGSize(width: 1280, height: 820)
+        let hosting = NSHostingView(rootView: AnyView(BrowserView(browser: browser).frame(width: size.width, height: size.height).dynoTheme()))
+        hosting.frame = CGRect(origin: .zero, size: size)
+        let window = NSWindow(contentRect: hosting.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = hosting
+        window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
+        window.orderBack(nil)
+        let answer = environment["DYNO_BROWSER_APPROVE"]
+        let end = Date().addingTimeInterval(Double(environment["DYNO_BROWSER_SECONDS"] ?? "") ?? 300)
+        var shot = 0, lastShot = Date.distantPast, lastSteps = -1, approvalSeen: UUID?
+        while Date() < end {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+            if let pending = browser.approval, pending.id != approvalSeen {
+                approvalSeen = pending.id
+                print("Approval asked: \(pending.message)"); fflush(stdout)
+                save(hosting, to: "\(directory)/browser-approval-\(shot).png"); shot += 1
+                if answer == "allow" || answer == "deny" { browser.answer(answer == "allow") }
+            }
+            if browser.steps.count != lastSteps || Date().timeIntervalSince(lastShot) > 15 {
+                lastSteps = browser.steps.count; lastShot = Date()
+                RunLoop.main.run(until: Date().addingTimeInterval(1))
+                save(hosting, to: "\(directory)/browser-\(shot).png"); shot += 1
+                for step in browser.steps.suffix(1) { print("Step: \(step.text)\(step.outcome.map { " · \($0)" } ?? "")"); fflush(stdout) }
+            }
+        }
+        browser.stopBridge()
+        return 0
+    }
+
+    private static func save(_ view: NSView, to path: String) {
+        view.layoutSubtreeIfNeeded()
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    }
+
     static func capture(
         view: AnyView, size: CGSize, appearance: NSAppearance.Name, to path: String
     ) -> Bool {

@@ -40,6 +40,7 @@ struct MainWindow: View {
         case execution = "Execution"
         case run = "Models"
         case discover = "Discover"
+        case browser = "Browser"
         case router = "Router"
         case pools = "Pools"
         case observe = "Performance"
@@ -74,7 +75,7 @@ struct MainWindow: View {
                             .accessibilityAddTraits(tab == item && !showingChat ? .isSelected : [])
                     }
                 }.padding(4).background(DynoBrand.surface, in: RoundedRectangle(cornerRadius: 9))
-                .frame(width: 790)
+                .frame(width: 870)
                 Spacer()
                 AppUpdatesButton()
                 RuntimeOverview(model: model, pool: poolSession)
@@ -135,6 +136,7 @@ struct MainWindow: View {
         .onAppear {
             AppUpdates.shared.stopPool = { poolSession.stop() }
             model.currentTab = tab
+            BrowserController.shared.onNeedsAttention = { [model] in model.requestedTab = .browser }
             // Actions the assistant takes in Dyno (open a screen, fill Agents → Setup) work even while it's minimized.
             model.assistant.onAction = { [model] e in AssistantActions.apply(e, model: model) }
             if firstRun && !setupOffered { showingSetup = true }
@@ -198,6 +200,8 @@ struct MainWindow: View {
                 PoolsView(session: poolSession, model: model)
             case .observe:
                 PerformanceView(model: model, session: poolSession)
+            case .browser:
+                BrowserView(browser: BrowserController.shared)
             case .run:
                 VStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 10) {
@@ -499,7 +503,7 @@ private struct RunPanel: View {
                 .help("Default for the next server start. Requires a compatible model template. Individual chat/API requests can override it; restart for changes to apply.")
             Toggle("Web access", isOn: Binding(get: { model.serverWebAccess }, set: { model.serverWebAccess = $0 }))
                 .toggleStyle(.checkbox)
-                .help("Apps that chat with this model without tools of their own get web search and page reading, run on this Mac with the search chosen in Settings → Web search. Only public pages, never this Mac or your network. Claude Code and Codex use their own web tools either way. For the next start.")
+                .help("Apps that chat with this model without tools of their own get web search and page reading, run on this Mac with the search chosen in Settings → Web search, and can use the Browser tab within the mode you choose there. Only public pages, never this Mac or your network. Claude Code and Codex use their own web tools either way. For the next start.")
             if let served, model.canStopEndpoint(served) {
                 Button("Stop") { model.stopEndpoint(served) }.controlSize(.large)
             } else if served != nil {

@@ -329,6 +329,22 @@ Measured throughput comes from server instrumentation where available; estimated
 
 If Lab reports insufficient memory, choose a smaller model, lower the input budget, close competing workloads, or explicitly stop serving before the isolated job. If it reports measured active requests, wait for a quiet period. GPU active time alone does not block experiments. Training alongside a continuously busy server is not currently supported by the app's admission checks.
 
+## 15. Let a model use the browser
+
+The **Browser** tab is a web browser that models with **Web access** (Models, beside Start) can drive, like Opera's browser agent: they open pages, read them and, if you allow it, click and type. The model reads each page as text plus a numbered list of its links, buttons and fields, never screenshots. Pages that need JavaScript work here, unlike `read_page`.
+
+Choose what the model can do with **Model can**:
+
+| Mode | The model can |
+|---|---|
+| **Read only** (default) | Open pages, read them, scroll, go back and click links. It can't type or press buttons; when it needs to, it tells you. |
+| **Ask before submitting** | Also type and press buttons. Before it submits a form, or presses a button that buys, sends, posts, deletes, books, subscribes or similar, Dyno shows **Allow this step?** with what it wants to do. If you don't answer within 5 minutes, the step isn't allowed. |
+| **Full control** | Type and press buttons without asking. |
+
+In every mode the model never types into password or card fields: when a page needs you to sign in or pay, it asks you to do that yourself in the page. **Pause the model** refuses its next steps until you let it continue, so you can take over and use the page yourself. **What the model did** lists each step and what came of it.
+
+The browser keeps its own cookies and logins, separate from Safari and your other browsers, and opens public web pages only: never this Mac or your local network. Pages are written by others, and the model is told not to follow instructions in them; in Ask or Full mode, a page can still try to mislead it, so watch what it does on sites where you're signed in.
+
 ## Troubleshooting and upgrades
 
 | Symptom | What to check next |

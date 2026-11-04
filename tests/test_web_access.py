@@ -63,8 +63,9 @@ class WebAccess(unittest.TestCase):
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.base = f'http://127.0.0.1:{self.server.server_address[1]}'
         self.patches = [mock.patch.object(apis, 'run_search', return_value=(RESULTS, None, json.dumps({'results': RESULTS}))),
-                        mock.patch.object(apis, 'run_read', return_value=(PAGE, None, json.dumps(PAGE)))]
-        self.searched, self.read = [p.start() for p in self.patches]
+                        mock.patch.object(apis, 'run_read', return_value=(PAGE, None, json.dumps(PAGE))),
+                        mock.patch.object(webaccess, 'browser_status', return_value=None)]  # a Dyno app running here has no say
+        self.searched, self.read, _ = [p.start() for p in self.patches]
 
     def tearDown(self):
         for p in self.patches: p.stop()
