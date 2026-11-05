@@ -12,7 +12,9 @@ public final class ProcessScanner {
     /// line decides the label.
     private static let runtimeRules: [(label: String, pattern: NSRegularExpression)] = {
         let definitions: [(String, String)] = [
-            // Dyno's own server is mlx_lm; its command line only says "mlx" when the model's folder does.
+            // Dyno's own server is mlx_lm, or llama.cpp for a GGUF file; its command line only says "mlx" when the
+            // model's folder does.
+            ("llama.cpp", #"(?:^|[ /])dyno(?:-cli)?\s+serve\s.*\.gguf(?:\s|$)"#),
             ("MLX", #"(?:^|[ /])dyno(?:-cli)?\s+serve(?:\s|$)"#),
             ("Ollama", #"\bollama\b"#),
             ("llama.cpp", #"\b(llama-server|llama-cli|llama-bench|llama-run|llama-quantize)\b"#),

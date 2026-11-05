@@ -380,11 +380,18 @@ final class MonitorModel {
                 self.localModels = found
                 self.ggufModels = gguf
                 self.readyDrafters = drafters
-                if self.selectedModel == nil || !found.contains(where: { $0.id == self.selectedModel?.id }) {
-                    self.selectedModel = found.first
+                let selected = self.selectedModel
+                if selected == nil || !(found.contains { $0.id == selected?.id } || gguf.contains { $0.path == selected?.path }) {
+                    self.selectedModel = selected?.isGGUF == true ? gguf.first?.asModel : found.first
                 }
             }
         }
+    }
+
+    /// Models shows MLX or GGUF models: keep the selection to the kind shown.
+    func showFormat(gguf: Bool) {
+        guard selectedModel?.isGGUF != gguf else { return }
+        selectedModel = gguf ? ggufModels.first?.asModel : localModels.first
     }
 
     func addModelFolder(_ path: String) {

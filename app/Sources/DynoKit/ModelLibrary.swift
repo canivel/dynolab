@@ -11,6 +11,8 @@ public struct LocalModel: Sendable, Identifiable, Equatable, Hashable {
     /// Weight files its index lists that aren't on disk: a download that stopped part-way. It can't load.
     public var missingFiles: [String] = []
     public var isIncomplete: Bool { !missingFiles.isEmpty }
+    /// A GGUF file rather than an MLX folder: `dyno serve` runs it with llama.cpp.
+    public var isGGUF: Bool { path.lowercased().hasSuffix(".gguf") }
 
     public var sizeGB: Double { Double(sizeBytes) / GB }
 

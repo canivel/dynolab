@@ -99,15 +99,17 @@ If the model does not appear in Models, refresh the library and confirm that the
 
 ### Model formats
 
-The **Models → Format** selector separates **MLX** and **GGUF** models. MLX weights support Dyno's native Apple Silicon serving and Lab experiments. GGUF files support the experimental llama.cpp pool; they cannot be started with the MLX server or used for MLX Lab capture. Selecting a format does not convert weights or reuse an already loaded model.
+The **Models → Format** selector separates **MLX** and **GGUF** models. MLX weights support Dyno's native Apple Silicon serving and Lab experiments. GGUF files run on this Mac with llama.cpp on the GPU, or across computers in the experimental pool; Lab experiments that read activations need an MLX model. Selecting a format does not convert weights or reuse an already loaded model.
 
-To download a pool model directly in the app:
+**Run a GGUF model on this Mac.** **Models → GGUF** lists your downloaded GGUF files on the left. Select one and click **Start**, with the same port, **Use**, **Thinking**, **Web access** and launch options as an MLX model. Dyno runs the file with the llama.cpp build that ships with the app (Metal, every layer on the GPU) behind its own endpoint, so Chat, `dyno launch claude` and `codex` (the Anthropic and Responses APIs), Web access and the Browser, the Observer, and Performance → Logs work as they do for MLX models. The context is the model's own, up to 65,536 tokens; `dyno serve --model file.gguf --ctx-size N` sets another. Stopping the model stops llama.cpp too. From the terminal: `dyno serve --model ~/.mlx-dyno/gguf/…/model.gguf --port 8971`.
 
-1. Select **Models → GGUF**. Enter a Hugging Face repository and click **Find files**.
+To download a GGUF model directly in the app:
+
+1. Select **Models → GGUF** and click **Download a GGUF…** at the bottom of the list. Enter a Hugging Face repository and click **Find files**.
 2. Choose one file under **File / quantization**, checking its download size. Split GGUF files are not supported in this preview.
-3. Click **Download selected GGUF**. You can cancel or retry; wait for the completed model to appear under **Downloaded GGUF models**.
-4. Click **Use in Pools**. This selects the model and opens Pools while preserving the saved worker connection. It does not start inference.
-5. Follow the [pool setup and device checks](pools-preview.md) before starting the pool.
+3. Click **Download selected GGUF**. You can cancel or retry; wait for the completed model to appear under **Downloaded GGUF models** and in the list on the left.
+4. Select it in the list to start it on this Mac, or click **Use in Pools** (also on its right-click menu) to select it in Pools while preserving the saved worker connection. Neither starts inference by itself.
+5. For a pool, follow the [pool setup and device checks](pools-preview.md) before starting it.
 
 Downloads are stored under `~/.mlx-dyno/gguf/`. Existing complete GGUF files in the default model search folders also appear in the library; use **Choose GGUF** in Pools for a file elsewhere. These controls are included in Dyno Lab 0.3.0.
 

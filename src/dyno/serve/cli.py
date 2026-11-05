@@ -111,6 +111,9 @@ Mode (Dyno):
   --mode {research,serve}       research (default): every Dyno feature (Observer history, activation
                                 capture). serve: only answering requests, as fast as one at a time goes;
                                 for Claude Code, Codex and other apps (`dyno launch` uses it).
+  --model FILE.gguf             a GGUF file runs on llama.cpp (Metal) behind the same endpoints; launch
+                                options become llama-server's, plus --ctx-size N (default: the model's
+                                own, at most 65,536)
   --web                         web access: chat requests that bring no tools get web_search and
                                 read_page, which Dyno runs on this Mac (Settings → Web search;
                                 public pages only). Off by default.
@@ -335,6 +338,12 @@ def _enable_nax_verify(speculative: Any, argv: list[str]) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    argv, speculative_options = _take_speculative_flags(argv)
+
+    from . import gguf
+
+    if gguf.is_gguf(argv) and "--help" not in argv and "-h" not in argv:
+        return gguf.main(argv, speculative_options, BANNER.replace("{version}", __version__))
 
     try:
         import mlx_lm.server as server_module
@@ -342,7 +351,6 @@ def main(argv: list[str] | None = None) -> int:
         print(MLX_MISSING, file=sys.stderr, end="")
         return 1
 
-    argv, speculative_options = _take_speculative_flags(argv)
     from ..launch import drafter_refusal
 
     if (refusal := drafter_refusal(argv)):

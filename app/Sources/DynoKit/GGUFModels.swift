@@ -13,6 +13,10 @@ public struct LocalGGUF: Identifiable, Sendable {
     public let size: Int64
     public let repository: String?
 }
+public extension LocalGGUF {
+    /// The file as a model Models can start, named by its repository when that is known.
+    var asModel: LocalModel { LocalModel(path: path, name: repository.map { "\($0)/\(name)" } ?? name, sizeBytes: size, source: "GGUF") }
+}
 public enum GGUFModels {
     public static func files(repository: String) async throws -> [GGUFFile] {
         guard repository.range(of: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", options: .regularExpression) != nil else {

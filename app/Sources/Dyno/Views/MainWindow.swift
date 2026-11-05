@@ -20,6 +20,8 @@ struct MainWindow: View {
     @State private var dragStart: Double?
     @State private var poolSession = PoolSession()
     @State private var modelFormat = "MLX"
+    /// Models → GGUF: the download page rather than the selected file's Start panel.
+    @State private var downloadingGGUF = false
     /// The first time the app opens, it sets up the agent sandbox: it lists what this Mac needs and asks first.
     @AppStorage("sandboxSetupOffered") private var setupOffered = false
     @State private var showingSetup = false
@@ -209,16 +211,28 @@ struct MainWindow: View {
                             Text("MLX").tag("MLX")
                             Text("GGUF").tag("GGUF")
                         }.pickerStyle(.segmented).frame(width: 220)
+                            .onChange(of: modelFormat, initial: true) { _, format in model.showFormat(gguf: format == "GGUF") }
                         Label(modelFormat == "MLX"
                               ? "MLX · Native Apple Silicon serving and Lab experiments. These model folders cannot be used by the GGUF pool."
-                              : "GGUF · For the experimental llama.cpp pool. Select a file/quantization below. GGUF models cannot use Dyno’s MLX serving or Lab capture path.",
+                              : "GGUF · Runs on this Mac with llama.cpp on the GPU, or across computers in Pools. Lab experiments that read activations need an MLX model.",
                               systemImage: "info.circle").font(.callout).foregroundStyle(.secondary)
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
                     Divider()
                     if modelFormat == "GGUF" {
-                        GGUFModelsView(model: model) { path in
-                            poolSession.selectModel(path)
-                            tab = .pools
+                        RunningModelsBar(model: model)
+                        HStack(spacing: 0) {
+                            GGUFSidebar(model: model, downloading: $downloadingGGUF) { path in
+                                poolSession.selectModel(path); tab = .pools
+                            }.frame(width: 240)
+                            Divider()
+                            if downloadingGGUF || model.selectedModel?.isGGUF != true {
+                                GGUFModelsView(model: model) { path in
+                                    poolSession.selectModel(path)
+                                    tab = .pools
+                                }
+                            } else {
+                                RunPanel(model: model).frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }
                         }
                     } else {
                         RunningModelsBar(model: model)
@@ -374,6 +388,76 @@ private struct ModelSidebar: View {
     }
 }
 
+/// Models → GGUF: the downloaded GGUF files, each started like an MLX model; and the page to download more.
+private struct GGUFSidebar: View {
+    var model: MonitorModel
+    @Binding var downloading: Bool
+    var useInPool: (String) -> Void
+    @State private var deleting: ModelToDelete?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("GGUF MODELS")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .tracking(0.7)
+                Spacer()
+                Button {
+                    model.rescanModels()
+                } label: {
+                    Image(systemName: "arrow.clockwise").font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tertiary)
+                .help("Rescan for models")
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
+            .padding(.bottom, 8)
+
+            ScrollView {
+                LazyVStack(spacing: 2) {
+                    ForEach(model.ggufModels) { file in
+                        let candidate = file.asModel
+                        ModelRow(
+                            candidate: candidate,
+                            isSelected: !downloading && model.selectedModel?.id == candidate.id,
+                            isRunning: model.isServing(candidate.path) || model.snapshot.models.contains { $0.path == candidate.path }
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture { model.selectedModel = candidate; downloading = false }
+                        .contextMenu {
+                            Button("Use in Pools") { useInPool(file.path) }
+                            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: file.path)]) }
+                            Button("Move to Trash…", role: .destructive) { deleting = ModelToDelete(path: file.path, name: file.name) }
+                        }
+                    }
+                    if model.ggufModels.isEmpty {
+                        Text("No GGUF models yet.")
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 6)
+                    }
+                }
+                .padding(.horizontal, 8)
+            }
+
+            Spacer()
+            Divider()
+            Button {
+                downloading = true
+            } label: {
+                Label("Download a GGUF…", systemImage: "arrow.down.circle")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(downloading ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+            .padding(14)
+        }
+        .confirmsModelDeletion(model, item: $deleting)
+    }
+}
+
 private struct ModelRow: View {
     var candidate: LocalModel
     var isSelected: Bool
@@ -426,8 +510,13 @@ private struct RunPanel: View {
                 Text("Thinking applies to the next start and only to compatible chat templates. Off may reduce latency. Chat and API requests can override this default; raw-text Lab captures do not use it.")
                     .font(.caption).foregroundStyle(.secondary)
                 if let error = model.serverActionError { Text(error).foregroundStyle(.orange).font(.caption) }
-                Text("Activation capture is included automatically when you start a model with this version of Dyno. No capture flag is needed. Older running servers need to be stopped and started again.")
-                    .font(.caption).foregroundStyle(.secondary)
+                if model.selectedModel?.isGGUF == true {
+                    Text("GGUF models run with llama.cpp on the GPU. Chat, the Claude Code and Codex APIs, Web access, the Observer and Performance work as they do for MLX models; Lab experiments that read activations need an MLX model. The context is the model's own, up to 65,536 tokens.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Activation capture is included automatically when you start a model with this version of Dyno. No capture flag is needed. Older running servers need to be stopped and started again.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if !snapshot.models.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("RUNNING ENDPOINTS").font(.caption).foregroundStyle(.secondary)
@@ -456,7 +545,7 @@ private struct RunPanel: View {
                     TextField("Port", value: Binding(get: { model.launchPort }, set: { model.launchPort = $0 }), format: .number.grouping(.never))
                         .frame(width: 90)
                 }
-                if let selected = model.selectedModel, let drafter = DynoBoost.drafter(for: selected.name) {
+                if let selected = model.selectedModel, !selected.isGGUF, let drafter = DynoBoost.drafter(for: selected.name) {
                     HStack(spacing: 8) {
                         Text(model.readyDrafters.contains(drafter.repository)
                              ? "Speculative decoding: on, with the DFlash2 draft model."

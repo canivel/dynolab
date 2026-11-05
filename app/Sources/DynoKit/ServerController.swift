@@ -119,7 +119,11 @@ public final class ServerController: @unchecked Sendable {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: invocation.executable)
         task.arguments = invocation.arguments
-        task.environment = invocation.environment
+        var environment = invocation.environment
+        // A GGUF model runs on the llama.cpp build that ships with the app.
+        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("pool-runtime/llama-server").path,
+           FileManager.default.isExecutableFile(atPath: bundled) { environment["DYNO_LLAMA_SERVER"] = bundled }
+        task.environment = environment
 
         let pipe = Pipe()
         task.standardOutput = pipe
