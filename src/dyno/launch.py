@@ -88,7 +88,50 @@ def downloaded(root=None):
         text = config.get('text_config') if isinstance(config.get('text_config'), dict) else {}
         context = config.get('max_position_embeddings') or text.get('max_position_embeddings')
         out.append(dict(id=repo_of(folder), path=str(snapshot), bytes=sum(f.stat().st_size for f in files),
-                        context=context if isinstance(context, int) else None, mlx='quantization' in config or 'mlx' in folder.name.lower()))
+                        context=context if isinstance(context, int) else None, mlx='quantization' in config or 'mlx' in folder.name.lower(),
+                        format='mlx'))
+    return out
+
+
+SPLIT = re.compile(r'-\d{5}-of-\d{5}\.gguf$', re.I)
+
+
+def gguf_root():
+    return Path.home() / '.mlx-dyno' / 'gguf'
+
+
+def gguf_downloaded(roots=None):
+    """GGUF files Dyno can serve (`dyno serve --model file.gguf`): in ~/.mlx-dyno/gguf, where the app downloads them,
+    and in the hub cache. Named by their repository when that is known; parts of a split file are left out."""
+    from .serve.gguf import CONTEXT, metadata
+    out, seen = [], set()
+    for root in roots or (gguf_root(), hub()):
+        root = Path(root)
+        if not root.is_dir(): continue
+        for file in sorted(root.rglob('*.gguf')):
+            if SPLIT.search(file.name) or any(part.startswith('.') for part in file.relative_to(root).parts): continue
+            real = file.resolve()
+            if real in seen or not real.is_file(): continue
+            try:
+                with open(real, 'rb') as f:
+                    if f.read(4) != b'GGUF': continue
+                header = metadata(str(real))
+            except (OSError, ValueError):
+                continue
+            seen.add(real)
+            repository = None
+            for folder in file.parents:
+                if folder == root.parent: break
+                if folder.name.startswith('models--'):
+                    repository = repo_of(folder); break
+                try: repository = json.loads((folder / 'model.json').read_text()).get('repository')
+                except (OSError, ValueError, AttributeError): pass
+                if repository: break
+            # Served with the model's own context, up to CONTEXT (see dyno.serve.gguf).
+            context = header.get('context_length')
+            context = context if isinstance(context, int) and 0 < context <= CONTEXT else CONTEXT
+            out.append(dict(id=f'{repository}/{file.name}' if repository else file.name, path=str(file), bytes=real.stat().st_size,
+                            context=context, mlx=False, format='gguf'))
     return out
 
 
@@ -147,12 +190,12 @@ def models(argv):
     parser = argparse.ArgumentParser(prog='dyno models', description='Downloaded models, and which ones are being served.')
     parser.add_argument('--json', action='store_true')
     args = parser.parse_args(argv)
-    found, served = downloaded(), serving()
-    for m in found: m['ports'] = [s['port'] for s in served if s['id'] == m['id']]
+    found, served = downloaded() + gguf_downloaded(), serving()
+    for m in found: m['ports'] = [s['port'] for s in served if s['id'] in (m['id'], m['path'])]
     if args.json:
         print(json.dumps(found, indent=2)); return 0
     if not found:
-        print(f'No models downloaded in {hub()}. Get one with `dyno pull mlx-community/Qwen3-8B-4bit`.'); return 1
+        print(f'No models downloaded in {hub()} or {gguf_root()}. Get one with `dyno pull mlx-community/Qwen3-8B-4bit`.'); return 1
     width = min(64, max(len(m['id']) for m in found) + 2)
     print(f"{'MODEL':<{width}}{'SIZE':>9}{'CONTEXT':>9}  SERVING")
     for m in found:
@@ -178,7 +221,8 @@ def _start_server(model, port, extra, mode='serve', thinking=None):
     if not any(e.split('=')[0] == '--mode' for e in extra): extra = ['--mode', mode, *extra]
     if thinking is not None and not any(e.split('=')[0] == '--chat-template-args' for e in extra):
         extra = ['--chat-template-args', json.dumps({'enable_thinking': thinking}), *extra]
-    command = [sys.executable, '-m', 'dyno', 'serve', '--model', model['id'], '--host', '127.0.0.1', '--port', str(port), *extra]
+    reference = model['path'] if model.get('format') == 'gguf' else model['id']
+    command = [sys.executable, '-m', 'dyno', 'serve', '--model', reference, '--host', '127.0.0.1', '--port', str(port), *extra]
     with open(log, 'w') as out:
         process = subprocess.Popen(command, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
     return process, log
@@ -276,7 +320,7 @@ def launch(argv):
                                      epilog='Arguments after -- go to the tool, e.g. dyno launch claude --model qwen3-8b -- -p "fix the tests" '
                                             'or dyno launch codex --model qwen3-8b -- exec "fix the tests"')
     parser.add_argument('tool', choices=sorted(TOOLS))
-    parser.add_argument('--model', required=True, help='a downloaded model: its id or part of its name (see `dyno models`)')
+    parser.add_argument('--model', required=True, help='a downloaded model, MLX or GGUF: its id or part of its name (see `dyno models`)')
     parser.add_argument('--port', type=int, help='use the Dyno server on this port')
     parser.add_argument('--keep', action='store_true', help="leave a server this command started running when the tool exits")
     parser.add_argument('--research', action='store_true',
@@ -291,7 +335,7 @@ def launch(argv):
     executable = shutil.which(args.tool)
     if not executable:
         print(f'{label} is not installed. Install it with: {install}', file=sys.stderr); return 1
-    matches = resolve(args.model, downloaded())
+    matches = resolve(args.model, downloaded() + gguf_downloaded())
     if not matches:
         print(f'No downloaded model matches {args.model!r}. See `dyno models`, or download one with `dyno pull`.', file=sys.stderr); return 1
     if len(matches) > 1:
@@ -302,7 +346,7 @@ def launch(argv):
 
     process, port, log = None, args.port, None
     if port is None:
-        running = [s for s in serving() if s['id'] == model['id']]
+        running = [s for s in serving() if s['id'] in (model['id'], model['path'])]
         ready = next((s for s in running if speaks_anthropic(s['port'])), None)
         if ready:
             port = ready['port']
@@ -330,7 +374,8 @@ def launch(argv):
     previous = {s: signal.signal(s, h) for s, h in ((signal.SIGINT, signal.SIG_IGN), (signal.SIGHUP, stopped), (signal.SIGTERM, stopped))}
     if args.thinking and not process:
         print(f'--thinking applies to a server this command starts; the one on :{port} keeps its own setting.', file=sys.stderr)
-    for line in speed_report(port, log): print(line, file=sys.stderr)
+    # llama.cpp has no draft model here, so the speculative-decoding advice doesn't apply.
+    for line in ([] if model.get('format') == 'gguf' else speed_report(port, log)): print(line, file=sys.stderr)
     try:
         print(f'The first reply waits while the model reads {label}\'s instructions (about 20,000 tokens): '
               'on some Macs that takes several minutes. Later replies only read what\'s new.', file=sys.stderr)

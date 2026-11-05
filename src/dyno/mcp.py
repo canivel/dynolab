@@ -297,7 +297,10 @@ def create_server(port=8980):
 
     @server.tool(annotations=read)
     def serving_capabilities(port: int = 8971) -> dict:
-        """Check whether a local inference endpoint can inspect its resident model."""
+        """Check whether a local inference endpoint can inspect its resident model, and if not, why (`reason`).
+
+        Only MLX models served in research mode can; GGUF models (llama.cpp) and serve-only servers can't.
+        """
         return ServingModel(port).capabilities()
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
@@ -305,7 +308,7 @@ def create_server(port=8980):
         """Capture activation norms without another weight copy. Can delay serving.
 
         No interventions, training, chat template, raw tensor files or extra model
-        load. The endpoint must have been started with the updated dyno serve.
+        load. The endpoint must serve an MLX model in research mode (see serving_capabilities).
         """
         return ServingModel(port).inspect(prompt, layers, max_input_tokens)
 

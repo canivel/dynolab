@@ -329,6 +329,7 @@ class ServingModel:
     def inspect(self, prompt, layers=None, max_input_tokens=128):
         capabilities = self.capabilities()
         if not capabilities.get('serving_activations') or not capabilities.get('model'):
-            raise DynoError('This server has no supported resident model; update/restart dyno serve')
+            raise DynoError(f"This server can't inspect its model: {capabilities['reason']}" if capabilities.get('reason')
+                            else 'This server has no supported resident model; update/restart dyno serve')
         return self._client._request('/activations', dict(model=capabilities['model'], prompt=prompt,
             layers=layers if layers is not None else [0], max_input_tokens=max_input_tokens))

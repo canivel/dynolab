@@ -54,6 +54,28 @@ class Models(unittest.TestCase):
         self.assertEqual(L.repo_of('/x/hub/models--a--b/snapshots/1'), 'a/b')
 
 
+    def test_gguf_files_are_models_too(self):
+        from test_gguf import write_gguf
+        gguf = self.root / 'gguf'
+        (gguf / 'a1').mkdir(parents=True)
+        (gguf / 'a1' / 'model.json').write_text(json.dumps({'repository': 'Qwen/Qwen3-0.6B-GGUF'}))
+        write_gguf(gguf / 'a1' / 'Qwen3-0.6B-Q8_0.gguf')
+        write_gguf(gguf / 'big.gguf', context=262144)
+        (gguf / 'parts').mkdir(); write_gguf(gguf / 'parts' / 'x-00001-of-00002.gguf')
+        (gguf / 'broken.gguf').write_bytes(b'nope')
+        # A GGUF repository in the hub cache has no config.json, so only this listing finds it.
+        hub = fake_model(self.root, 'unsloth/Llama-GGUF', files=())
+        write_gguf(hub / 'blobs' / 'b'); (hub / 'snapshots' / 'abc' / 'llama-Q4.gguf').symlink_to(hub / 'blobs' / 'b')
+        found = {m['id']: m for m in L.gguf_downloaded([gguf, self.root])}
+        self.assertEqual(sorted(found), ['Qwen/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf', 'big.gguf', 'unsloth/Llama-GGUF/llama-Q4.gguf'])
+        self.assertEqual(found['Qwen/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf']['context'], 40960)
+        self.assertEqual(found['big.gguf']['context'], 65536)  # what dyno serve gives a GGUF model at most
+        self.assertEqual(L.resolve('qwen3-0.6b-q8', list(found.values()))[0]['format'], 'gguf')
+        with mock.patch.object(L.subprocess, 'Popen') as popen, mock.patch.object(Path, 'home', return_value=self.root):
+            L._start_server(found['big.gguf'], 8979, [])
+            command = popen.call_args[0][0]
+            self.assertEqual(command[command.index('--model') + 1], str(gguf / 'big.gguf'))
+
     def test_serve_refuses_a_drafter_and_names_its_model(self):
         _drafter_refusal = L.drafter_refusal
         drafter = self.root / 'models--z-lab--Qwen3.8-27B-DFlash2' / 'snapshots' / 'abc'

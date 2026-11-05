@@ -212,7 +212,8 @@ class BackendHandler(BaseHTTPRequestHandler):
         if path == "/metrics": return self._send(prometheus_text(registry), PROMETHEUS_CONTENT_TYPE)
         if path in ("/stats", "/v1/stats"): return self._send(stats_json(registry, model_path=self.model_path), "application/json")
         if path == "/lab/capabilities":
-            return self._send(json.dumps(dict(serving_activations=False, model=self.model_path, max_input_tokens=0, max_layers=0)), "application/json")
+            return self._send(json.dumps(dict(serving_activations=False, model=self.model_path, max_input_tokens=0, max_layers=0,
+                reason="GGUF models run on llama.cpp, which can't capture activations; serve an MLX model in research mode")), "application/json")
         if path in ("/v1/models", "/models"):
             return self._send(json.dumps({"object": "list", "data": [
                 {"id": self.model_path, "object": "model", "created": int(registry.model_loaded_at or time.time()), "owned_by": "llama.cpp"}]}),
