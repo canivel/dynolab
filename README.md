@@ -26,7 +26,7 @@
 
 **Dyno Lab is a free, open-source Mac app for running AI models and investigating how they behave.** Ask a question, inspect a request, capture internal activations, and test a hypothesis in the same visual workspace. Save the results, compare experiments, or automate them with the SDK and API.
 
-Start with a model on your Mac. For larger GGUF models, an experimental local GPU pool can connect your Mac and a Windows NVIDIA worker. You do not need a pool to start learning.
+Start with a model on your Mac: MLX, or GGUF with llama.cpp. For larger GGUF models, an experimental local GPU pool can connect your Mac and a Windows NVIDIA worker. You do not need a pool to start learning.
 
 [![Watch the question-to-experiment tour in the native app](docs/assets/article-execution-log.png)](https://dynolab.dev/#demo)
 

@@ -134,13 +134,22 @@ public final class ModelMonitor: @unchecked Sendable {
     /// loopback requests to a handful of ports.
     public func refresh(processes: [ProcessSample]) async {
         var discovered: [LLMModel] = []
+        // `dyno serve` runs a GGUF model with llama-server behind it: the model is listed once, by its Dyno endpoint,
+        // with llama-server's memory, which is where the weights are.
+        var backends: [String: Int64] = [:]
+        for process in processes where Self.isDynoBackend(process.command) {
+            if let model = Self.modelArgument(in: process.command) { backends[model, default: 0] += process.memory }
+        }
 
-        for process in processes where process.runtime != nil {
+        for process in processes where process.runtime != nil && !Self.isDynoBackend(process.command) {
             let ports = ListeningPorts.forProcess(process.pid)
             var handled = false
 
             for port in ports {
-                let found = await probe(port: port, process: process)
+                var found = await probe(port: port, process: process)
+                for index in found.indices {
+                    if let path = found[index].path, let memory = backends[path] { found[index].sizeBytes = (found[index].sizeBytes ?? 0) + memory }
+                }
                 if !found.isEmpty {
                     discovered.append(contentsOf: found)
                     handled = true
@@ -380,6 +389,11 @@ public final class ModelMonitor: @unchecked Sendable {
     // MARK: - Naming
 
     /// Pull the model out of a command line: `--model X`, `-m X`, `--hf-repo X`.
+    /// The llama-server `dyno serve` starts for a GGUF model (see dyno/serve/gguf.py).
+    static func isDynoBackend(_ command: String) -> Bool {
+        command.contains("llama-server") && command.contains(" --alias dyno-backend")
+    }
+
     static func modelArgument(in command: String) -> String? {
         let tokens = command.split(separator: " ").map(String.init)
         let flags: Set<String> = ["--model", "-m", "--model-path", "--hf-repo", "--hf-model"]

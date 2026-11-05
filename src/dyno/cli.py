@@ -25,7 +25,7 @@ commands:
   pool     experimental LAN-only distributed model pool
   mcp      local stdio MCP bridge for research tools
   lab      local AI safety and alignment research API
-  serve    run an MLX model and expose its generation metrics
+  serve    run an MLX or GGUF model and expose its generation metrics
   route    one endpoint in front of every running model, choosing between them
   run      one prompt, one answer, with the numbers
   models   downloaded models, and which ones are being served
