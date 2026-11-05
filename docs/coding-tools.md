@@ -33,6 +33,8 @@ dyno launch claude --model qwen3.8-27b
 
 `--model` takes the model's full name (`lmstudio-community/Qwen3.8-27B-MLX-4bit`) or any part of it that matches only one model. Dyno tells you if a name matches several.
 
+`dyno models` lists GGUF files too: the ones you downloaded in **Models → GGUF** (in `~/.mlx-dyno/gguf`) and GGUF repositories in the Hugging Face cache, named by repository and file (`Qwen/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf`). `dyno launch` serves those with the llama.cpp build in the app, on the GPU, with the model's own context up to 65,536 tokens. Speculative decoding is for MLX models only.
+
 `dyno launch` then:
 
 1. **Uses the model if it's already running** in a Dyno server, or starts it on a free port between 8970 and 8979, in [serve-only mode](#speed-serve-only-mode). Loading takes a moment. It then says whether speculative decoding is on, and if not, why.
@@ -88,6 +90,8 @@ Both tools can search the web while they run on your model. Claude Code's **WebS
 - The model gets a search tool. When it searches, Dyno runs the search, gives the model the results, and the tool shows the search as usual.
 - Dyno searches with **SearXNG** in Docker on your Mac (free), or with a paid search API you choose in **Settings → Web search**: Brave, Tavily, Exa or Serper. A paid API needs a key; Dyno keeps it in your macOS Keychain. **Test** runs one search so you can check it works.
 - Claude Code's allowed and blocked domains are applied to the results.
+
+The **Web access** switch in Models (`dyno serve --web`) isn't needed for this. It's for apps that bring no tools of their own, and Claude Code and Codex always bring theirs.
 
 Search queries leave your Mac: they go to the search engines (SearXNG) or to the provider you chose. See [Dyno's assistant](assistant.md#web-search-optional) for what that means.
 

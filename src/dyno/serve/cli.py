@@ -15,7 +15,10 @@ import time
 from typing import Any, Optional
 
 from . import tool_calls
-from .instrument import InstrumentedAPIHandler, InstrumentedResponseGenerator, registry
+try:
+    from .instrument import InstrumentedAPIHandler, InstrumentedResponseGenerator, registry
+except ImportError:  # no MLX: GGUF files can still be served, by llama.cpp (main says so for anything else)
+    InstrumentedAPIHandler = InstrumentedResponseGenerator = registry = None
 
 from .. import __version__
 

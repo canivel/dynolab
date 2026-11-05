@@ -62,7 +62,7 @@ result = server.inspect("The capital of France is", layers=[4, 8])
 print(result["layers"])  # token-by-layer activation norms
 ```
 
-- `GET /lab/capabilities` reports the resident model and capture limits.
+- `GET /lab/capabilities` reports the resident model and capture limits. MLX models served in research mode support capture; otherwise `serving_activations` is `false` and `reason` says why (GGUF models on llama.cpp, or serve-only mode), and `inspect()` raises with that reason.
 - `POST /lab/activations` accepts `model` (the exact capability value), `prompt`,
   `layers` and `max_input_tokens`. Returns measurements directly, not a job ID.
 - Up to four distinct layers and 256 input tokens; raw text without a chat template.

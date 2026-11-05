@@ -157,8 +157,11 @@ class InstrumentedAPIHandler(CodingAPIsMixin, ExecutionHTTPMixin, APIHandler):
             if not self._execution_local(): return
             provider = self.response_generator.model_provider
             key = provider.model_key
-            self._execution_send(dict(serving_activations=not self.response_generator._is_distributed and registry.mode == "research",
-                model=str(key[0]) if key else None, max_input_tokens=256, max_layers=4))
+            distributed = self.response_generator._is_distributed
+            capable = not distributed and registry.mode == "research"
+            why = {} if capable else dict(reason="this model is split across Macs, so its activations aren't on this one" if distributed else
+                                          "this server runs in serve-only mode, which turns activation capture off; start it in research mode")
+            self._execution_send(dict(serving_activations=capable, model=str(key[0]) if key else None, max_input_tokens=256, max_layers=4, **why))
         elif path == "/metrics":
             self._send(prometheus_text(registry), PROMETHEUS_CONTENT_TYPE)
         elif path in ("/stats", "/v1/stats"):

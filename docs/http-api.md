@@ -306,7 +306,7 @@ These run on the inference port, not the Lab job port. First discover support:
 curl http://127.0.0.1:8971/lab/capabilities
 ```
 
-Read `serving_activations` and copy the exact returned `model`. An updated Dyno endpoint enables this automatically; an old process must be restarted explicitly. Then submit JSON with:
+Read `serving_activations` and copy the exact returned `model`. Capture works on MLX models served in research mode; when it's `false`, `reason` says why (a GGUF model, which llama.cpp serves without capture, or a server in serve-only mode). An old process must be restarted explicitly. Then submit JSON with:
 
 ```json
 {

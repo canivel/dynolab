@@ -123,7 +123,9 @@ class FrontEnd(unittest.TestCase):
         self.assertEqual(self.get('/v1/models')['data'][0]['id'], '/models/q.gguf')
         self.assertEqual(self.get('/health'), {'status': 'ok'})
         self.assertEqual(self.get('/props')['n_ctx'], 4096)  # forwarded: the app reads the context length here
-        self.assertFalse(self.get('/lab/capabilities')['serving_activations'])
+        capabilities = self.get('/lab/capabilities')
+        self.assertFalse(capabilities['serving_activations'])
+        self.assertIn('llama.cpp', capabilities['reason'])
         self.assertEqual(self.get('/stats')['model']['path'], '/models/q.gguf')
 
     def test_web_access_runs_on_the_front_end(self):

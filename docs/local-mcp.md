@@ -100,7 +100,7 @@ The bridge follows the app's pattern for work that runs: check first, show the u
 | `serving_capabilities` | `port` (default 8971) |
 | `serving_inspect` | Required `prompt`, `layers`; optional `port` (8971), `max_input_tokens` (128) |
 
-For a first resident capture, ask your connected assistant: “Check the Dyno serving capabilities on port 8971, then capture layers 4 and 8 for the raw prompt ‘The capital of France is’ using the loaded model.” Choose layers that exist in your model. This returns measurements directly; there is no job ID to poll.
+For a first resident capture, ask your connected assistant: “Check the Dyno serving capabilities on port 8971, then capture layers 4 and 8 for the raw prompt ‘The capital of France is’ using the loaded model.” Choose layers that exist in your model. This returns measurements directly; there is no job ID to poll. Capture needs an MLX model served in research mode: for a GGUF model (served by llama.cpp) or a server in serve-only mode, `serving_capabilities` says so in `reason`, and `serving_inspect` returns that reason as its error.
 
 The resource `dyno://lab/openapi` returns the service's OpenAPI schema.
 Large arrays stay in artifact files; use the SDK or HTTP URLs to download them.
